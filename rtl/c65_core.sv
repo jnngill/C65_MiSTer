@@ -8,6 +8,7 @@ module c65_core (
 	input  logic        reset,
 	input  logic        ntsc,
 	input  logic        dma_f018b,
+	input  logic  [1:0] turbo,            // CPU speed in FAST mode: 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
 
 	// ROM image loader (128K, used while the machine is held in reset)
 	input  logic [16:0] ld_addr,
@@ -77,7 +78,7 @@ cpu4510 cpu (
 );
 
 // ------------------------------------------------------------------ DMA
-logic        dma_busy, dma_io, dma_we, dma_ce;
+logic        dma_busy, dma_io, dma_we, dma_ce, dma_setup;
 logic [19:0] dma_addr;
 logic  [7:0] dma_dout, dma_reg_dout;
 logic        dma_reg_we;
@@ -88,7 +89,7 @@ logic        bus_we;
 dma_f018 dma (
 	.clk(clk), .reset(reset), .ce(dma_ce), .f018b(dma_f018b),
 	.reg_addr(io_addr[1:0]), .reg_we(dma_reg_we), .reg_din(bus_dout), .reg_dout(dma_reg_dout),
-	.busy(dma_busy), .addr(dma_addr), .io(dma_io), .we(dma_we), .dout(dma_dout), .din(bus_din)
+	.busy(dma_busy), .setup(dma_setup), .addr(dma_addr), .io(dma_io), .we(dma_we), .dout(dma_dout), .din(bus_din)
 );
 
 // ------------------------------------------------------------------ address decode
@@ -190,7 +191,8 @@ wire [16:0] ram_addr = io_cram ? {6'b111111, io_addr[10:0]} : mem_addr;   // col
 wire        slow_dev = io_sid || io_cia1 || io_cia2;
 
 // ------------------------------------------------------------------ bus cycle
-// One access per cycle.  FAST: 9 clk (3.5 MHz), slow: one full 1 MHz phase.
+// One access per cycle.  FAST: 9 clk (3.5 MHz) or 4 / 2 clk with turbo, slow: one
+// full 1 MHz phase.
 // CIA / SID accesses are stretched to cover exactly one phi2 period.
 typedef enum logic [1:0] { C_RUN, C_SYNC, C_SLOW } cyc_t;
 cyc_t       cyc_state;
@@ -198,6 +200,7 @@ logic [3:0] cyc;
 logic       bus_ce;
 logic       slow_cs;
 wire        fast = ctrl_b[6];
+wire  [3:0] fast_len = (turbo == 2'd0) ? 4'd7 : (turbo == 2'd1) ? 4'd2 : 4'd0;
 
 always_ff @(posedge clk) begin
 	bus_ce <= 1'b0;
@@ -205,14 +208,15 @@ always_ff @(posedge clk) begin
 		cyc_state <= C_RUN; cyc <= '0; slow_cs <= 1'b0;
 	end
 	else if (bus_ce) slow_cs <= 1'b0;
+	else if (dma_setup) cyc <= '0;        // DMA addresses are not valid yet
 	else begin
 		case (cyc_state)
 			C_RUN: begin
 				if (cyc != 4'd15) cyc <= cyc + 4'd1;
 				if (slow_dev) begin
-					if (cyc == 4'd1) cyc_state <= C_SYNC;
+					if (cyc >= 4'd1) cyc_state <= C_SYNC;
 				end
-				else if (fast ? (cyc == 4'd7) : (cyc >= 4'd3 && ph == 5'd30)) begin
+				else if (fast ? (cyc >= fast_len) : (cyc >= 4'd3 && ph == 5'd30)) begin
 					bus_ce <= 1'b1; cyc <= '0;
 				end
 			end

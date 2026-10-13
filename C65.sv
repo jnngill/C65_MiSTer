@@ -54,6 +54,7 @@ localparam CONF_STR = {
 	"O[7:6],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"O[9:8],Stereo Mix,None,25%,50%,100%;",
 	"O[11:10],Keyboard Layout,US,UK,DE,Positional;",
+	"O[13:12],CPU Speed,3.5 MHz,8 MHz,16 MHz;",
 	"O[3],DMA Revision,F018B,F018A;",
 	"-;",
 	"R[0],Reset;",
@@ -217,6 +218,7 @@ c65_core core
 	.reset(reset),
 	.ntsc(ntsc),
 	.dma_f018b(~status[3]),
+	.turbo(status[13:12]),
 
 	.ld_addr(ioctl_addr[16:0]),
 	.ld_data(ioctl_dout),

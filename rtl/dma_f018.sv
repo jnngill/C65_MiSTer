@@ -17,6 +17,7 @@ module dma_f018 (
 	output logic  [7:0] reg_dout,
 
 	output logic        busy,
+	output logic        setup,       // decoding the list this clk: no bus cycle may start
 	output logic [19:0] addr,
 	output logic        io,          // addr[11:0] is an I/O ($Dxxx) address
 	output logic        we,
@@ -48,7 +49,8 @@ function automatic [19:0] step(input logic [19:0] a, input logic is_io, input lo
 	step = is_io ? {a[19:12], n[11:0]} : n;
 endfunction
 
-assign busy = (state != IDLE);
+assign busy  = (state != IDLE);
+assign setup = (state == SETUP);
 
 always_comb begin
 	addr = {list_bank[3:0], list_addr};

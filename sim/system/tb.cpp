@@ -9,6 +9,7 @@
 //   -stop <hexpc>    stop when an instruction at this PC is executed
 //   -keydelay <n>    extra frames between key events (default 0)
 //   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
+//   -turbo <n>       CPU speed 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
 //   -ntsc            60 Hz timing
 //   -f018a           old DMA list format
 #include "Vc65_core.h"
@@ -205,7 +206,7 @@ int main(int argc, char **argv) {
 	setvbuf(stdout, nullptr, _IONBF, 0);
 	std::string outdir = argv[2];
 	long frames = atol(argv[3]);
-	int shot = 0, ntrace = 0, stop_pc = -1, layout = 3;
+	int shot = 0, ntrace = 0, stop_pc = -1, layout = 3, turbo = 0;
 	bool ntsc = false, f018b = true;
 	for (int i = 4; i < argc; i++) {
 		std::string a = argv[i];
@@ -232,6 +233,7 @@ int main(int argc, char **argv) {
 		else if (a == "-layout" && i + 1 < argc) layout = atoi(argv[++i]);
 		else if (a == "-keydelay" && i + 1 < argc) key_delay = atol(argv[++i]);
 		else if (a == "-ntsc") ntsc = true;
+		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
 		else if (a == "-f018a") f018b = false;
 	}
 
@@ -243,7 +245,7 @@ int main(int argc, char **argv) {
 	fprintf(stderr, "ROM: %zu bytes\n", got);
 
 	top = new Vc65_core;
-	top->ntsc = ntsc; top->dma_f018b = f018b;
+	top->ntsc = ntsc; top->dma_f018b = f018b; top->turbo = turbo;
 	top->reset = 1; top->ld_wr = 0; top->ps2_key = 0;
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
