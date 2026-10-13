@@ -1,0 +1,403 @@
+// Commodore 65 system core (platform independent; wrapped by C65.sv on MiSTer
+// and by sim/system/tb.cpp under Verilator).
+//
+// clk is 32x the 1 MHz phase clock (~31.5 MHz PAL, ~32.7 MHz NTSC).
+
+module c65_core (
+	input  logic        clk,
+	input  logic        reset,
+	input  logic        ntsc,
+	input  logic        dma_f018b,
+
+	// ROM image loader (128K, used while the machine is held in reset)
+	input  logic [16:0] ld_addr,
+	input  logic  [7:0] ld_data,
+	input  logic        ld_wr,
+
+	input  logic [10:0] ps2_key,
+	input  logic  [4:0] joy1, joy2,       // active high: fire, right, left, down, up
+
+	// video
+	output logic        ce_pix,
+	output logic  [3:0] r, g, b,
+	output logic        hsync, vsync, hblank, vblank,
+
+	// audio (signed)
+	output logic [17:0] audio_l, audio_r,
+
+	// floppy image (512 byte block interface, MiSTer hps_io style)
+	input  logic        img_mounted,
+	input  logic        img_readonly,
+	input  logic [31:0] img_size,
+	output logic [31:0] sd_lba,
+	output logic        sd_rd,
+	output logic        sd_wr,
+	input  logic        sd_ack,
+	input  logic  [8:0] sd_buff_addr,
+	input  logic  [7:0] sd_buff_dout,
+	output logic  [7:0] sd_buff_din,
+	input  logic        sd_buff_wr,
+	output logic        drive_led,
+
+	// debug
+	output logic [15:0] dbg_pc,
+	output logic        dbg_sync,
+	output logic  [7:0] dbg_a, dbg_x, dbg_y, dbg_z, dbg_b, dbg_p,
+	output logic [15:0] dbg_sp
+);
+
+// ------------------------------------------------------------------ clocks
+logic [4:0] ph;
+always_ff @(posedge clk) ph <= reset ? 5'd0 : ph + 5'd1;
+
+assign ce_pix = ph[0];
+wire   phi2_p = (ph == 5'd15);
+wire   phi2_n = (ph == 5'd31);
+
+// ------------------------------------------------------------------ CPU
+logic [15:0] cpu_addr;
+logic [19:0] cpu_paddr;
+logic        cpu_mapped, cpu_we, cpu_ce;
+logic  [7:0] cpu_dout, bus_din;
+logic        irq_n, nmi_n;
+
+cpu4510 cpu (
+	.clk(clk), .reset(reset), .ce(cpu_ce),
+	.irq_n(irq_n), .nmi_n(nmi_n),
+	.addr(cpu_addr), .paddr(cpu_paddr), .mapped(cpu_mapped),
+	.dout(cpu_dout), .we(cpu_we), .din(bus_din),
+	.sync(dbg_sync),
+	.dbg_pc(dbg_pc), .dbg_a(dbg_a), .dbg_x(dbg_x), .dbg_y(dbg_y), .dbg_z(dbg_z),
+	.dbg_b(dbg_b), .dbg_p(dbg_p), .dbg_sp(dbg_sp)
+);
+
+// ------------------------------------------------------------------ DMA
+logic        dma_busy, dma_io, dma_we, dma_ce;
+logic [19:0] dma_addr;
+logic  [7:0] dma_dout, dma_reg_dout;
+logic        dma_reg_we;
+logic [11:0] io_addr;
+logic  [7:0] bus_dout;
+logic        bus_we;
+
+dma_f018 dma (
+	.clk(clk), .reset(reset), .ce(dma_ce), .f018b(dma_f018b),
+	.reg_addr(io_addr[1:0]), .reg_we(dma_reg_we), .reg_din(bus_dout), .reg_dout(dma_reg_dout),
+	.busy(dma_busy), .addr(dma_addr), .io(dma_io), .we(dma_we), .dout(dma_dout), .din(bus_din)
+);
+
+// ------------------------------------------------------------------ address decode
+logic  [7:0] port_ddr, port_dat;
+logic        capslock_n;
+wire   [7:0] port_in  = {1'b1, capslock_n, 6'b111111};
+wire   [7:0] port_val = (port_dat & port_ddr) | (port_in & ~port_ddr);
+wire         loram = port_val[0], hiram = port_val[1], charen = port_val[2];
+
+logic  [7:0] ctrl_a, ctrl_b;       // VIC-III $D030 / $D031
+logic        vic3_mode;
+
+assign bus_we   = dma_busy ? dma_we   : cpu_we;
+assign bus_dout = dma_busy ? dma_dout : cpu_dout;
+
+logic        sel_ram, sel_rom, sel_io, sel_port;
+logic [16:0] mem_addr;
+
+always_comb begin
+	logic [19:0] pa;
+	sel_ram = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
+	mem_addr = '0;
+	io_addr  = dma_busy ? dma_addr[11:0] : cpu_addr[11:0];
+	pa = dma_busy ? dma_addr : cpu_paddr;
+
+	if (dma_busy ? !dma_io : cpu_mapped) begin
+		// physical 1MB address space
+		mem_addr = pa[16:0];
+		if (pa[19:17] == 3'd0)      sel_ram = 1'b1;
+		else if (pa[19:17] == 3'd1) sel_rom = 1'b1;
+	end
+	else if (dma_busy) sel_io = 1'b1;
+	else begin
+		// unmapped CPU access: C64 style banking plus the VIC-III ROM enables
+		mem_addr = {1'b0, cpu_addr};
+		sel_ram  = 1'b1;
+		case (cpu_addr[15:12])
+			4'h0: if (cpu_addr[11:1] == 11'd0) begin sel_ram = 1'b0; sel_port = 1'b1; end
+			4'h8, 4'h9: if (ctrl_a[3]) begin sel_ram = 1'b0; sel_rom = 1'b1; mem_addr = {1'b1, cpu_addr}; end           // $38000
+			4'hA, 4'hB:
+				if (ctrl_a[4])           begin sel_ram = 1'b0; sel_rom = 1'b1; mem_addr = {1'b1, cpu_addr}; end         // $3A000
+				else if (loram && hiram) begin sel_ram = 1'b0; sel_rom = 1'b1; mem_addr = {1'b0, cpu_addr}; end         // $2A000
+			4'hC: if (ctrl_a[5])         begin sel_ram = 1'b0; sel_rom = 1'b1; mem_addr = {1'b0, cpu_addr}; end         // $2C000
+			4'hD:
+				if (loram || hiram) begin
+					sel_ram = 1'b0;
+					if (charen) sel_io = 1'b1;
+					else begin sel_rom = 1'b1; mem_addr = {1'b0, cpu_addr}; end                                        // $2D000
+				end
+			4'hE, 4'hF:
+				if (ctrl_a[7])  begin sel_ram = 1'b0; sel_rom = 1'b1; mem_addr = {1'b1, cpu_addr}; end                  // $3E000
+				else if (hiram) begin sel_ram = 1'b0; sel_rom = 1'b1; mem_addr = {1'b0, cpu_addr}; end                  // $2E000
+			default: ;
+		endcase
+		// writes always land in the RAM underneath a ROM
+		if (cpu_we && sel_rom) begin sel_rom = 1'b0; sel_ram = 1'b1; mem_addr = {1'b0, cpu_addr}; end
+	end
+end
+
+// I/O area decode
+logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2;
+always_comb begin
+	io_vic = 0; io_fdc = 0; io_pal = 0; io_sid = 0; io_uart = 0; io_dma = 0; io_cram = 0; io_cia1 = 0; io_cia2 = 0;
+	if (sel_io) begin
+		case (io_addr[11:8])
+			4'h0: begin
+				if (!vic3_mode || io_addr[7] == 1'b0) io_vic = 1'b1;
+				else if (io_addr[7:5] == 3'b100) io_fdc = 1'b1;
+			end
+			4'h1, 4'h2, 4'h3: if (vic3_mode) io_pal = 1'b1; else io_vic = 1'b1;
+			4'h4, 4'h5: io_sid = 1'b1;
+			4'h6: io_uart = 1'b1;
+			4'h7: io_dma = 1'b1;
+			4'h8, 4'h9, 4'hA, 4'hB: io_cram = 1'b1;
+			4'hC: if (ctrl_a[0]) io_cram = 1'b1; else io_cia1 = 1'b1;
+			4'hD: if (ctrl_a[0]) io_cram = 1'b1; else io_cia2 = 1'b1;
+			default: if (ctrl_a[0]) io_cram = 1'b1;
+		endcase
+	end
+end
+
+wire        ram_sel  = sel_ram || io_cram;
+wire [16:0] ram_addr = io_cram ? {6'b111111, io_addr[10:0]} : mem_addr;   // colour RAM = $1F800
+wire        slow_dev = io_sid || io_cia1 || io_cia2;
+
+// ------------------------------------------------------------------ bus cycle
+// One access per cycle.  FAST: 9 clk (3.5 MHz), slow: one full 1 MHz phase.
+// CIA / SID accesses are stretched to cover exactly one phi2 period.
+typedef enum logic [1:0] { C_RUN, C_SYNC, C_SLOW } cyc_t;
+cyc_t       cyc_state;
+logic [3:0] cyc;
+logic       bus_ce;
+logic       slow_cs;
+wire        fast = ctrl_b[6];
+
+always_ff @(posedge clk) begin
+	bus_ce <= 1'b0;
+	if (reset) begin
+		cyc_state <= C_RUN; cyc <= '0; slow_cs <= 1'b0;
+	end
+	else if (bus_ce) slow_cs <= 1'b0;
+	else begin
+		case (cyc_state)
+			C_RUN: begin
+				if (cyc != 4'd15) cyc <= cyc + 4'd1;
+				if (slow_dev) begin
+					if (cyc == 4'd1) cyc_state <= C_SYNC;
+				end
+				else if (fast ? (cyc == 4'd7) : (cyc >= 4'd3 && ph == 5'd30)) begin
+					bus_ce <= 1'b1; cyc <= '0;
+				end
+			end
+			C_SYNC: if (ph == 5'd31) begin cyc_state <= C_SLOW; slow_cs <= 1'b1; end
+			C_SLOW: if (ph == 5'd31) begin
+				// the device sees phi2_n on this edge; its read data is valid next clk
+				bus_ce <= 1'b1; cyc <= '0; cyc_state <= C_RUN;
+			end
+			default: cyc_state <= C_RUN;
+		endcase
+	end
+end
+
+assign cpu_ce = bus_ce && !dma_busy;
+assign dma_ce = bus_ce && dma_busy;
+
+wire io_wr = bus_ce && bus_we;
+wire io_rd = bus_ce && !bus_we;
+
+// ------------------------------------------------------------------ memory
+logic  [7:0] ram_q, rom_q, vram_q, vrom_q;
+logic [16:0] vaddr;
+
+dpram #(17, 8) ram (
+	.clk(clk),
+	.a_addr(ram_addr), .a_din(bus_dout), .a_we(bus_ce && bus_we && ram_sel), .a_q(ram_q),
+	.b_addr(vaddr), .b_din(8'd0), .b_we(1'b0), .b_q(vram_q)
+);
+
+dpram #(17, 8) rom (
+	.clk(clk),
+	.a_addr(ld_wr ? ld_addr : mem_addr), .a_din(ld_data), .a_we(ld_wr), .a_q(rom_q),
+	.b_addr(vaddr), .b_din(8'd0), .b_we(1'b0), .b_q(vrom_q)
+);
+
+// ------------------------------------------------------------------ CPU port
+always_ff @(posedge clk) begin
+	if (reset) begin port_ddr <= '0; port_dat <= '0; end
+	else if (io_wr && sel_port) begin
+		if (cpu_addr[0]) port_dat <= bus_dout; else port_ddr <= bus_dout;
+	end
+end
+
+// ------------------------------------------------------------------ VIC-III
+logic [7:0] vic_dout, pal_dout;
+logic       vic_irq_n;
+logic [1:0] vic_bank;
+logic       key_a5;
+
+// VIC-II mode mirrors $D000-$D03F through $D3FF and hides registers $30+
+wire [6:0] vic_reg = vic3_mode ? io_addr[6:0] : {1'b0, io_addr[5:0]};
+
+// $D02F KEY register: $A5 then $96 selects VIC-III I/O mode
+always_ff @(posedge clk) begin
+	if (reset) begin vic3_mode <= 1'b0; key_a5 <= 1'b0; end
+	else if (io_wr && io_vic && vic_reg == 7'h2F) begin
+		key_a5 <= (bus_dout == 8'hA5);
+		if (bus_dout == 8'h96 && key_a5) vic3_mode <= 1'b1;
+		else if (bus_dout != 8'hA5)      vic3_mode <= 1'b0;
+	end
+end
+
+vic3 vic (
+	.clk(clk), .reset(reset), .ce_pix(ce_pix), .ntsc(ntsc),
+	.vic3_mode(vic3_mode),
+	.reg_addr(vic_reg), .reg_we(io_wr && io_vic), .reg_re(io_rd && io_vic),
+	.reg_din(bus_dout), .reg_dout(vic_dout),
+	.pal_addr(io_addr[9:0]), .pal_we(io_wr && io_pal), .pal_dout(pal_dout),
+	.ctrl_a(ctrl_a), .ctrl_b(ctrl_b), .irq_n(vic_irq_n),
+	.vic_bank(vic_bank), .vaddr(vaddr), .vram_q(vram_q), .vrom_q(vrom_q),
+	.r(r), .g(g), .b(b), .hsync(hsync), .vsync(vsync), .hblank(hblank), .vblank(vblank),
+	.raster()
+);
+
+// ------------------------------------------------------------------ CIAs
+logic [7:0] cia1_dout, cia2_dout;
+logic [7:0] cia1_pa_out, cia1_pb_out, cia2_pa_out, cia2_pb_out;
+logic [7:0] kb_rows, kb_cols;
+logic       cia1_irq_n, cia2_irq_n, restore_n;
+logic       tod;
+
+// 50/60 Hz time-of-day tick
+logic [19:0] tod_cnt;
+wire  [19:0] tod_half = ntsc ? 20'd272727 : 20'd315279;   // clk / (2 * 60) or clk / (2 * 50)
+always_ff @(posedge clk) begin
+	if (reset) begin tod_cnt <= '0; tod <= 1'b0; end
+	else if (tod_cnt == tod_half - 20'd1) begin tod_cnt <= '0; tod <= ~tod; end
+	else tod_cnt <= tod_cnt + 20'd1;
+end
+
+wire [7:0] cia1_pa_in = cia1_pa_out & kb_cols & {3'b111, ~joy2};
+wire [7:0] cia1_pb_in = cia1_pb_out & kb_rows & {3'b111, ~joy1};
+
+mos6526_8520 cia1 (
+	.mode(2'd0), .clk(clk), .phi2_p(phi2_p), .phi2_n(phi2_n), .res_n(~reset),
+	.cs_n(~(slow_cs && io_cia1)), .rw(~bus_we), .rs(io_addr[3:0]),
+	.db_in(bus_dout), .db_out(cia1_dout),
+	.pa_in(cia1_pa_in), .pa_out(cia1_pa_out), .pa_oe(),
+	.pb_in(cia1_pb_in), .pb_out(cia1_pb_out), .pb_oe(),
+	.flag_n(1'b1), .pc_n(), .tod(tod), .sp_in(1'b1), .sp_out(), .cnt_in(1'b1), .cnt_out(),
+	.irq_n(cia1_irq_n)
+);
+
+// CIA2 port A: [1:0] video bank, [3] ATN out, [4] CLK out, [5] DATA out,
+// [6] CLK in, [7] DATA in.  No external IEC devices yet: the bus just
+// reflects what the C65 itself drives.
+wire [7:0] cia2_pa_in = {~cia2_pa_out[5], ~cia2_pa_out[4], cia2_pa_out[5:0]};
+
+mos6526_8520 cia2 (
+	.mode(2'd0), .clk(clk), .phi2_p(phi2_p), .phi2_n(phi2_n), .res_n(~reset),
+	.cs_n(~(slow_cs && io_cia2)), .rw(~bus_we), .rs(io_addr[3:0]),
+	.db_in(bus_dout), .db_out(cia2_dout),
+	.pa_in(cia2_pa_in), .pa_out(cia2_pa_out), .pa_oe(),
+	.pb_in(cia2_pb_out), .pb_out(cia2_pb_out), .pb_oe(),
+	.flag_n(1'b1), .pc_n(), .tod(tod), .sp_in(1'b1), .sp_out(), .cnt_in(1'b1), .cnt_out(),
+	.irq_n(cia2_irq_n)
+);
+
+assign vic_bank = ~cia2_pa_out[1:0];
+
+// ------------------------------------------------------------------ UART / port E
+// The UART itself is not implemented; $D607/$D608 is the port that selects
+// the extra keyboard column.
+logic [7:0] uart_regs [16];
+logic [7:0] uart_dout;
+wire  [7:0] porte = uart_regs[7] | ~uart_regs[8];
+
+always_ff @(posedge clk) begin
+	if (reset) for (int i = 0; i < 16; i++) uart_regs[i] <= '0;
+	else if (io_wr && io_uart) uart_regs[io_addr[3:0]] <= bus_dout;
+end
+
+always_comb begin
+	case (io_addr[3:0])
+		4'd1:    uart_dout = 8'h00;
+		4'd7:    uart_dout = porte;
+		default: uart_dout = uart_regs[io_addr[3:0]];
+	endcase
+end
+
+c65_keyboard keyboard (
+	.clk(clk), .reset(reset), .ps2_key(ps2_key),
+	.col_sel(cia1_pa_out), .col8_sel(porte[1]), .row_drive(cia1_pb_out),
+	.row_in(kb_rows), .col_in(kb_cols),
+	.restore_n(restore_n), .capslock_n(capslock_n)
+);
+
+// ------------------------------------------------------------------ F011 floppy controller
+logic [7:0] fdc_dout;
+logic       fdc_irq_n;
+
+f011 fdc (
+	.clk(clk), .reset(reset),
+	.reg_addr(io_addr[4:0]), .reg_we(io_wr && io_fdc), .reg_re(io_rd && io_fdc),
+	.reg_din(bus_dout), .reg_dout(fdc_dout), .irq_n(fdc_irq_n),
+	.img_mounted(img_mounted), .img_readonly(img_readonly), .img_size(img_size),
+	.sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
+	.sd_buff_addr(sd_buff_addr), .sd_buff_dout(sd_buff_dout), .sd_buff_din(sd_buff_din),
+	.sd_buff_wr(sd_buff_wr), .led(drive_led)
+);
+
+// ------------------------------------------------------------------ SIDs
+logic [7:0] sid_dout;
+
+`ifdef C65_NO_SID
+assign sid_dout = 8'h00;
+assign audio_l  = '0;
+assign audio_r  = '0;
+`else
+sid_top #(.MULTI_FILTERS(1), .DUAL(1)) sid (
+	.reset(reset), .clk(clk), .ce_1m(phi2_n),
+	.cs({slow_cs && io_sid && io_addr[5], slow_cs && io_sid && !io_addr[5]}),
+	.we(bus_we), .addr(io_addr[4:0]), .data_in(bus_dout), .data_out(sid_dout),
+	.fc_offset_l(13'd0), .pot_x_l(8'hFF), .pot_y_l(8'hFF), .ext_in_l(18'd0), .audio_l(audio_r),
+	.fc_offset_r(13'd0), .pot_x_r(8'hFF), .pot_y_r(8'hFF), .ext_in_r(18'd0), .audio_r(audio_l),
+	.filter_en(2'b11), .mode(2'b11), .cfg(4'd0),
+	.ld_clk(clk), .ld_addr(12'd0), .ld_data(16'd0), .ld_wr(1'b0)
+);
+`endif
+
+// ------------------------------------------------------------------ read mux / interrupts
+logic [7:0] io_dout;
+always_comb begin
+	io_dout = 8'hFF;
+	if (io_vic)       io_dout = vic_dout;
+	else if (io_pal)  io_dout = pal_dout;
+	else if (io_fdc)  io_dout = fdc_dout;
+	else if (io_sid)  io_dout = sid_dout;
+	else if (io_uart) io_dout = uart_dout;
+	else if (io_dma)  io_dout = dma_reg_dout;
+	else if (io_cia1) io_dout = cia1_dout;
+	else if (io_cia2) io_dout = cia2_dout;
+end
+
+always_comb begin
+	if (ram_sel)       bus_din = ram_q;
+	else if (sel_rom)  bus_din = rom_q;
+	else if (sel_port) bus_din = cpu_addr[0] ? port_val : port_ddr;
+	else if (sel_io)   bus_din = io_dout;
+	else               bus_din = 8'hFF;
+end
+
+assign dma_reg_we = io_wr && io_dma;
+
+assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n;
+assign nmi_n = cia2_irq_n & restore_n;
+
+endmodule
