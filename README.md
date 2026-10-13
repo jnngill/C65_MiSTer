@@ -70,7 +70,9 @@ C65 ROM never does, so it sees a plain C65.
 | Character set RAM at `$FF7E000` | done |
 | Multiplier / divider at `$D768-$D77F` | done |
 | VIC-IV: 16-bit sprite pointers (`$D06C-$D06E`), bitplane bank (`$D07C`) | done |
-| Other VIC-IV registers (full-colour mode, screen/char pointers, borders) | not implemented |
+| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done for 40 columns; 80-column FCM needs more colour RAM than the core has. Per-character flips untested; alpha, nibble-colour characters and in-row repositioning missing |
+| VIC-IV sprites: 16-colour (`$D06B`), 64 pixels wide (`$D057`), programmable height (`$D055/56`) (S-BASIC `FCSPRITE`) | done; only `FCSPRITE` / `FCSPRFRAME` / `MOVSPR` exercised |
+| Other VIC-IV registers (character pointer, borders, scaling, sprite alpha / tiling) | not implemented |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Hypervisor traps (`$D640`), SD card, attic RAM, 40 MHz | not implemented; traps are ignored |
 | Enhanced DMA jobs (`$D705`) | not implemented |
@@ -79,8 +81,10 @@ Verified with S-BASIC 65 V250507:
 
 - on hardware: boot, program entry / `RUN`, floating point, `SCREEN` + `BOX`
   graphics, reading and writing a D81 mounted from the OSD, the clock
-  (`TI$` / `DT$` match the MiSTer's time)
-- in simulation only: `LIST`, `SPRITE` / `MOVSPR`, the 8 / 16 MHz CPU speeds
+  (`TI$` / `DT$` match the MiSTer's time), full-colour mode (`FCM ON`,
+  `FCM CLS`, `FCM TEXT`)
+- in simulation only: `LIST`, `SPRITE` / `MOVSPR`, a 16-colour `FCSPRITE`,
+  the 8 / 16 MHz CPU speeds
 
 Sound has been heard on hardware (the BASIC `SOUND` command); music with
 `PLAY`, filters and stereo placement have not been judged.
