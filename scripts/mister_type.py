@@ -6,7 +6,7 @@ Runs ON the MiSTer (nothing is installed there):
     ssh root@MiSTer.local python3 - "PRINT 1+1" < scripts/mister_type.py
 
 Characters are sent as a US keyboard would type them, so pick the matching
-"Keyboard Layout" in the core's OSD.  "~" sends RETURN, "{dollar}" sends "$".
+"Keyboard Layout" in the core's OSD.  "~" sends RETURN, "`" sends Esc (RUN/STOP), "{dollar}" sends "$".
 """
 import fcntl, os, struct, sys, time
 
@@ -39,7 +39,9 @@ def main():
         time.sleep(0.04)
 
     for ch in text:
-        if ch == "~":
+        if ch == "`":                      # RUN/STOP (Esc on the host keyboard)
+            ev(1, 1); ev(1, 0)
+        elif ch == "~":
             ev(KEY_ENTER, 1); ev(KEY_ENTER, 0)
         elif ch.lower() in PLAIN:
             ev(PLAIN[ch.lower()], 1); ev(PLAIN[ch.lower()], 0)
