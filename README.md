@@ -23,7 +23,7 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 | F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
 | F011 floppy controller, internal drive, `.D81` read/write | done (sector level; no track format command) |
 | CIA 6526 x2, keyboard incl. C65 extra keys, joysticks | done |
-| Dual SID | wired up (MiSTer C64/C128 SID), untested by ear |
+| Dual SID | working (MiSTer C64/C128 SID); only a basic `SOUND` test so far |
 | RAM expansion: 4 MB at `$400000-$7FFFFF`, reached through DMA banks `$40-$7F` | done; needs a MiSTer SDRAM module |
 | UART, external 1565 drive, IEC devices | not implemented |
 | MEGA65 subset for S-BASIC 65 | see below |
@@ -61,8 +61,11 @@ Verified with S-BASIC 65 V250507:
   graphics, reading and writing a D81 mounted from the OSD
 - in simulation only: `LIST`, `SPRITE` / `MOVSPR`, the 8 / 16 MHz CPU speeds
 
-Not yet checked on hardware at all: sound, joysticks, the PAL/NTSC switch
-and the UK / DE keyboard layouts.
+Sound has been heard on hardware (the BASIC `SOUND` command); music with
+`PLAY`, filters and stereo placement have not been judged.
+
+Not yet checked on hardware at all: joysticks, the PAL/NTSC switch and the
+UK / DE keyboard layouts.
 
 ## Installing
 
