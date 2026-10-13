@@ -125,7 +125,7 @@ static void key_frame() {   // called once per frame
 // ---- disk image (hps_io style block device) --------------------------
 static int sd_state = 0, sd_cnt = 0;
 static unsigned sd_lba_l = 0;
-static bool sd_is_wr = false;
+static bool sd_is_wr = false, sd_verbose = false;
 static unsigned char sd_wbuf[512];
 static void sd_tick() {
 	top->sd_buff_wr = 0;
@@ -133,6 +133,7 @@ static void sd_tick() {
 	case 0:
 		if (top->sd_rd || top->sd_wr) {
 			sd_is_wr = top->sd_wr; sd_lba_l = top->sd_lba; sd_state = 1; sd_cnt = -200; top->sd_ack = 1;
+			if (sd_verbose) fprintf(stderr, "sd %s lba %u frame %ld\n", sd_is_wr ? "WR" : "RD", sd_lba_l, frame_no);
 		}
 		break;
 	case 1:
@@ -196,6 +197,7 @@ static void dump_screen(FILE *f) {
 
 int main(int argc, char **argv) {
 	if (argc < 4) { fprintf(stderr, "usage: tb <rom> <outdir> <frames> [options]\n"); return 2; }
+	setvbuf(stdout, nullptr, _IONBF, 0);
 	std::string outdir = argv[2];
 	long frames = atol(argv[3]);
 	int shot = 0, ntrace = 0, stop_pc = -1;
@@ -221,6 +223,7 @@ int main(int argc, char **argv) {
 		else if (a == "-shot" && i + 1 < argc) shot = atoi(argv[++i]);
 		else if (a == "-trace" && i + 1 < argc) ntrace = atoi(argv[++i]);
 		else if (a == "-stop" && i + 1 < argc) stop_pc = (int)strtol(argv[++i], nullptr, 16);
+		else if (a == "-sdlog") sd_verbose = true;
 		else if (a == "-ntsc") ntsc = true;
 		else if (a == "-f018a") f018b = false;
 	}

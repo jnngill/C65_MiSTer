@@ -1,0 +1,7 @@
+110 dir\r
+170 10 print"disk test":a=a+1\r
+240 dsave"hello"\r
+330 new\r
+350 dir\r
+420 dload"hello"\r
+500 list\r
