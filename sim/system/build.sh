@@ -9,7 +9,7 @@ R=../../rtl
 B=build; mkdir -p $B
 $OSS/bin/verilator_bin.exe --cc --top-module c65_core -DC65_NO_SID ${VDEFS} \
 	-I$R -I$R/cpu \
-	$R/c65_core.sv $R/cpu/cpu4510.sv $R/vic3.sv $R/dma_f018.sv $R/f011.sv $R/c65_keyboard.sv $R/dpram.sv $R/m65_math.sv $R/mos6526_8520.v \
+	$R/c65_core.sv $R/cpu/cpu4510.sv $R/vic3.sv $R/dma_f018.sv $R/f011.sv $R/c65_keyboard.sv $R/dpram.sv $R/m65_math.sv $R/m65_rtc.sv $R/mos6526_8520.v \
 	--Mdir $B/obj -O3 --x-assign fast --x-initial fast -Wno-fatal \
 	-Wno-WIDTH -Wno-CASEINCOMPLETE -Wno-UNUSED -Wno-PINCONNECTEMPTY -Wno-DECLFILENAME -Wno-TIMESCALEMOD \
 	>$B/verilator.log 2>&1 || { cat $B/verilator.log; exit 1; }

@@ -140,6 +140,7 @@ wire   [7:0] ioctl_dout;
 wire  [10:0] ps2_key;
 wire  [31:0] joystick_0, joystick_1;
 wire  [15:0] sdram_sz;
+wire  [64:0] RTC;
 
 wire  [31:0] sd_lba[1];
 wire         sd_rd, sd_wr, sd_ack;
@@ -184,7 +185,8 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(1), .BLKSZ(2)) hps_io
 	.ps2_key(ps2_key),
 	.joystick_0(joystick_0),
 	.joystick_1(joystick_1),
-	.sdram_sz(sdram_sz)
+	.sdram_sz(sdram_sz),
+	.RTC(RTC)
 );
 
 // ------------------------------------------------------------------ reset / ROM load
@@ -318,6 +320,8 @@ c65_core core
 	.sd_buff_din(sd_buff_din[0]),
 	.sd_buff_wr(sd_buff_wr),
 	.drive_led(drive_led),
+
+	.rtc(RTC),
 
 	.xram_present(xram_present),
 	.xram_req(xram_req),

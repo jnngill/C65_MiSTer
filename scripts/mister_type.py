@@ -6,7 +6,7 @@ Runs ON the MiSTer (nothing is installed there):
     ssh root@MiSTer.local python3 - "PRINT 1+1" < scripts/mister_type.py
 
 Characters are sent as a US keyboard would type them, so pick the matching
-"Keyboard Layout" in the core's OSD.  "~" sends RETURN.
+"Keyboard Layout" in the core's OSD.  "~" sends RETURN, "{dollar}" sends "$".
 """
 import fcntl, os, struct, sys, time
 
@@ -24,7 +24,7 @@ SHIFTED = {"!": 2, "@": 3, "#": 4, "$": 5, "%": 6, "^": 7, "&": 8, "*": 9, "(": 
 
 
 def main():
-    text = " ".join(sys.argv[1:])
+    text = " ".join(sys.argv[1:]).replace("{dollar}", "$")   # "$" is awkward to pass through ssh
     fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
     fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
     for k in range(1, 128):

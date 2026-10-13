@@ -41,6 +41,9 @@ module c65_core (
 	input  logic        sd_buff_wr,
 	output logic        drive_led,
 
+	// wall-clock time from the host (MiSTer hps_io RTC word), for the MEGA65 clock registers
+	input  logic [64:0] rtc,
+
 	// expansion RAM, 4 MB at $400000-$7FFFFF (external memory, request / acknowledge)
 	input  logic        xram_present,
 	output logic        xram_req,         // held until xram_ack
@@ -114,14 +117,14 @@ logic        vic3_mode;
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
-logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram;
+logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc;
 logic [21:0] xaddr;
 logic [16:0] mem_addr;
 
 always_comb begin
 	logic [22:0] pa;
 	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
-	sel_xram = 1'b0;
+	sel_xram = 1'b0; sel_rtc = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
 	pa = dma_busy ? dma_addr : {3'd0, cpu_paddr};
@@ -137,6 +140,7 @@ always_comb begin
 		else if (cpu_faddr[27:12] == 16'hFF7E)      sel_wom = 1'b1;             // $FF7E000 character set
 		else if (cpu_faddr[27:11] == 17'h1FF00)     begin sel_ram = 1'b1; mem_addr = {6'b111111, cpu_faddr[10:0]}; end   // $FF80000 colour RAM
 		else if (cpu_faddr[27:12] == 16'hFFD3)      sel_io = 1'b1;              // $FFD3000 I/O
+		else if (cpu_faddr[27:4] == 24'hFFD711)     sel_rtc = 1'b1;             // $FFD7110 real-time clock
 	end
 	else if (dma_busy ? !dma_io : cpu_mapped) begin
 		// physical 1MB address space
@@ -400,12 +404,13 @@ assign vic_bank = ~cia2_pa_out[1:0];
 // The UART itself is not implemented; $D607/$D608 is the port that selects
 // the extra keyboard column.
 logic [7:0] uart_regs [16];
+wire        m65_reg = gs_mode && (io_addr[7:4] != 4'd0);    // $D610-$D63F in MEGA65 mode
 logic [7:0] uart_dout;
 wire  [7:0] porte = uart_regs[7] | ~uart_regs[8];
 
 always_ff @(posedge clk) begin
 	if (reset) for (int i = 0; i < 16; i++) uart_regs[i] <= '0;
-	else if (io_wr && io_uart) uart_regs[io_addr[3:0]] <= bus_dout;
+	else if (io_wr && io_uart && !m65_reg) uart_regs[io_addr[3:0]] <= bus_dout;
 end
 
 always_comb begin
@@ -414,6 +419,8 @@ always_comb begin
 		4'd7:    uart_dout = porte;
 		default: uart_dout = uart_regs[io_addr[3:0]];
 	endcase
+	// $D629 is the MEGA65 hardware model: answer as a MEGA65 R3
+	if (m65_reg) uart_dout = (io_addr[7:0] == 8'h29) ? 8'h03 : 8'h00;
 end
 
 c65_keyboard keyboard (
@@ -457,7 +464,11 @@ sid_top #(.MULTI_FILTERS(1), .DUAL(1)) sid (
 `endif
 
 // ------------------------------------------------------------------ MEGA65 extras
-logic [7:0] math_dout;
+logic [7:0] math_dout, rtc_dout;
+
+m65_rtc rtc_clock (
+	.clk(clk), .ntsc(ntsc), .rtc(rtc), .reg_addr(cpu_faddr[3:0]), .reg_dout(rtc_dout)
+);
 
 m65_math math (
 	.clk(clk), .reset(reset),
@@ -474,7 +485,7 @@ always @(posedge clk) begin
 		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
 	if (bus_ce && io_uart && io_addr[7:0] > 8'h0F)
 		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
-	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_wom && !sel_rom && !sel_io && !sel_xram)
+	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
 		$display("FAR  %s %07x = %02x  PC=%04x", bus_we ? "wr" : "rd", cpu_faddr, bus_dout, dbg_pc);
 end
 `endif
@@ -501,6 +512,7 @@ always_comb begin
 	else if (sel_ram2) bus_din = ram2_q;
 	else if (sel_wom)  bus_din = wom_q;
 	else if (sel_xram) bus_din = xram_dout;
+	else if (sel_rtc)  bus_din = rtc_dout;
 	else if (sel_rom)  bus_din = rom_q;
 	else if (sel_port) bus_din = cpu_addr[0] ? port_val : port_ddr;
 	else if (sel_io)   bus_din = io_dout;

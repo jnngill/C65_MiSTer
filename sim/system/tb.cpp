@@ -268,6 +268,8 @@ int main(int argc, char **argv) {
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
 	top->sd_ack = 0; top->sd_buff_wr = 0;
 	top->xram_present = use_xram; top->xram_ack = 0; top->xram_dout = 0;
+	// host clock: 2026-10-13 12:34:56 (BCD sec, min, hour, day, month, year, weekday)
+	top->rtc[0] = 0x13123456; top->rtc[1] = 0x00022610; top->rtc[2] = 0;
 	xram.assign(1 << 22, 0);
 
 	auto tick = [&]() { top->clk = 0; top->eval(); top->clk = 1; top->eval(); };
@@ -278,6 +280,7 @@ int main(int argc, char **argv) {
 	top->ld_wr = 0;
 	for (int i = 0; i < 64; i++) tick();
 	top->reset = 0;
+	top->rtc[2] = 1;      // bit 64 toggles: "time delivered"
 
 	std::deque<std::string> trace;
 	std::vector<unsigned> pchist(65536, 0);
