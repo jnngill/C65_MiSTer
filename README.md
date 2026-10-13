@@ -104,14 +104,33 @@ set *CPU Speed* to 16 MHz for it).
 *Reset* in the OSD restarts the machine; it is also the only way back from
 `GO64`.
 
-OSD options: video standard (PAL/NTSC), aspect ratio, scandoubler effects,
-stereo mix, **keyboard layout** (US / UK / DE / positional), **CPU speed**
-(3.5 MHz as on a C65, or 8 / 16 MHz - MEGA65 ROMs expect a much faster CPU)
-**mouse** (a 1351 on control port 2 or 1; S-BASIC 65's `MOUSE ON` uses
-port 2, on the stock ROM give the port: `MOUSE ON,2`),
-**expansion RAM** (4 MB, kept in the MiSTer SDRAM module; without a module
-the machine reports no expansion) and DMA revision (F018B for ROMs from mid
-1991 on, F018A for older ones).
+### OSD options
+
+| Option | Choices | Notes |
+|--------|---------|-------|
+| Mount Drive 8 | a `.D81` file | the internal 3.5" drive |
+| Load System ROM | a `.rom` / `.bin` file | replaces the ROM loaded from `boot.rom` and resets |
+| Video Standard | PAL, NTSC | |
+| Aspect Ratio, Scandoubler Fx, Stereo Mix | | standard MiSTer settings |
+| Keyboard Layout | US, UK, DE, Positional | see below |
+| CPU Speed | 3.5 MHz, 8 MHz, 16 MHz | 3.5 MHz is a real C65; MEGA65-style ROMs expect a much faster CPU, use 16 MHz |
+| Expansion RAM | 4MB, Off | the C65 RAM expansion, kept in the MiSTer SDRAM module; without a module the machine reports no expansion |
+| Mouse | Port 2, Port 1, Off | a Commodore 1351 on that control port. S-BASIC 65's `MOUSE ON` uses port 2; on the stock ROM name the port, e.g. `MOUSE ON,2` |
+| DMA Revision | F018B, F018A | F018B for ROMs from mid 1991 on, F018A for older ones |
+| Reset | | restarts the machine |
+
+### Clock
+
+MEGA65-style ROMs get the date and time from the MiSTer (`PRINT TI$` and
+`PRINT DT$` in S-BASIC 65). The clock cannot be set from BASIC; it follows
+the MiSTer's own clock, including its time zone setting. A stock C65 ROM has
+no clock.
+
+### Reporting problems
+
+Please open an issue at
+<https://github.com/jnngill/C65_MiSTer/issues> and include the ROM version,
+the OSD settings, what you typed and, if you can, a screenshot.
 
 ### Keyboard
 
