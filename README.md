@@ -19,13 +19,13 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 |------|-------|
 | CSG 4510 CPU (65CE02 + MAP) | done, fuzz-tested against a reference model (`sim/cpu_fuzz`) |
 | Memory map (128K RAM, 128K ROM, MAP, C64 banking, `$D030` ROM enables) | done |
-| VIC-III: text 40/80 col + attributes, VIC-II bitmap modes, bitplanes, palette, sprites, raster IRQ | done (line based, not cycle exact; V400/H1280/interlace missing) |
+| VIC-III: text 40/80 col + attributes, VIC-II bitmap modes, bitplanes (up to 8, 320 or 640 wide, 200 or 400 lines), palette, sprites, raster IRQ | done (line based, not cycle exact). 400-line modes are sent as two alternating fields for the scaler to weave; no true interlaced sync on analogue output. H1280 missing |
 | F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
 | F011 floppy controller, internal drive, `.D81` read/write | done (sector level; no track format command) |
 | CIA 6526 x2, keyboard incl. C65 extra keys, joysticks | done |
 | 1351 mouse on either control port | done in simulation (movement); not yet confirmed on hardware |
 | Dual SID | working (MiSTer C64/C128 SID); only a basic `SOUND` test so far |
-| RAM expansion: 4 MB at `$400000-$7FFFFF`, reached through DMA banks `$40-$7F` | done; needs a MiSTer SDRAM module |
+| RAM expansion: banks 6-15 (`$60000-$FFFFF`) and 4 MB at `$400000-$7FFFFF` (DMA banks `$40-$7F`) | done; needs a MiSTer SDRAM module |
 | UART, external 1565 drive, IEC devices | not implemented |
 | MEGA65 subset for S-BASIC 65 | see below |
 
@@ -35,7 +35,11 @@ Verified with ROM **911210**:
   D81 mounted from the OSD, 4 MB expansion RAM (detected at boot, `DMA`
   copy out and back)
 - in simulation only: `LIST`, bitplane graphics (`SCREEN`, `PALETTE`,
-  `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites, NTSC timing, `GO64`
+  `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites, NTSC timing, `GO64`, and the
+  Commodore C65 demo disk: auto-boot, the Deluxe Paint (640x200, 16
+  colours), Workbench (640x400 interlaced) and REGINA (320x200, 256
+  colours) pictures. That disk's `IFF DEMO` slideshow loads its pictures
+  but then crashes; it appears to have been written for an earlier ROM
 
 ### MEGA65 subset
 
