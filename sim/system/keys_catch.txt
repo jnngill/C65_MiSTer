@@ -1,0 +1,17 @@
+110 10 print chr$(147):s=0:m=0:x=40:b=2048\r
+198 20 c=int(rnd(1)*78)+1:r=1\r
+260 30 poke b+r*80+c,42\r
+310 40 get a$:j=joy(2) and 15:d=0\r
+380 50 if a$="z" or j=7 then d=-2\r
+450 60 if a$="x" or j=3 then d=2\r
+518 70 p=b+1840+x:poke p,32:poke p+1,32:poke p+2,32\r
+624 80 x=x+d:if x<0 then x=0\r
+684 90 if x>77 then x=77\r
+736 100 p=b+1840+x:poke p,160:poke p+1,160:poke p+2,160\r
+850 110 poke b+r*80+c,32:r=r+1:if r<23 then 30\r
+946 120 if c>=x and c<=x+2 then s=s+1:sound 1,8000,5:goto 140\r
+1072 130 m=m+1:sound 1,1000,10\r
+1134 140 print chr$(19);"score";s;" missed";m:if m<5 then 20\r
+1256 150 print "game over - run to play again"\r
+1350 dsave"catch"\r
+1386 dir\r
