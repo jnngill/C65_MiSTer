@@ -30,10 +30,11 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 
 Verified with ROM **911210**:
 
-- on hardware: boot, BASIC 10 program entry / `RUN`
-- in simulation only: `LIST`, `DIR` / `DSAVE` / `DLOAD`, bitplane graphics
-  (`SCREEN`, `PALETTE`, `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites, NTSC
-  timing, `GO64`
+- on hardware: boot, BASIC 10 program entry / `RUN`, reading and writing a
+  D81 mounted from the OSD, 4 MB expansion RAM (detected at boot, `DMA`
+  copy out and back)
+- in simulation only: `LIST`, bitplane graphics (`SCREEN`, `PALETTE`,
+  `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites, NTSC timing, `GO64`
 
 ### MEGA65 subset
 
@@ -57,12 +58,11 @@ C65 ROM never does, so it sees a plain C65.
 Verified with S-BASIC 65 V250507:
 
 - on hardware: boot, program entry / `RUN`, floating point, `SCREEN` + `BOX`
-  graphics
-- in simulation only: `LIST`, `DIR` / `SAVE` / `LOAD`, `SPRITE` / `MOVSPR`,
-  the 8 / 16 MHz CPU speeds
+  graphics, reading and writing a D81 mounted from the OSD
+- in simulation only: `LIST`, `SPRITE` / `MOVSPR`, the 8 / 16 MHz CPU speeds
 
-Not yet checked on hardware at all: sound, mounting disks from the OSD,
-joysticks, the PAL/NTSC switch and the UK / DE keyboard layouts.
+Not yet checked on hardware at all: sound, joysticks, the PAL/NTSC switch
+and the UK / DE keyboard layouts.
 
 ## Installing
 
