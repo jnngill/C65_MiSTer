@@ -57,12 +57,13 @@ joysticks, the PAL/NTSC switch and the UK / DE keyboard layouts.
 
 ## Installing
 
-Ready-built files are on the
+A ready-built core is in [`releases/`](releases) (MiSTer convention: the
+newest dated `.rbf` is the one to use) and on the
 [releases page](https://github.com/jnngill/C65_MiSTer/releases).
 
 | File | Copy to (on the MiSTer SD card) |
 |------|---------------------------------|
-| `C65_<date>.rbf` (release, or `output_files/C65.rbf` if you build it) | `/media/fat/_Computer/` |
+| `releases/C65_<date>.rbf` (or `output_files/C65.rbf` if you build it) | `/media/fat/_Computer/` |
 | your C65 system ROM, renamed `boot.rom` | `/media/fat/games/C65/` |
 | `blank.d81` (release, or `disks/blank.d81`) | `/media/fat/games/C65/` |
 
