@@ -97,7 +97,7 @@ cpu4510 cpu (
 
 // ------------------------------------------------------------------ DMA
 logic        dma_busy, dma_io, dma_we, dma_ce, dma_setup;
-logic [22:0] dma_addr;
+logic [27:0] dma_addr;
 logic  [7:0] dma_dout, dma_reg_dout;
 logic        dma_reg_we;
 logic [11:0] io_addr;
@@ -106,7 +106,7 @@ logic        bus_we;
 
 dma_f018 dma (
 	.clk(clk), .reset(reset), .ce(dma_ce), .f018b(dma_f018b),
-	.reg_addr(io_addr[1:0]), .reg_we(dma_reg_we), .reg_din(bus_dout), .reg_dout(dma_reg_dout),
+	.reg_addr(io_addr[2:0]), .reg_we(dma_reg_we), .reg_din(bus_dout), .reg_dout(dma_reg_dout),
 	.busy(dma_busy), .setup(dma_setup), .addr(dma_addr), .io(dma_io), .we(dma_we), .dout(dma_dout), .din(bus_din)
 );
 
@@ -131,34 +131,37 @@ logic [16:0] mem_addr;
 
 always_comb begin
 	logic [22:0] pa;
+	logic [27:0] fa;       // flat 28-bit address: 45GS02 far pointer or DMA
+	logic        flat;
 	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
 	sel_xram = 1'b0; sel_rtc = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
-	pa = dma_busy ? dma_addr : {3'd0, cpu_paddr};
-	xaddr = (!dma_busy && cpu_far) ? cpu_faddr[22:0] : pa;
+	pa    = {3'd0, cpu_paddr};
+	fa    = dma_busy ? dma_addr : cpu_faddr;
+	flat  = dma_busy ? !dma_is_io : cpu_far;
+	xaddr = flat ? fa[22:0] : pa;
 
-	if (!dma_busy && cpu_far) begin
-		// flat 28-bit access through a 45GS02 far pointer
-		mem_addr = cpu_faddr[16:0];
-		if (cpu_faddr[27:17] == 11'd0)              sel_ram = 1'b1;             // $0000000 chip RAM
-		else if (cpu_faddr[27:17] == 11'd1)         sel_rom = !cpu_we;          // $0020000 ROM
-		else if (cpu_faddr[27:17] == 11'd2)         sel_ram2 = 1'b1;            // $0040000 extra chip RAM
-		else if (cpu_faddr[27:22] == 6'd1)          sel_xram = xram_present;    // $0400000 expansion RAM
-		else if (cpu_faddr[27:20] == 8'd0)          sel_xram = xram_present;    // $0060000 banks 6-15
-		else if (cpu_faddr[27:12] == 16'hFF7E)      sel_wom = 1'b1;             // $FF7E000 character set
-		else if (cpu_faddr[27:11] == 17'h1FF00)     begin sel_ram = 1'b1; mem_addr = {6'b111111, cpu_faddr[10:0]}; end   // $FF80000 colour RAM
-		else if (cpu_faddr[27:12] == 16'hFFD3)      sel_io = 1'b1;              // $FFD3000 I/O
-		else if (cpu_faddr[27:4] == 24'hFFD711)     sel_rtc = 1'b1;             // $FFD7110 real-time clock
+	if (flat) begin
+		// flat 28-bit access: a 45GS02 far pointer, or the DMA controller
+		mem_addr = fa[16:0];
+		if (fa[27:17] == 11'd0)          sel_ram = 1'b1;             // $0000000 chip RAM
+		else if (fa[27:17] == 11'd1)     sel_rom = !bus_we;          // $0020000 ROM
+		else if (fa[27:17] == 11'd2)     sel_ram2 = 1'b1;            // $0040000 extra chip RAM
+		else if (fa[27:22] == 6'd1)      sel_xram = xram_present;    // $0400000 expansion RAM
+		else if (fa[27:20] == 8'd0)      sel_xram = xram_present;    // $0060000 banks 6-15
+		else if (fa[27:12] == 16'hFF7E)  sel_wom = 1'b1;             // $FF7E000 character set
+		else if (fa[27:11] == 17'h1FF00) begin sel_ram = 1'b1; mem_addr = {6'b111111, fa[10:0]}; end   // $FF80000 colour RAM
+		else if (fa[27:12] == 16'hFFD3)  sel_io = 1'b1;              // $FFD3000 I/O
+		else if (fa[27:4] == 24'hFFD711) sel_rtc = 1'b1;             // $FFD7110 real-time clock
 	end
-	else if (dma_busy ? !dma_is_io : cpu_mapped) begin
-		// physical 1MB address space
+	else if (!dma_busy && cpu_mapped) begin
+		// 1MB address space reached through MAP
 		mem_addr = pa[16:0];
-		if (pa[22])                 sel_xram = xram_present;      // $400000-$7FFFFF (DMA only)
-		else if (pa[21:17] == 5'd0) sel_ram = 1'b1;
-		else if (pa[21:17] == 5'd1) sel_rom = 1'b1;
-		else if (pa[21:17] == 5'd2) sel_ram2 = 1'b1;
-		else if (pa[21:20] == 2'd0) sel_xram = xram_present;      // banks 6-15
+		if (pa[19:17] == 3'd0)      sel_ram = 1'b1;
+		else if (pa[19:17] == 3'd1) sel_rom = 1'b1;
+		else if (pa[19:17] == 3'd2) sel_ram2 = 1'b1;
+		else                        sel_xram = xram_present;      // banks 6-15
 	end
 	else if (dma_busy) sel_io = 1'b1;
 	else begin
@@ -496,9 +499,10 @@ sid_top #(.MULTI_FILTERS(1), .DUAL(1)) sid (
 
 // ------------------------------------------------------------------ MEGA65 extras
 logic [7:0] math_dout, rtc_dout;
+wire  [3:0] fa_rtc = dma_busy ? dma_addr[3:0] : cpu_faddr[3:0];
 
 m65_rtc rtc_clock (
-	.clk(clk), .ntsc(ntsc), .rtc(rtc), .reg_addr(cpu_faddr[3:0]), .reg_dout(rtc_dout)
+	.clk(clk), .ntsc(ntsc), .rtc(rtc), .reg_addr(fa_rtc), .reg_dout(rtc_dout)
 );
 
 m65_math math (
@@ -550,7 +554,7 @@ always_comb begin
 	else               bus_din = 8'hFF;
 end
 
-assign dma_reg_we = io_wr && io_dma;
+assign dma_reg_we = io_wr && io_dma && (io_addr[7:3] == 5'd0);
 assign dbg_op     = bus_din;
 
 assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n;

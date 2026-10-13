@@ -75,7 +75,7 @@ C65 ROM never does, so it sees a plain C65.
 | Other VIC-IV registers (character pointer, borders, scaling, sprite alpha / tiling) | not implemented |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Hypervisor traps (`$D640`), SD card, attic RAM, 40 MHz | not implemented; traps are ignored |
-| Enhanced DMA jobs (`$D705`) | not implemented |
+| Enhanced DMA jobs (`$D705`): megabyte options, list format option (S-BASIC `EDMA`) | done in simulation: copy and fill. Skip rates and transparency options are ignored |
 
 Verified with S-BASIC 65 V250507:
 
