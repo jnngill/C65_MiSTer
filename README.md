@@ -82,12 +82,12 @@ Verified with S-BASIC 65 V250507:
 - on hardware: boot, program entry / `RUN`, floating point, `SCREEN` + `BOX`
   graphics, reading and writing a D81 mounted from the OSD, the clock
   (`TI$` / `DT$` match the MiSTer's time), full-colour mode (`FCM ON`,
-  `FCM CLS`, `FCM TEXT`), full-colour sprites (`FCSPRITE`, `FCSPRDEF`,
-  `FCSPRFRAME`, `FCSPRCOPY`, `FCSPRFLIP`, `FCSPRCOLOR`: pixel-identical to
-  simulation)
-- in simulation only: `LIST`, `SPRITE` / `MOVSPR`, the 8 / 16 MHz CPU speeds
-- not tried: `FCSPRLOAD` / `FCSPRSAVE` round trip, sprite priority and
-  expansion parameters, vertical flip, `PALETTE COPY`
+  `FCM CLS`, `FCM TEXT`), full-colour sprites (`FCSPRITE` with
+  transparency, priority and x/y expansion, `FCSPRDEF`, `FCSPRFRAME`,
+  `FCSPRCOPY`, `FCSPRFLIP` both ways, `FCSPRCOLOR`, `PALETTE COPY`:
+  pixel-identical to simulation)
+- in simulation only: `LIST`, `SPRITE` / `MOVSPR`, `FCSPRSAVE` /
+  `FCSPRLOAD` round trip, the 8 / 16 MHz CPU speeds
 
 Sound has been heard on hardware (the BASIC `SOUND` command); music with
 `PLAY`, filters and stereo placement have not been judged.
