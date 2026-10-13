@@ -19,9 +19,12 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 | UART, RAM expansion, external 1565 drive, IEC devices | not implemented |
 | MEGA65 subset for S-BASIC 65 | see below |
 
-Verified in simulation and on hardware with ROM **911210**: boot, BASIC 10
-program entry/RUN/LIST, `DIR` / `DSAVE` / `DLOAD`, and bitplane graphics
-(`SCREEN`, `PALETTE`, `LINE`, `BOX`, `CIRCLE`, `CHAR`).
+Verified with ROM **911210**:
+
+- on hardware: boot, BASIC 10 program entry / `RUN`
+- in simulation only: `LIST`, `DIR` / `DSAVE` / `DLOAD`, bitplane graphics
+  (`SCREEN`, `PALETTE`, `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites, NTSC
+  timing, `GO64`
 
 ### MEGA65 subset
 
@@ -42,9 +45,15 @@ C65 ROM never does, so it sees a plain C65.
 | Hypervisor traps (`$D640`), SD card, RTC (`$FFD7110`), attic RAM, 40 MHz | not implemented; traps are ignored |
 | Enhanced DMA jobs (`$D705`) | not implemented |
 
-Verified in simulation with S-BASIC 65 V250507: boot, program entry / `RUN`
-/ `LIST`, floating point, `DIR` / `SAVE` / `LOAD`, `SCREEN` + `BOX`
-graphics, `SPRITE` / `MOVSPR`.
+Verified with S-BASIC 65 V250507:
+
+- on hardware: boot, program entry / `RUN`, floating point, `SCREEN` + `BOX`
+  graphics
+- in simulation only: `LIST`, `DIR` / `SAVE` / `LOAD`, `SPRITE` / `MOVSPR`,
+  the 8 / 16 MHz CPU speeds
+
+Not yet checked on hardware at all: sound, mounting disks from the OSD,
+joysticks, the PAL/NTSC switch and the UK / DE keyboard layouts.
 
 ## Using it
 
