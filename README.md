@@ -23,7 +23,7 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 | F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
 | F011 floppy controller, internal drive, `.D81` read/write | done (sector level; no track format command) |
 | CIA 6526 x2, keyboard incl. C65 extra keys, joysticks | done |
-| 1351 mouse on either control port | done in simulation (movement); not yet confirmed on hardware |
+| 1351 mouse on either control port | done; pointer movement confirmed on hardware, buttons untested |
 | Dual SID | working (MiSTer C64/C128 SID); only a basic `SOUND` test so far |
 | RAM expansion: banks 6-15 (`$60000-$FFFFF`) and 4 MB at `$400000-$7FFFFF` (DMA banks `$40-$7F`) | done; needs a MiSTer SDRAM module |
 | UART, external 1565 drive, IEC devices | not implemented |
@@ -33,13 +33,27 @@ Verified with ROM **911210**:
 
 - on hardware: boot, BASIC 10 program entry / `RUN`, reading and writing a
   D81 mounted from the OSD, 4 MB expansion RAM (detected at boot, `DMA`
-  copy out and back)
+  copy out and back), the 640x400 interlaced Workbench picture from the
+  Commodore C65 demo disk (`FB DEMO`), mouse pointer movement
 - in simulation only: `LIST`, bitplane graphics (`SCREEN`, `PALETTE`,
-  `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites, NTSC timing, `GO64`, and the
-  Commodore C65 demo disk: auto-boot, the Deluxe Paint (640x200, 16
-  colours), Workbench (640x400 interlaced) and REGINA (320x200, 256
-  colours) pictures. That disk's `IFF DEMO` slideshow loads its pictures
-  but then crashes; it appears to have been written for an earlier ROM
+  `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites, NTSC timing, `GO64`, and from
+  the demo disk the Deluxe Paint (640x200, 16 colours) and REGINA
+  (320x200, 256 colours) pictures
+
+#### The Commodore C65 demo disk
+
+The disk auto-boots. Its boot program says it requires the C65.9.910107 ROM
+and an early F018 DMA chip, and what it does depends on expansion RAM:
+
+- with **Expansion RAM** on it loads an IFF slideshow, which then leaves a
+  black screen with ROM 911210 (it uses that early DMA list format)
+- with **Expansion RAM** off it shows the Workbench and Deluxe Paint
+  pictures, which work
+
+To run the pictures by hand, press Esc (RUN/STOP) during the `LOADING`
+lines, then `DLOAD"FB DEMO"`, `DLOAD"DP DEMO"` or `DLOAD"REGINA DEMO"` and
+`RUN`. The disk needs a stock C65 ROM; its programs do not run under
+S-BASIC 65.
 
 ### MEGA65 subset
 
