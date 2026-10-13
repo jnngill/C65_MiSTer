@@ -1,0 +1,3 @@
+110 mouse on,1\r
+150 rmouse x,y,b:print x;y;b\r
+270 rmouse x,y,b:print x;y;b\r

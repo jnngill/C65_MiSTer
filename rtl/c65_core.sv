@@ -18,6 +18,8 @@ module c65_core (
 	input  logic [10:0] ps2_key,
 	input  logic  [1:0] kbd_layout,       // 0 US, 1 UK, 2 DE, 3 positional
 	input  logic  [4:0] joy1, joy2,       // active high: fire, right, left, down, up
+	input  logic [24:0] ps2_mouse,        // MiSTer hps_io mouse word
+	input  logic  [1:0] mouse_port,       // 1351 mouse: 0 = none, 1 = control port 1, 2 = control port 2
 
 	// video
 	output logic        ce_pix,
@@ -370,8 +372,28 @@ always_ff @(posedge clk) begin
 	else tod_cnt <= tod_cnt + 20'd1;
 end
 
-wire [7:0] cia1_pa_in = cia1_pa_out & kb_cols & {3'b111, ~joy2};
-wire [7:0] cia1_pb_in = cia1_pb_out & kb_rows & {3'b111, ~joy1};
+// 1351 proportional mouse: position on the SID POT lines, left button =
+// fire, right button = up, on the control port chosen in the OSD
+logic [7:0] mouse_x, mouse_y;
+logic [1:0] mouse_btn;
+
+c1351 mouse (
+	.clk_sys(clk), .reset(reset), .ps2_mouse(ps2_mouse),
+	.potX(mouse_x), .potY(mouse_y), .button(mouse_btn)
+);
+
+wire [4:0] mouse_joy = {mouse_btn[0], 3'b000, mouse_btn[1]};
+wire [4:0] joy1_m = joy1 | (mouse_port == 2'd1 ? mouse_joy : 5'd0);
+wire [4:0] joy2_m = joy2 | (mouse_port == 2'd2 ? mouse_joy : 5'd0);
+
+// the POT lines of a port are only connected while CIA1 PA6 (port 1) / PA7 (port 2) is high
+wire       pot_mouse = (mouse_port == 2'd1 && cia1_pa_out[6]) || (mouse_port == 2'd2 && cia1_pa_out[7]);
+// (c1351 delivers the values inverted, as the MiSTer C64 core expects)
+wire [7:0] pot_x = pot_mouse ? ~mouse_x : 8'hFF;
+wire [7:0] pot_y = pot_mouse ? ~mouse_y : 8'hFF;
+
+wire [7:0] cia1_pa_in = cia1_pa_out & kb_cols & {3'b111, ~joy2_m};
+wire [7:0] cia1_pb_in = cia1_pb_out & kb_rows & {3'b111, ~joy1_m};
 
 mos6526_8520 cia1 (
 	.mode(2'd0), .clk(clk), .phi2_p(phi2_p), .phi2_n(phi2_n), .res_n(~reset),
@@ -448,7 +470,8 @@ f011 fdc (
 logic [7:0] sid_dout;
 
 `ifdef C65_NO_SID
-assign sid_dout = 8'h00;
+// simulation stub: only the POT registers ($19 / $1A) answer
+assign sid_dout = (io_addr[4:0] == 5'h19) ? pot_x : (io_addr[4:0] == 5'h1A) ? pot_y : 8'h00;
 assign audio_l  = '0;
 assign audio_r  = '0;
 `else
@@ -456,8 +479,8 @@ sid_top #(.MULTI_FILTERS(1), .DUAL(1)) sid (
 	.reset(reset), .clk(clk), .ce_1m(phi2_n),
 	.cs({slow_cs && io_sid && io_addr[5], slow_cs && io_sid && !io_addr[5]}),
 	.we(bus_we), .addr(io_addr[4:0]), .data_in(bus_dout), .data_out(sid_dout),
-	.fc_offset_l(13'd0), .pot_x_l(8'hFF), .pot_y_l(8'hFF), .ext_in_l(18'd0), .audio_l(audio_r),
-	.fc_offset_r(13'd0), .pot_x_r(8'hFF), .pot_y_r(8'hFF), .ext_in_r(18'd0), .audio_r(audio_l),
+	.fc_offset_l(13'd0), .pot_x_l(pot_x), .pot_y_l(pot_y), .ext_in_l(18'd0), .audio_l(audio_r),
+	.fc_offset_r(13'd0), .pot_x_r(pot_x), .pot_y_r(pot_y), .ext_in_r(18'd0), .audio_r(audio_l),
 	.filter_en(2'b11), .mode(2'b11), .cfg(4'd0),
 	.ld_clk(clk), .ld_addr(12'd0), .ld_data(16'd0), .ld_wr(1'b0)
 );

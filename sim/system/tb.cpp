@@ -11,6 +11,7 @@
 //   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
 //   -turbo <n>       CPU speed 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
 //   -xram            fit the 4 MB expansion RAM
+//   -mouse <port> <from> <to>   1351 mouse on that control port, moved every frame in [from, to)
 //   -ntsc            60 Hz timing
 //   -f018a           old DMA list format
 #include "Vc65_core.h"
@@ -224,6 +225,7 @@ int main(int argc, char **argv) {
 	long frames = atol(argv[3]);
 	int shot = 0, ntrace = 0, stop_pc = -1, layout = 3, turbo = 0;
 	bool ntsc = false, f018b = true, use_xram = false;
+	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
 	for (int i = 4; i < argc; i++) {
 		std::string a = argv[i];
 		if (a == "-keys" && i + 1 < argc) {
@@ -250,6 +252,7 @@ int main(int argc, char **argv) {
 		else if (a == "-keydelay" && i + 1 < argc) key_delay = atol(argv[++i]);
 		else if (a == "-ntsc") ntsc = true;
 		else if (a == "-xram") use_xram = true;
+		else if (a == "-mouse" && i + 3 < argc) { mouse_port = atoi(argv[++i]); mouse_from = atol(argv[++i]); mouse_to = atol(argv[++i]); }
 		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
 		else if (a == "-f018a") f018b = false;
 	}
@@ -265,6 +268,7 @@ int main(int argc, char **argv) {
 	top->ntsc = ntsc; top->dma_f018b = f018b; top->turbo = turbo;
 	top->reset = 1; top->ld_wr = 0; top->ps2_key = 0;
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
+	top->ps2_mouse = 0; top->mouse_port = mouse_port;
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
 	top->sd_ack = 0; top->sd_buff_wr = 0;
 	top->xram_present = use_xram; top->xram_ack = 0; top->xram_dout = 0;
@@ -308,6 +312,11 @@ int main(int argc, char **argv) {
 		if (frame_done) {
 			frame_done = false;
 			key_frame();
+			// scripted mouse: +3 right, +2 up per frame, left button held
+			if (mouse_port && frame_no >= mouse_from && frame_no < mouse_to)
+				top->ps2_mouse = ((top->ps2_mouse ^ 0x1000000) & 0x1000000) | (2 << 16) | (3 << 8) | 0x09;
+			else if (frame_no == mouse_to)
+				top->ps2_mouse = ((top->ps2_mouse ^ 0x1000000) & 0x1000000) | 0x08;
 			if (frame_no == mount_at) {
 				top->img_size = (unsigned)d81.size(); top->img_readonly = 0; top->img_mounted = 1;
 			}

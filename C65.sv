@@ -55,6 +55,7 @@ localparam CONF_STR = {
 	"O[11:10],Keyboard Layout,US,UK,DE,Positional;",
 	"O[13:12],CPU Speed,3.5 MHz,8 MHz,16 MHz;",
 	"O[14],Expansion RAM,4MB (needs SDRAM),Off;",
+	"O[16:15],Mouse,Port 2,Port 1,Off;",
 	"O[3],DMA Revision,F018B,F018A;",
 	"-;",
 	"R[0],Reset;",
@@ -140,6 +141,7 @@ wire   [7:0] ioctl_dout;
 wire  [10:0] ps2_key;
 wire  [31:0] joystick_0, joystick_1;
 wire  [15:0] sdram_sz;
+wire  [24:0] ps2_mouse;
 wire  [64:0] RTC;
 
 wire  [31:0] sd_lba[1];
@@ -183,6 +185,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(1), .BLKSZ(2)) hps_io
 	.img_size(img_size),
 
 	.ps2_key(ps2_key),
+	.ps2_mouse(ps2_mouse),
 	.joystick_0(joystick_0),
 	.joystick_1(joystick_1),
 	.sdram_sz(sdram_sz),
@@ -301,6 +304,8 @@ c65_core core
 	.kbd_layout(status[11:10]),
 	.joy1(joy_b),
 	.joy2(joy_a),
+	.ps2_mouse(ps2_mouse),
+	.mouse_port(status[16:15] == 2'd0 ? 2'd2 : status[16:15] == 2'd1 ? 2'd1 : 2'd0),
 
 	.ce_pix(ce_pix),
 	.r(r), .g(g), .b(b),
