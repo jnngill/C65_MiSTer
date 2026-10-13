@@ -23,7 +23,6 @@ assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
-assign VGA_F1         = 0;
 assign VGA_SCALER     = 0;
 assign VGA_DISABLE    = 0;
 assign HDMI_FREEZE    = 0;
@@ -209,11 +208,12 @@ always @(posedge clk_sys) begin
 end
 
 // ------------------------------------------------------------------ expansion RAM (SDRAM module)
-// The C65's 4 MB RAM expansion lives in the first 4 MB of the MiSTer SDRAM.
+// The C65's expansion RAM (banks 6-15 and the 4 MB DMA region) lives in the
+// first 8 MB of the MiSTer SDRAM.
 // sdram.v runs one access (or refresh) per 8 clk64 cycle, started by a rising
 // edge on ce / refresh, so every operation here is given 5 clk_sys periods.
 wire        xram_req, xram_we;
-wire [21:0] xram_addr;
+wire [22:0] xram_addr;
 wire  [7:0] xram_din, sdram_dout;
 reg   [7:0] xram_dout;
 reg         xram_ack;
@@ -241,7 +241,7 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(sd_refresh),
-	.addr({3'd0, xram_addr}),
+	.addr({2'd0, xram_addr}),
 	.ce(sd_ce),
 	.we(xram_we),
 	.din(xram_din),
@@ -280,7 +280,10 @@ end
 // ------------------------------------------------------------------ core
 wire        ce_pix;
 wire  [3:0] r, g, b;
-wire        hsync, vsync, hblank, vblank;
+wire        hsync, vsync, hblank, vblank, field;
+
+// 400 line pictures are sent as two alternating fields; the scaler weaves them
+assign VGA_F1 = field;
 wire [17:0] audio_l, audio_r;
 wire        drive_led;
 
@@ -310,6 +313,7 @@ c65_core core
 	.ce_pix(ce_pix),
 	.r(r), .g(g), .b(b),
 	.hsync(hsync), .vsync(vsync), .hblank(hblank), .vblank(vblank),
+	.field(field),
 
 	.audio_l(audio_l), .audio_r(audio_r),
 
@@ -336,7 +340,7 @@ c65_core core
 	.xram_dout(xram_dout),
 	.xram_ack(xram_ack),
 
-	.dbg_pc(), .dbg_sync(), .dbg_a(), .dbg_x(), .dbg_y(), .dbg_z(), .dbg_b(), .dbg_p(), .dbg_sp()
+	.dbg_pc(), .dbg_sync(), .dbg_op(), .dbg_a(), .dbg_x(), .dbg_y(), .dbg_z(), .dbg_b(), .dbg_p(), .dbg_sp()
 );
 
 assign AUDIO_L = audio_l[17:2];

@@ -25,6 +25,7 @@ module c65_core (
 	output logic        ce_pix,
 	output logic  [3:0] r, g, b,
 	output logic        hsync, vsync, hblank, vblank,
+	output logic        field,            // interlaced modes: which field this frame carries
 
 	// audio (signed)
 	output logic [17:0] audio_l, audio_r,
@@ -46,11 +47,13 @@ module c65_core (
 	// wall-clock time from the host (MiSTer hps_io RTC word), for the MEGA65 clock registers
 	input  logic [64:0] rtc,
 
-	// expansion RAM, 4 MB at $400000-$7FFFFF (external memory, request / acknowledge)
+	// expansion RAM (external memory, request / acknowledge):
+	//   $060000-$0FFFFF  banks 6-15, addressed as is (xram_addr[22] = 0)
+	//   $400000-$7FFFFF  4 MB reached through DMA (xram_addr[22] = 1)
 	input  logic        xram_present,
 	output logic        xram_req,         // held until xram_ack
 	output logic        xram_we,
-	output logic [21:0] xram_addr,
+	output logic [22:0] xram_addr,
 	output logic  [7:0] xram_din,
 	input  logic  [7:0] xram_dout,        // valid from xram_ack until the next request
 	input  logic        xram_ack,
@@ -58,6 +61,7 @@ module c65_core (
 	// debug
 	output logic [15:0] dbg_pc,
 	output logic        dbg_sync,
+	output logic  [7:0] dbg_op,           // opcode being fetched (valid with dbg_sync)
 	output logic  [7:0] dbg_a, dbg_x, dbg_y, dbg_z, dbg_b, dbg_p,
 	output logic [15:0] dbg_sp
 );
@@ -120,7 +124,9 @@ assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
 logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc;
-logic [21:0] xaddr;
+// a DMA address with the I/O flag only means I/O inside $D000-$DFFF; elsewhere it is plain memory
+wire         dma_is_io = dma_io && (dma_addr[15:12] == 4'hD);
+logic [22:0] xaddr;
 logic [16:0] mem_addr;
 
 always_comb begin
@@ -130,7 +136,7 @@ always_comb begin
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
 	pa = dma_busy ? dma_addr : {3'd0, cpu_paddr};
-	xaddr = (!dma_busy && cpu_far) ? cpu_faddr[21:0] : pa[21:0];
+	xaddr = (!dma_busy && cpu_far) ? cpu_faddr[22:0] : pa;
 
 	if (!dma_busy && cpu_far) begin
 		// flat 28-bit access through a 45GS02 far pointer
@@ -139,18 +145,20 @@ always_comb begin
 		else if (cpu_faddr[27:17] == 11'd1)         sel_rom = !cpu_we;          // $0020000 ROM
 		else if (cpu_faddr[27:17] == 11'd2)         sel_ram2 = 1'b1;            // $0040000 extra chip RAM
 		else if (cpu_faddr[27:22] == 6'd1)          sel_xram = xram_present;    // $0400000 expansion RAM
+		else if (cpu_faddr[27:20] == 8'd0)          sel_xram = xram_present;    // $0060000 banks 6-15
 		else if (cpu_faddr[27:12] == 16'hFF7E)      sel_wom = 1'b1;             // $FF7E000 character set
 		else if (cpu_faddr[27:11] == 17'h1FF00)     begin sel_ram = 1'b1; mem_addr = {6'b111111, cpu_faddr[10:0]}; end   // $FF80000 colour RAM
 		else if (cpu_faddr[27:12] == 16'hFFD3)      sel_io = 1'b1;              // $FFD3000 I/O
 		else if (cpu_faddr[27:4] == 24'hFFD711)     sel_rtc = 1'b1;             // $FFD7110 real-time clock
 	end
-	else if (dma_busy ? !dma_io : cpu_mapped) begin
+	else if (dma_busy ? !dma_is_io : cpu_mapped) begin
 		// physical 1MB address space
 		mem_addr = pa[16:0];
 		if (pa[22])                 sel_xram = xram_present;      // $400000-$7FFFFF (DMA only)
 		else if (pa[21:17] == 5'd0) sel_ram = 1'b1;
 		else if (pa[21:17] == 5'd1) sel_rom = 1'b1;
 		else if (pa[21:17] == 5'd2) sel_ram2 = 1'b1;
+		else if (pa[21:20] == 2'd0) sel_xram = xram_present;      // banks 6-15
 	end
 	else if (dma_busy) sel_io = 1'b1;
 	else begin
@@ -353,7 +361,7 @@ vic3 vic (
 	.ctrl_a(ctrl_a), .ctrl_b(ctrl_b), .irq_n(vic_irq_n),
 	.vic_bank(vic_bank), .vaddr(vaddr), .vram_q(vram_q), .vrom_q(vrom_q),
 	.r(r), .g(g), .b(b), .hsync(hsync), .vsync(vsync), .hblank(hblank), .vblank(vblank),
-	.raster()
+	.field(field), .raster()
 );
 
 // ------------------------------------------------------------------ CIAs
@@ -543,6 +551,7 @@ always_comb begin
 end
 
 assign dma_reg_we = io_wr && io_dma;
+assign dbg_op     = bus_din;
 
 assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n;
 assign nmi_n = cia2_irq_n & restore_n;

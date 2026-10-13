@@ -19,7 +19,7 @@ module dma_f018 (
 	output logic        busy,
 	output logic        setup,       // decoding the list this clk: no bus cycle may start
 	output logic [22:0] addr,        // 8 MB: banks $00-$7F (F018A lists only reach banks $0-$F)
-	output logic        io,          // addr[11:0] is an I/O ($Dxxx) address
+	output logic        io,          // I/O flag of the bank byte: $D000-$DFFF means I/O, not RAM
 	output logic        we,
 	output logic  [7:0] dout,
 	input  logic  [7:0] din
@@ -46,7 +46,7 @@ wire [7:0] dbank = list[8];
 function automatic [22:0] step(input logic [22:0] a, input logic is_io, input logic hold, input logic dec);
 	logic [22:0] n;
 	n = hold ? a : (dec ? a - 23'd1 : a + 23'd1);
-	step = is_io ? {a[22:12], n[11:0]} : n;
+	step = n;
 endfunction
 
 assign busy  = (state != IDLE);

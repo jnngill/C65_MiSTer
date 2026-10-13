@@ -4,9 +4,11 @@
 //   -keys <file>     key script: lines of "<frame> <text>" typed starting at that frame
 //                    (text escapes: \r = RETURN, {NAME} = raw PS/2 make/break of a hex code)
 //   -d81 <file>      mount a disk image
+//   -mountat <n>     insert it at frame n (default 2; later avoids auto-booting from it)
 //   -shot <n>        write a frame image every n frames (default: last frame only)
 //   -trace <n>       dump the last n instruction PCs at exit
 //   -stop <hexpc>    stop when an instruction at this PC is executed
+//   -after <hexpc>   ...but only once this PC has been executed first
 //   -keydelay <n>    extra frames between key events (default 0)
 //   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
 //   -turbo <n>       CPU speed 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
@@ -34,6 +36,7 @@ static bool d81_dirty = false;
 // ---- frame capture ---------------------------------------------------
 static const int MAXW = 1100, MAXH = 320;
 static std::vector<unsigned char> fb(MAXW * MAXH * 3);
+static std::vector<unsigned char> fields[2];     // last complete frame of each interlace field
 static int cap_x = 0, cap_y = 0, cap_w = 0, cap_h = 0;
 static bool prev_hbl = true, prev_vbl = true;
 static long frame_no = 0;
@@ -67,6 +70,7 @@ static void video_tick() {
 	if (vbl && !prev_vbl) {
 		cap_w = line_w < MAXW ? line_w : MAXW;
 		cap_h = cap_y < MAXH ? cap_y : MAXH;
+		fields[top->field & 1] = fb;
 		cap_y = 0; line_w = 0;
 		frame_no++;
 		frame_done = true;
@@ -181,7 +185,7 @@ static void xram_tick() {
 	top->xram_ack = 0;
 	if (!top->xram_req) { xram_cnt = 0; return; }
 	if (++xram_cnt == 4) {
-		unsigned a = top->xram_addr & 0x3FFFFF;
+		unsigned a = top->xram_addr & 0x7FFFFF;
 		if (top->xram_we) xram[a] = top->xram_din;
 		top->xram_dout = xram[a];
 		top->xram_ack = 1;
@@ -216,6 +220,16 @@ static void dump_screen(FILE *f) {
 		while (!line.empty() && line.back() == ' ') line.pop_back();
 		fprintf(f, "%s\n", line.c_str());
 	}
+	if (!h640) {
+		// a program may have switched the video mode while the 80 column text screen is still in use
+		fprintf(f, "--- same memory read as the 80 column screen at $0800\n");
+		for (int y = 0; y < 25; y++) {
+			std::string line;
+			for (int x = 0; x < 80; x++) line += sc2ascii(mem[0x800 + y * 80 + x]);
+			while (!line.empty() && line.back() == ' ') line.pop_back();
+			if (!line.empty()) fprintf(f, "%s\n", line.c_str());
+		}
+	}
 }
 
 int main(int argc, char **argv) {
@@ -223,9 +237,10 @@ int main(int argc, char **argv) {
 	setvbuf(stdout, nullptr, _IONBF, 0);
 	std::string outdir = argv[2];
 	long frames = atol(argv[3]);
-	int shot = 0, ntrace = 0, stop_pc = -1, layout = 3, turbo = 0;
-	bool ntsc = false, f018b = true, use_xram = false;
+	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, layout = 3, turbo = 0;
+	bool ntsc = false, f018b = true, use_xram = false, stop_brk = false;
 	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
+	long mount_frame = 2;
 	for (int i = 4; i < argc; i++) {
 		std::string a = argv[i];
 		if (a == "-keys" && i + 1 < argc) {
@@ -252,6 +267,9 @@ int main(int argc, char **argv) {
 		else if (a == "-keydelay" && i + 1 < argc) key_delay = atol(argv[++i]);
 		else if (a == "-ntsc") ntsc = true;
 		else if (a == "-xram") use_xram = true;
+		else if (a == "-stopbrk") stop_brk = true;
+		else if (a == "-after" && i + 1 < argc) after_pc = (int)strtol(argv[++i], nullptr, 16);
+		else if (a == "-mountat" && i + 1 < argc) mount_frame = atol(argv[++i]);
 		else if (a == "-mouse" && i + 3 < argc) { mouse_port = atoi(argv[++i]); mouse_from = atol(argv[++i]); mouse_to = atol(argv[++i]); }
 		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
 		else if (a == "-f018a") f018b = false;
@@ -274,7 +292,7 @@ int main(int argc, char **argv) {
 	top->xram_present = use_xram; top->xram_ack = 0; top->xram_dout = 0;
 	// host clock: 2026-10-13 12:34:56 (BCD sec, min, hour, day, month, year, weekday)
 	top->rtc[0] = 0x13123456; top->rtc[1] = 0x00022610; top->rtc[2] = 0;
-	xram.assign(1 << 22, 0);
+	xram.assign(1 << 23, 0);
 
 	auto tick = [&]() { top->clk = 0; top->eval(); top->clk = 1; top->eval(); };
 	for (int i = 0; i < 4; i++) tick();
@@ -288,7 +306,7 @@ int main(int argc, char **argv) {
 
 	std::deque<std::string> trace;
 	std::vector<unsigned> pchist(65536, 0);
-	long mount_at = d81.empty() ? -1 : 2;
+	long mount_at = d81.empty() ? -1 : mount_frame;
 	unsigned long long clks = 0, instrs = 0;
 
 	while (frame_no < frames) {
@@ -298,7 +316,9 @@ int main(int argc, char **argv) {
 		xram_tick();
 		if (top->dbg_sync && top->rootp->c65_core__DOT__cpu_ce) {
 			instrs++;
-			if ((int)top->dbg_pc == stop_pc) { puts("stop PC reached"); frames = frame_no; }
+			if ((int)top->dbg_pc == after_pc) after_pc = -1;
+			if (stop_brk && top->dbg_op == 0) { puts("BRK reached"); frames = frame_no; }
+			if ((int)top->dbg_pc == stop_pc && after_pc < 0) { puts("stop PC reached"); frames = frame_no; }
 			pchist[top->dbg_pc]++;
 			if (ntrace) {
 				char tb_[96];
@@ -327,6 +347,28 @@ int main(int argc, char **argv) {
 		}
 	}
 	write_ppm(outdir + "/final.ppm");
+	{	// chip RAM $00000-$1FFFF, for post-mortem inspection
+		FILE *rf = fopen((outdir + "/ram.bin").c_str(), "wb");
+		auto &m = top->rootp->c65_core__DOT__ram__DOT__mem;
+		for (int i = 0; i < 0x20000; i++) fputc(m[i], rf);
+		fclose(rf);
+		rf = fopen((outdir + "/ram2.bin").c_str(), "wb");
+		auto &m2 = top->rootp->c65_core__DOT__ram2__DOT__mem;
+		for (int i = 0; i < 0x20000; i++) fputc(m2[i], rf);
+		fclose(rf);
+		rf = fopen((outdir + "/xram.bin").c_str(), "wb");
+		fwrite(xram.data(), 1, xram.size(), rf);
+		fclose(rf);
+	}
+	if (!fields[0].empty() && !fields[1].empty()) {
+		// both interlace fields woven into one picture
+		FILE *wf = fopen((outdir + "/weave.ppm").c_str(), "wb");
+		fprintf(wf, "P6\n%d %d\n255\n", cap_w, cap_h * 2);
+		for (int y = 0; y < cap_h; y++)
+			for (int fl = 0; fl < 2; fl++)
+				fwrite(&fields[fl][y * MAXW * 3], 1, cap_w * 3, wf);
+		fclose(wf);
+	}
 	FILE *s = fopen((outdir + "/screen.txt").c_str(), "w");
 	dump_screen(s); fclose(s);
 	dump_screen(stdout);

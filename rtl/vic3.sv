@@ -40,6 +40,7 @@ module vic3 (
 
 	output logic  [3:0] r, g, b,
 	output logic        hsync, vsync, hblank, vblank,
+	output logic        field,         // 400-line (interlaced) modes: 0 = first field, 1 = second
 	output logic  [8:0] raster
 );
 
@@ -302,12 +303,17 @@ wire line_start = ce_pix && (hx == {10'(X_BLANK0), 1'b0});   // vc increments he
 always_ff @(posedge clk) begin
 	irq_raster_set <= 1'b0;
 	if (reset) begin
-		hx <= '0; vc <= '0; frame <= '0;
+		hx <= '0; vc <= '0; frame <= '0; field <= 1'b0;
 	end
 	else if (ce_pix) begin
 		hx <= (hx == {htotal, 1'b0} - 11'd1) ? 11'd0 : hx + 11'd1;
 		if (line_start) begin
-			if (vc == vtotal - 9'd1) begin vc <= '0; frame <= frame + 6'd1; end
+			if (vc == vtotal - 9'd1) begin
+				vc    <= '0;
+				frame <= frame + 6'd1;
+				// V400 / INT: the two fields of a 400 line picture alternate frame by frame
+				field <= (v400 || ctrl_b[0]) ? ~field : 1'b0;
+			end
 			else vc <= vc + 9'd1;
 		end
 		// raster compare one pixel after the line counter changed
@@ -339,7 +345,9 @@ wire       hborder = csel ? !(x >= 10'd24 && x < 10'd344) : !(x >= 10'd31 && x <
 // cell geometry in 640-mode pixels
 wire [4:0] cell_w   = h640 ? 5'd8 : 5'd16;
 wire [6:0] n_cols   = h640 ? 7'd80 : 7'd40;
-wire [10:0] gfx_x0  = 11'd48 + {7'd0, xscroll, 1'b0};        // first displayed pixel
+// first displayed pixel.  40 column modes scroll in 320-pixels; in 80 column
+// modes the normal position is XSCROLL = 1 and one step is one 640-pixel.
+wire [10:0] gfx_x0  = h640 ? 11'd47 + {8'd0, xscroll} : 11'd48 + {7'd0, xscroll, 1'b0};
 wire [10:0] fetch_x0 = gfx_x0 - {6'd0, cell_w};              // fetch runs one cell ahead
 
 // ------------------------------------------------------------------ fetch engine
@@ -375,7 +383,8 @@ logic f_rom_sel;
 function automatic [18:0] bp_byte_addr(input int n);
 	logic [2:0] sel;
 	logic [15:0] base;
-	sel  = bp_addr[n][3:1];
+	// 400 line modes: the second field's lines come from the "odd" address
+	sel  = (v400 && field) ? bp_addr[n][7:5] : bp_addr[n][3:1];
 	base = h640 ? {sel[2:1], 14'd0} : {sel, 13'd0};
 	bp_byte_addr = {bp_bank[1:0], n[0], base + {1'b0, cell_idx, text_rc}};
 endfunction
