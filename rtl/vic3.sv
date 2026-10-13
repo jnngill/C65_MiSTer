@@ -325,7 +325,6 @@ logic        f_run;
 logic  [3:0] f_step;         // clk step inside the cell
 logic        f_go;
 logic [11:0] row_base;       // row * columns
-logic [15:0] bp_line [8];    // per-plane line start offset
 logic  [7:0] f_scr, f_col_byte, f_gfx;
 logic  [7:0] f_bp [8];
 logic [16:0] vaddr_gfx;
@@ -347,13 +346,14 @@ wire [16:0] crom_addr = {crom9 ? 5'h09 : 5'h0D, gfx_addr[11:0]};   // $29000 / $
 
 logic f_rom_sel;
 
-// bitplane byte address: even planes in bank 0, odd planes in bank 1
+// bitplane byte address: even planes in bank 0, odd planes in bank 1.  Planes
+// are laid out like a VIC-II bitmap (8 bytes per character cell).
 function automatic [16:0] bp_byte_addr(input int n);
 	logic [2:0] sel;
 	logic [15:0] base;
 	sel  = bp_addr[n][3:1];
 	base = h640 ? {sel[2:1], 14'd0} : {sel, 13'd0};
-	bp_byte_addr = {n[0], base + bp_line[n][15:0] + {9'd0, f_col}};
+	bp_byte_addr = {n[0], base + {1'b0, cell_idx, text_rc}};
 endfunction
 
 always_ff @(posedge clk) begin
@@ -380,11 +380,9 @@ always_ff @(posedge clk) begin
 				// vc is still the old line here; the new line is vc+1
 				if (vc + 9'd1 == y_first) begin
 					row_base <= '0;
-					for (int i = 0; i < 8; i++) bp_line[i] <= '0;
 				end
 				else if (in_rows) begin
 					if (text_rc == 3'd7) row_base <= row_base + {5'd0, n_cols};
-					for (int i = 0; i < 8; i++) bp_line[i] <= bp_line[i] + {9'd0, n_cols};
 				end
 			end
 		end

@@ -15,28 +15,42 @@ Info: Running Quartus Prime Shell
     Info: devices manufactured by Intel and sold by Intel or its 
     Info: authorized distributors.  Please refer to the applicable 
     Info: agreement for further details.
-    Info: Processing started: Tue Oct 13 07:56:17 2026
+    Info: Processing started: Tue Oct 13 08:22:57 2026
 Info: Command: quartus_sh --flow compile C65
 Info: Quartus(args): compile C65
 Info: Project Name = C:/Users/jnngi/Projects/C65_MiSTer/C65
 Info: Revision Name = C65
+Info (293032): Detected changes in source files.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/f011.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_keyboard.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv has changed.
+Info (293032): Detected changes in source files.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/f011.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_keyboard.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv has changed.
+Info (293032): Detected changes in source files.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/f011.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_keyboard.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv has changed.
+    Info (293027): Source file: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv has changed.
 Info: *******************************************************************
 Info: Running Quartus Prime Shell
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Oct 13 07:56:19 2026
+    Info: Processing started: Tue Oct 13 08:22:59 2026
 Info: Command: quartus_sh -t sys/build_id.tcl compile C65 C65
 Info: Quartus(args): compile C65 C65
-Info: Generated: C:/Users/jnngi/Projects/C65_MiSTer/build_id.v: `define BUILD_DATE "261013"
 Info (23030): Evaluation of Tcl script sys/build_id.tcl was successful
 Info: Quartus Prime Shell was successful. 0 errors, 0 warnings
-    Info: Peak virtual memory: 4757 megabytes
-    Info: Processing ended: Tue Oct 13 07:56:20 2026
-    Info: Elapsed time: 00:00:01
-    Info: Total CPU time (on all processors): 00:00:00
+    Info: Peak virtual memory: 4771 megabytes
+    Info: Processing ended: Tue Oct 13 08:22:59 2026
+    Info: Elapsed time: 00:00:00
+    Info: Total CPU time (on all processors): 00:00:01
 Info: *******************************************************************
 Info: Running Quartus Prime Analysis & Synthesis
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Oct 13 07:56:22 2026
+    Info: Processing started: Tue Oct 13 08:23:00 2026
 Info: Command: quartus_map --read_settings_files=on --write_settings_files=off C65 -c C65
 Info (16303): High Performance Effort optimization mode selected -- timing performance will be prioritized at the potential cost of increased compilation time
 Info (20030): Parallel compilation is enabled and will use 16 of the 16 processors detected
@@ -175,9 +189,9 @@ Info (12021): Found 1 design units, including 1 entities, in source file rtl/vic
 Info (12021): Found 1 design units, including 1 entities, in source file rtl/dma_f018.sv
     Info (12023): Found entity 1: dma_f018 File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/dma_f018.sv Line: 8
 Info (12021): Found 1 design units, including 1 entities, in source file rtl/f011.sv
-    Info (12023): Found entity 1: f011 File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/f011.sv Line: 4
+    Info (12023): Found entity 1: f011 File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/f011.sv Line: 11
 Info (12021): Found 1 design units, including 1 entities, in source file rtl/c65_keyboard.sv
-    Info (12023): Found entity 1: c65_keyboard File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_keyboard.sv Line: 13
+    Info (12023): Found entity 1: c65_keyboard File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_keyboard.sv Line: 16
 Info (12021): Found 1 design units, including 1 entities, in source file rtl/c65_core.sv
     Info (12023): Found entity 1: c65_core File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 6
 Info (12021): Found 1 design units, including 1 entities, in source file c65.sv
@@ -191,152 +205,6 @@ Info (12128): Elaborating entity "f2sdram_safe_terminator" for hierarchy "sysmem
 Info (12128): Elaborating entity "sysmem_HPS_fpga_interfaces" for hierarchy "sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sysmem.sv Line: 223
 Info (12128): Elaborating entity "ddr_svc" for hierarchy "ddr_svc:ddr_svc" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 691
 Info (12128): Elaborating entity "ascal" for hierarchy "ascal:ascal" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 830
-Info (19000): Inferred 9 megafunctions from design logic
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:i_mem[0].r[7]__1" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 11
-        Info (286033): Parameter NUMWORDS_A set to 2048
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 11
-        Info (286033): Parameter NUMWORDS_B set to 2048
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
-        Info (286033): Parameter RDCONTROL_REG_B set to CLOCK0
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:o_line0[0].r[7]__2" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 11
-        Info (286033): Parameter NUMWORDS_A set to 2048
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 11
-        Info (286033): Parameter NUMWORDS_B set to 2048
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:o_line1[0].r[7]__3" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 11
-        Info (286033): Parameter NUMWORDS_A set to 2048
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 11
-        Info (286033): Parameter NUMWORDS_B set to 2048
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:o_line2[0].r[7]__4" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 11
-        Info (286033): Parameter NUMWORDS_A set to 2048
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 11
-        Info (286033): Parameter NUMWORDS_B set to 2048
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:o_line3[0].r[7]__5" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 11
-        Info (286033): Parameter NUMWORDS_A set to 2048
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 11
-        Info (286033): Parameter NUMWORDS_B set to 2048
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:o_linf0[0].r[7]__6" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 8
-        Info (286033): Parameter NUMWORDS_A set to 256
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 8
-        Info (286033): Parameter NUMWORDS_B set to 256
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:o_linf1[0].r[7]__7" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 8
-        Info (286033): Parameter NUMWORDS_A set to 256
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 8
-        Info (286033): Parameter NUMWORDS_B set to 256
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:o_linf2[0].r[7]__8" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 8
-        Info (286033): Parameter NUMWORDS_A set to 256
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 8
-        Info (286033): Parameter NUMWORDS_B set to 256
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
-    Info (276029): Inferred altsyncram megafunction from the following design logic: "ascal:ascal|altsyncram:o_linf3[0].r[7]__9" 
-        Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
-        Info (286033): Parameter WIDTH_A set to 24
-        Info (286033): Parameter WIDTHAD_A set to 8
-        Info (286033): Parameter NUMWORDS_A set to 256
-        Info (286033): Parameter WIDTH_B set to 24
-        Info (286033): Parameter WIDTHAD_B set to 8
-        Info (286033): Parameter NUMWORDS_B set to 256
-        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
-        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
-        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
-        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
-        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
-        Info (286033): Parameter INDATA_ACLR_A set to NONE
-        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
-        Info (286033): Parameter READ_DURING_WRITE_MODE_MIXED_PORTS set to OLD_DATA
 Info (12128): Elaborating entity "altsyncram" for hierarchy "ascal:ascal|altsyncram:i_mem[0].r[7]__1"
 Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:i_mem[0].r[7]__1"
 Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:i_mem[0].r[7]__1" with the following parameter:
@@ -767,7 +635,7 @@ Info (12128): Elaborating entity "aud_mix_top" for hierarchy "audio_out:audio_ou
 Info (12128): Elaborating entity "alsa" for hierarchy "alsa:alsa" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 1656
 Info (12128): Elaborating entity "sync_fix" for hierarchy "sync_fix:sync_v" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 1707
 Info (12128): Elaborating entity "emu" for hierarchy "emu:emu" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 1877
-Info (12128): Elaborating entity "pll" for hierarchy "emu:emu|pll:pll" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 76
+Info (12128): Elaborating entity "pll" for hierarchy "emu:emu|pll:pll" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 77
 Info (12128): Elaborating entity "pll_0002" for hierarchy "emu:emu|pll:pll|pll_0002:pll_inst" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/pll.v Line: 28
 Info (12128): Elaborating entity "altera_pll" for hierarchy "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/pll/pll_0002.v Line: 245
 Warning (10034): Output port "lvds_clk" at altera_pll.v(320) has no driver File: e:/intelfpga_lite/17.0/quartus/libraries/megafunctions/altera_pll.v Line: 320
@@ -990,32 +858,34 @@ Warning (10034): Output port "lvdsclk" at altera_cyclonev_pll.v(642) has no driv
 Info (12131): Elaborated megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll", which is child of megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i" File: e:/intelfpga_lite/17.0/quartus/libraries/megafunctions/altera_pll.v Line: 2224
 Info (12128): Elaborating entity "altera_cyclonev_pll_base" for hierarchy "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|altera_cyclonev_pll_base:fpll_0" File: e:/intelfpga_lite/17.0/quartus/libraries/megafunctions/altera_cyclonev_pll.v Line: 1153
 Info (12131): Elaborated megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|altera_cyclonev_pll_base:fpll_0", which is child of megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i" File: e:/intelfpga_lite/17.0/quartus/libraries/megafunctions/altera_cyclonev_pll.v Line: 1153
-Info (12128): Elaborating entity "pll_cfg" for hierarchy "emu:emu|pll_cfg:pll_cfg" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 97
+Info (12128): Elaborating entity "pll_cfg" for hierarchy "emu:emu|pll_cfg:pll_cfg" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 98
 Info (12128): Elaborating entity "altera_pll_reconfig_top" for hierarchy "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/pll_cfg.v Line: 50
 Info (12128): Elaborating entity "altera_pll_reconfig_core" for hierarchy "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_top.v Line: 420
 Warning (10036): Verilog HDL or VHDL warning at altera_pll_reconfig_core.v(208): object "dps_start_assert" assigned a value but never read File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 208
 Warning (10270): Verilog HDL Case Statement warning at altera_pll_reconfig_core.v(1510): incomplete case statement has no default case item File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 1510
 Warning (10270): Verilog HDL Case Statement warning at altera_pll_reconfig_core.v(1526): incomplete case statement has no default case item File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 1526
-Info (12128): Elaborating entity "hps_io" for hierarchy "emu:emu|hps_io:hps_io" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 184
+Info (12128): Elaborating entity "hps_io" for hierarchy "emu:emu|hps_io:hps_io" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 185
 Info (10264): Verilog HDL Case Statement information at hps_io.sv(417): all case item expressions in this case statement are onehot File: C:/Users/jnngi/Projects/C65_MiSTer/sys/hps_io.sv Line: 417
 Info (10264): Verilog HDL Case Statement information at hps_io.sv(446): all case item expressions in this case statement are onehot File: C:/Users/jnngi/Projects/C65_MiSTer/sys/hps_io.sv Line: 446
 Info (12128): Elaborating entity "video_calc" for hierarchy "emu:emu|hps_io:hps_io|video_calc:video_calc" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/hps_io.sv Line: 236
-Info (12128): Elaborating entity "c65_core" for hierarchy "emu:emu|c65_core:core" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 248
-Info (12128): Elaborating entity "cpu4510" for hierarchy "emu:emu|c65_core:core|cpu4510:cpu" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 72
+Info (12128): Elaborating entity "c65_core" for hierarchy "emu:emu|c65_core:core" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 250
+Info (12128): Elaborating entity "cpu4510" for hierarchy "emu:emu|c65_core:core|cpu4510:cpu" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 73
 Info (10264): Verilog HDL Case Statement information at cpu4510.sv(124): all case item expressions in this case statement are onehot File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/cpu/cpu4510.sv Line: 124
-Info (12128): Elaborating entity "dma_f018" for hierarchy "emu:emu|c65_core:core|dma_f018:dma" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 87
+Info (12128): Elaborating entity "dma_f018" for hierarchy "emu:emu|c65_core:core|dma_f018:dma" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 88
 Info (10264): Verilog HDL Case Statement information at dma_f018.sv(58): all case item expressions in this case statement are onehot File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/dma_f018.sv Line: 58
 Info (10264): Verilog HDL Case Statement information at dma_f018.sv(92): all case item expressions in this case statement are onehot File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/dma_f018.sv Line: 92
-Info (12128): Elaborating entity "dpram" for hierarchy "emu:emu|c65_core:core|dpram:ram" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 223
-Info (12128): Elaborating entity "vic3" for hierarchy "emu:emu|c65_core:core|vic3:vic" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 268
+Info (12128): Elaborating entity "dpram" for hierarchy "emu:emu|c65_core:core|dpram:ram" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 224
+Info (12128): Elaborating entity "vic3" for hierarchy "emu:emu|c65_core:core|vic3:vic" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 269
 Warning (10036): Verilog HDL or VHDL warning at vic3.sv(64): object "v400" assigned a value but never read File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/vic3.sv Line: 64
 Warning (10036): Verilog HDL or VHDL warning at vic3.sv(333): object "text_row" assigned a value but never read File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/vic3.sv Line: 333
 Warning (10036): Verilog HDL or VHDL warning at vic3.sv(552): object "spr_ptr" assigned a value but never read File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/vic3.sv Line: 552
 Info (10264): Verilog HDL Case Statement information at vic3.sv(232): all case item expressions in this case statement are onehot File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/vic3.sv Line: 232
-Info (12128): Elaborating entity "mos6526_8520" for hierarchy "emu:emu|c65_core:core|mos6526_8520:cia1" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 297
-Info (12128): Elaborating entity "c65_keyboard" for hierarchy "emu:emu|c65_core:core|c65_keyboard:keyboard" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 341
-Info (12128): Elaborating entity "f011" for hierarchy "emu:emu|c65_core:core|f011:fdc" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 355
-Info (12128): Elaborating entity "sid_top" for hierarchy "emu:emu|c65_core:core|sid_top:sid" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 373
+Info (12128): Elaborating entity "mos6526_8520" for hierarchy "emu:emu|c65_core:core|mos6526_8520:cia1" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 298
+Info (12128): Elaborating entity "c65_keyboard" for hierarchy "emu:emu|c65_core:core|c65_keyboard:keyboard" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 342
+Info (12128): Elaborating entity "f011" for hierarchy "emu:emu|c65_core:core|f011:fdc" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 356
+Info (10264): Verilog HDL Case Statement information at f011.sv(160): all case item expressions in this case statement are onehot File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/f011.sv Line: 160
+Info (12128): Elaborating entity "dpram" for hierarchy "emu:emu|c65_core:core|f011:fdc|dpram:sector_buf" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/f011.sv Line: 74
+Info (12128): Elaborating entity "sid_top" for hierarchy "emu:emu|c65_core:core|sid_top:sid" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/c65_core.sv Line: 374
 Info (12128): Elaborating entity "sid_voice" for hierarchy "emu:emu|c65_core:core|sid_top:sid|sid_voice:chip[0].v1" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/sid/sid_top.sv Line: 111
 Info (10264): Verilog HDL Case Statement information at sid_voice.sv(139): all case item expressions in this case statement are onehot File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/sid/sid_voice.sv Line: 139
 Info (12128): Elaborating entity "sid_envelope" for hierarchy "emu:emu|c65_core:core|sid_top:sid|sid_voice:chip[0].v1|sid_envelope:adsr" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/sid/sid_voice.sv Line: 61
@@ -1026,7 +896,7 @@ Info (12128): Elaborating entity "sid_dac" for hierarchy "emu:emu|c65_core:core|
 Info (12128): Elaborating entity "sid_filter" for hierarchy "emu:emu|c65_core:core|sid_top:sid|sid_filter:sid_filter" File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/sid/sid_top.sv Line: 301
 Warning (10776): Verilog HDL warning at sid_filter.sv(59): variable over in static task or function compress may have unintended latch behavior File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/sid/sid_filter.sv Line: 59
 Warning (10776): Verilog HDL warning at sid_filter.sv(59): variable comp in static task or function compress may have unintended latch behavior File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/sid/sid_filter.sv Line: 59
-Info (12128): Elaborating entity "video_mixer" for hierarchy "emu:emu|video_mixer:video_mixer" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 294
+Info (12128): Elaborating entity "video_mixer" for hierarchy "emu:emu|video_mixer:video_mixer" File: C:/Users/jnngi/Projects/C65_MiSTer/C65.sv Line: 296
 Info (12128): Elaborating entity "video_freezer" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/video_mixer.sv Line: 81
 Info (12128): Elaborating entity "sync_lock" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer|sync_lock:vs_lock" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/video_freezer.sv Line: 47
 Info (12128): Elaborating entity "sync_lock" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer|sync_lock:hs_lock" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/video_freezer.sv Line: 59
@@ -1066,7 +936,7 @@ Info (276014): Found 2 instances of uninferred RAM logic
     Info (276007): RAM logic "emu:emu|c65_core:core|cpu4510:cpu|Ram3" is uninferred due to asynchronous read logic File: C:/Users/jnngi/Projects/C65_MiSTer/rtl/cpu/cpu4510_tables.svh Line: 379
 Warning (13046): Tri-state node(s) do not directly drive top-level pin(s)
     Warning (13049): Converted tri-state buffer "emu:emu|SD_CS" feeding internal logic into a wire File: C:/Users/jnngi/Projects/C65_MiSTer/sys/emu_ports.vh Line: 96
-Info (19000): Inferred 27 megafunctions from design logic
+Info (19000): Inferred 28 megafunctions from design logic
     Info (276029): Inferred altsyncram megafunction from the following design logic: "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|ram_rtl_0" 
         Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
         Info (286033): Parameter WIDTH_A set to 96
@@ -1130,6 +1000,24 @@ Info (19000): Inferred 27 megafunctions from design logic
         Info (286033): Parameter ADDRESS_REG_B set to CLOCK1
         Info (286033): Parameter INDATA_ACLR_A set to NONE
         Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
+    Info (276029): Inferred altsyncram megafunction from the following design logic: "emu:emu|c65_core:core|f011:fdc|dpram:sector_buf|mem_rtl_0" 
+        Info (286033): Parameter OPERATION_MODE set to BIDIR_DUAL_PORT
+        Info (286033): Parameter WIDTH_A set to 8
+        Info (286033): Parameter WIDTH_B set to 8
+        Info (286033): Parameter WIDTHAD_A set to 9
+        Info (286033): Parameter WIDTHAD_B set to 9
+        Info (286033): Parameter NUMWORDS_A set to 512
+        Info (286033): Parameter NUMWORDS_B set to 512
+        Info (286033): Parameter OUTDATA_REG_A set to UNREGISTERED
+        Info (286033): Parameter OUTDATA_REG_B set to UNREGISTERED
+        Info (286033): Parameter ADDRESS_REG_B set to CLOCK0
+        Info (286033): Parameter INDATA_REG_B set to CLOCK0
+        Info (286033): Parameter WRCONTROL_WRADDRESS_REG_B set to CLOCK0
+        Info (286033): Parameter INDATA_ACLR_A set to NONE
+        Info (286033): Parameter WRCONTROL_ACLR_A set to NONE
+        Info (286033): Parameter ADDRESS_ACLR_A set to NONE
+        Info (286033): Parameter ADDRESS_ACLR_B set to NONE
+        Info (286033): Parameter OUTDATA_ACLR_B set to NONE
     Info (276029): Inferred altsyncram megafunction from the following design logic: "emu:emu|c65_core:core|vic3:vic|pal_r_rtl_0" 
         Info (286033): Parameter OPERATION_MODE set to DUAL_PORT
         Info (286033): Parameter WIDTH_A set to 5
@@ -1430,132 +1318,29 @@ Info (19000): Inferred 27 megafunctions from design logic
         Info (286033): Parameter TAP_DISTANCE set to 3
         Info (286033): Parameter WIDTH set to 31
         Info (286033): Parameter POWER_UP_STATE set to DONT_CARE
-Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "96"
-    Info (12134): Parameter "WIDTHAD_A" = "12"
-    Info (12134): Parameter "NUMWORDS_A" = "2112"
-    Info (12134): Parameter "WIDTH_B" = "96"
-    Info (12134): Parameter "WIDTHAD_B" = "12"
-    Info (12134): Parameter "NUMWORDS_B" = "2112"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_gcn1.tdf
-    Info (12023): Found entity 1: altsyncram_gcn1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_gcn1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:o_h_poly_mem_rtl_0"
-Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:o_h_poly_mem_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "40"
-    Info (12134): Parameter "WIDTHAD_A" = "8"
-    Info (12134): Parameter "NUMWORDS_A" = "256"
-    Info (12134): Parameter "WIDTH_B" = "40"
-    Info (12134): Parameter "WIDTHAD_B" = "8"
-    Info (12134): Parameter "NUMWORDS_B" = "256"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_o9j1.tdf
-    Info (12023): Found entity 1: altsyncram_o9j1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_o9j1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "24"
-    Info (12134): Parameter "WIDTHAD_A" = "11"
-    Info (12134): Parameter "NUMWORDS_A" = "1056"
-    Info (12134): Parameter "WIDTH_B" = "24"
-    Info (12134): Parameter "WIDTHAD_B" = "11"
-    Info (12134): Parameter "NUMWORDS_B" = "1056"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_8cn1.tdf
-    Info (12023): Found entity 1: altsyncram_8cn1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_8cn1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "altshift_taps:dv_d1_rtl_0"
-Info (12133): Instantiated megafunction "altshift_taps:dv_d1_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "3"
-    Info (12134): Parameter "WIDTH" = "77"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_4vu.tdf
-    Info (12023): Found entity 1: shift_taps_4vu File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_4vu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_1s91.tdf
-    Info (12023): Found entity 1: altsyncram_1s91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_1s91.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_ohf.tdf
-    Info (12023): Found entity 1: cntr_ohf File: C:/Users/jnngi/Projects/C65_MiSTer/db/cntr_ohf.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_a9c.tdf
-    Info (12023): Found entity 1: cmpr_a9c File: C:/Users/jnngi/Projects/C65_MiSTer/db/cmpr_a9c.tdf Line: 23
-Info (12130): Elaborated megafunction instantiation "shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0"
-Info (12133): Instantiated megafunction "shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "11"
-    Info (12134): Parameter "WIDTHAD_A" = "8"
-    Info (12134): Parameter "NUMWORDS_A" = "256"
-    Info (12134): Parameter "WIDTH_B" = "11"
-    Info (12134): Parameter "WIDTHAD_B" = "8"
-    Info (12134): Parameter "NUMWORDS_B" = "256"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_k9j1.tdf
-    Info (12023): Found entity 1: altsyncram_k9j1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_k9j1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:pal1_mem_rtl_0"
-Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:pal1_mem_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "48"
-    Info (12134): Parameter "WIDTHAD_A" = "7"
-    Info (12134): Parameter "NUMWORDS_A" = "128"
-    Info (12134): Parameter "WIDTH_B" = "48"
-    Info (12134): Parameter "WIDTHAD_B" = "7"
-    Info (12134): Parameter "NUMWORDS_B" = "128"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_2aj1.tdf
-    Info (12023): Found entity 1: altsyncram_2aj1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_2aj1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|f011:fdc|dpram:sector_buf|altsyncram:mem_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|c65_core:core|f011:fdc|dpram:sector_buf|altsyncram:mem_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "BIDIR_DUAL_PORT"
     Info (12134): Parameter "WIDTH_A" = "8"
-    Info (12134): Parameter "WIDTHAD_A" = "10"
-    Info (12134): Parameter "NUMWORDS_A" = "768"
     Info (12134): Parameter "WIDTH_B" = "8"
-    Info (12134): Parameter "WIDTHAD_B" = "10"
-    Info (12134): Parameter "NUMWORDS_B" = "768"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "WIDTHAD_A" = "9"
+    Info (12134): Parameter "WIDTHAD_B" = "9"
+    Info (12134): Parameter "NUMWORDS_A" = "512"
+    Info (12134): Parameter "NUMWORDS_B" = "512"
+    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
     Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_REG_B" = "CLOCK0"
+    Info (12134): Parameter "WRCONTROL_WRADDRESS_REG_B" = "CLOCK0"
     Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
     Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_3aj1.tdf
-    Info (12023): Found entity 1: altsyncram_3aj1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_3aj1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|dpram:ram|altsyncram:mem_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|c65_core:core|dpram:ram|altsyncram:mem_rtl_0" with the following parameter:
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_cqs1.tdf
+    Info (12023): Found entity 1: altsyncram_cqs1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_cqs1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|dpram:rom|altsyncram:mem_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|c65_core:core|dpram:rom|altsyncram:mem_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "BIDIR_DUAL_PORT"
     Info (12134): Parameter "WIDTH_A" = "8"
     Info (12134): Parameter "WIDTH_B" = "8"
@@ -1581,6 +1366,243 @@ Info (12021): Found 1 design units, including 1 entities, in source file db/deco
     Info (12023): Found entity 1: decode_m2a File: C:/Users/jnngi/Projects/C65_MiSTer/db/decode_m2a.tdf Line: 23
 Info (12021): Found 1 design units, including 1 entities, in source file db/mux_dhb.tdf
     Info (12023): Found entity 1: mux_dhb File: C:/Users/jnngi/Projects/C65_MiSTer/db/mux_dhb.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0"
+Info (12133): Instantiated megafunction "ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "4"
+    Info (12134): Parameter "WIDTH" = "24"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_agv.tdf
+    Info (12023): Found entity 1: shift_taps_agv File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_agv.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_jr91.tdf
+    Info (12023): Found entity 1: altsyncram_jr91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_jr91.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_phf.tdf
+    Info (12023): Found entity 1: cntr_phf File: C:/Users/jnngi/Projects/C65_MiSTer/db/cntr_phf.tdf Line: 26
+Info (12130): Elaborated megafunction instantiation "yc_out:yc_out|altshift_taps:phase[1].y_rtl_0"
+Info (12133): Instantiated megafunction "yc_out:yc_out|altshift_taps:phase[1].y_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "5"
+    Info (12134): Parameter "WIDTH" = "12"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_ruu.tdf
+    Info (12023): Found entity 1: shift_taps_ruu File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_ruu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_hr91.tdf
+    Info (12023): Found entity 1: altsyncram_hr91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_hr91.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_rhf.tdf
+    Info (12023): Found entity 1: cntr_rhf File: C:/Users/jnngi/Projects/C65_MiSTer/db/cntr_rhf.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_b9c.tdf
+    Info (12023): Found entity 1: cmpr_b9c File: C:/Users/jnngi/Projects/C65_MiSTer/db/cmpr_b9c.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:pal1_mem_rtl_0"
+Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:pal1_mem_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "48"
+    Info (12134): Parameter "WIDTHAD_A" = "7"
+    Info (12134): Parameter "NUMWORDS_A" = "128"
+    Info (12134): Parameter "WIDTH_B" = "48"
+    Info (12134): Parameter "WIDTHAD_B" = "7"
+    Info (12134): Parameter "NUMWORDS_B" = "128"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_2aj1.tdf
+    Info (12023): Found entity 1: altsyncram_2aj1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_2aj1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:o_h_poly_mem_rtl_0"
+Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:o_h_poly_mem_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "40"
+    Info (12134): Parameter "WIDTHAD_A" = "8"
+    Info (12134): Parameter "NUMWORDS_A" = "256"
+    Info (12134): Parameter "WIDTH_B" = "40"
+    Info (12134): Parameter "WIDTHAD_B" = "8"
+    Info (12134): Parameter "NUMWORDS_B" = "256"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_o9j1.tdf
+    Info (12023): Found entity 1: altsyncram_o9j1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_o9j1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "96"
+    Info (12134): Parameter "WIDTHAD_A" = "12"
+    Info (12134): Parameter "NUMWORDS_A" = "2112"
+    Info (12134): Parameter "WIDTH_B" = "96"
+    Info (12134): Parameter "WIDTHAD_B" = "12"
+    Info (12134): Parameter "NUMWORDS_B" = "2112"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_gcn1.tdf
+    Info (12023): Found entity 1: altsyncram_gcn1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_gcn1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_r_rtl_1"
+Info (12133): Instantiated megafunction "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_r_rtl_1" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "5"
+    Info (12134): Parameter "WIDTHAD_A" = "8"
+    Info (12134): Parameter "NUMWORDS_A" = "256"
+    Info (12134): Parameter "WIDTH_B" = "5"
+    Info (12134): Parameter "WIDTHAD_B" = "8"
+    Info (12134): Parameter "NUMWORDS_B" = "256"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_k3n1.tdf
+    Info (12023): Found entity 1: altsyncram_k3n1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_k3n1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_g_rtl_1"
+Info (12133): Instantiated megafunction "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_g_rtl_1" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "4"
+    Info (12134): Parameter "WIDTHAD_A" = "8"
+    Info (12134): Parameter "NUMWORDS_A" = "256"
+    Info (12134): Parameter "WIDTH_B" = "4"
+    Info (12134): Parameter "WIDTHAD_B" = "8"
+    Info (12134): Parameter "NUMWORDS_B" = "256"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_i3n1.tdf
+    Info (12023): Found entity 1: altsyncram_i3n1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_i3n1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "24"
+    Info (12134): Parameter "WIDTHAD_A" = "11"
+    Info (12134): Parameter "NUMWORDS_A" = "1056"
+    Info (12134): Parameter "WIDTH_B" = "24"
+    Info (12134): Parameter "WIDTHAD_B" = "11"
+    Info (12134): Parameter "NUMWORDS_B" = "1056"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_8cn1.tdf
+    Info (12023): Found entity 1: altsyncram_8cn1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_8cn1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "8"
+    Info (12134): Parameter "WIDTHAD_A" = "10"
+    Info (12134): Parameter "NUMWORDS_A" = "768"
+    Info (12134): Parameter "WIDTH_B" = "8"
+    Info (12134): Parameter "WIDTHAD_B" = "10"
+    Info (12134): Parameter "NUMWORDS_B" = "768"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_3aj1.tdf
+    Info (12023): Found entity 1: altsyncram_3aj1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_3aj1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "altshift_taps:dv_d1_rtl_0"
+Info (12133): Instantiated megafunction "altshift_taps:dv_d1_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "3"
+    Info (12134): Parameter "WIDTH" = "77"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_4vu.tdf
+    Info (12023): Found entity 1: shift_taps_4vu File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_4vu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_1s91.tdf
+    Info (12023): Found entity 1: altsyncram_1s91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_1s91.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_ohf.tdf
+    Info (12023): Found entity 1: cntr_ohf File: C:/Users/jnngi/Projects/C65_MiSTer/db/cntr_ohf.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_a9c.tdf
+    Info (12023): Found entity 1: cmpr_a9c File: C:/Users/jnngi/Projects/C65_MiSTer/db/cmpr_a9c.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|sid_top:sid|sid_tables:sid_tables|altsyncram:Mux23_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|c65_core:core|sid_top:sid|sid_tables:sid_tables|altsyncram:Mux23_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "ROM"
+    Info (12134): Parameter "WIDTH_A" = "16"
+    Info (12134): Parameter "WIDTHAD_A" = "12"
+    Info (12134): Parameter "NUMWORDS_A" = "4096"
+    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
+    Info (12134): Parameter "RAM_BLOCK_TYPE" = "AUTO"
+    Info (12134): Parameter "INIT_FILE" = "C65.sys_top0.rtl.mif"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_me51.tdf
+    Info (12023): Found entity 1: altsyncram_me51 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_me51.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "osd:hdmi_osd|altsyncram:osd_buffer_rtl_0"
+Info (12133): Instantiated megafunction "osd:hdmi_osd|altsyncram:osd_buffer_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "8"
+    Info (12134): Parameter "WIDTHAD_A" = "12"
+    Info (12134): Parameter "NUMWORDS_A" = "4096"
+    Info (12134): Parameter "WIDTH_B" = "8"
+    Info (12134): Parameter "WIDTHAD_B" = "12"
+    Info (12134): Parameter "NUMWORDS_B" = "4096"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_i6k1.tdf
+    Info (12023): Found entity 1: altsyncram_i6k1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_i6k1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0"
+Info (12133): Instantiated megafunction "shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "11"
+    Info (12134): Parameter "WIDTHAD_A" = "8"
+    Info (12134): Parameter "NUMWORDS_A" = "256"
+    Info (12134): Parameter "WIDTH_B" = "11"
+    Info (12134): Parameter "WIDTHAD_B" = "8"
+    Info (12134): Parameter "NUMWORDS_B" = "256"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_k9j1.tdf
+    Info (12023): Found entity 1: altsyncram_k9j1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_k9j1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0"
+Info (12133): Instantiated megafunction "shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "4"
+    Info (12134): Parameter "WIDTH" = "81"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_0vu.tdf
+    Info (12023): Found entity 1: shift_taps_0vu File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_0vu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_pr91.tdf
+    Info (12023): Found entity 1: altsyncram_pr91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_pr91.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "vga_out:vga_scaler_out|altshift_taps:din1_rtl_0"
+Info (12133): Instantiated megafunction "vga_out:vga_scaler_out|altshift_taps:din1_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "3"
+    Info (12134): Parameter "WIDTH" = "31"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_quu.tdf
+    Info (12023): Found entity 1: shift_taps_quu File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_quu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_dr91.tdf
+    Info (12023): Found entity 1: altsyncram_dr91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_dr91.tdf Line: 28
 Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:i_dpram_rtl_0"
 Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:i_dpram_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
@@ -1617,81 +1639,6 @@ Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:o_dpram_rtl_0" w
     Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
 Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_32k1.tdf
     Info (12023): Found entity 1: altsyncram_32k1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_32k1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "yc_out:yc_out|altshift_taps:phase[1].y_rtl_0"
-Info (12133): Instantiated megafunction "yc_out:yc_out|altshift_taps:phase[1].y_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "5"
-    Info (12134): Parameter "WIDTH" = "12"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_ruu.tdf
-    Info (12023): Found entity 1: shift_taps_ruu File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_ruu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_hr91.tdf
-    Info (12023): Found entity 1: altsyncram_hr91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_hr91.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_rhf.tdf
-    Info (12023): Found entity 1: cntr_rhf File: C:/Users/jnngi/Projects/C65_MiSTer/db/cntr_rhf.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_b9c.tdf
-    Info (12023): Found entity 1: cmpr_b9c File: C:/Users/jnngi/Projects/C65_MiSTer/db/cmpr_b9c.tdf Line: 23
-Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|sid_top:sid|sid_tables:sid_tables|altsyncram:Mux23_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|c65_core:core|sid_top:sid|sid_tables:sid_tables|altsyncram:Mux23_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "ROM"
-    Info (12134): Parameter "WIDTH_A" = "16"
-    Info (12134): Parameter "WIDTHAD_A" = "12"
-    Info (12134): Parameter "NUMWORDS_A" = "4096"
-    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
-    Info (12134): Parameter "RAM_BLOCK_TYPE" = "AUTO"
-    Info (12134): Parameter "INIT_FILE" = "C65.sys_top0.rtl.mif"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_me51.tdf
-    Info (12023): Found entity 1: altsyncram_me51 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_me51.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0"
-Info (12133): Instantiated megafunction "ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "4"
-    Info (12134): Parameter "WIDTH" = "24"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_agv.tdf
-    Info (12023): Found entity 1: shift_taps_agv File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_agv.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_jr91.tdf
-    Info (12023): Found entity 1: altsyncram_jr91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_jr91.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_phf.tdf
-    Info (12023): Found entity 1: cntr_phf File: C:/Users/jnngi/Projects/C65_MiSTer/db/cntr_phf.tdf Line: 26
-Info (12130): Elaborated megafunction instantiation "osd:hdmi_osd|altsyncram:osd_buffer_rtl_0"
-Info (12133): Instantiated megafunction "osd:hdmi_osd|altsyncram:osd_buffer_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "8"
-    Info (12134): Parameter "WIDTHAD_A" = "12"
-    Info (12134): Parameter "NUMWORDS_A" = "4096"
-    Info (12134): Parameter "WIDTH_B" = "8"
-    Info (12134): Parameter "WIDTHAD_B" = "12"
-    Info (12134): Parameter "NUMWORDS_B" = "4096"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_i6k1.tdf
-    Info (12023): Found entity 1: altsyncram_i6k1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_i6k1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0"
-Info (12133): Instantiated megafunction "shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "4"
-    Info (12134): Parameter "WIDTH" = "81"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_0vu.tdf
-    Info (12023): Found entity 1: shift_taps_0vu File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_0vu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_pr91.tdf
-    Info (12023): Found entity 1: altsyncram_pr91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_pr91.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "vga_out:vga_scaler_out|altshift_taps:din1_rtl_0"
-Info (12133): Instantiated megafunction "vga_out:vga_scaler_out|altshift_taps:din1_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "3"
-    Info (12134): Parameter "WIDTH" = "31"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_quu.tdf
-    Info (12023): Found entity 1: shift_taps_quu File: C:/Users/jnngi/Projects/C65_MiSTer/db/shift_taps_quu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_dr91.tdf
-    Info (12023): Found entity 1: altsyncram_dr91 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_dr91.tdf Line: 28
 Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_r_rtl_0"
 Info (12133): Instantiated megafunction "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_r_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
@@ -1709,61 +1656,23 @@ Info (12133): Instantiated megafunction "emu:emu|c65_core:core|vic3:vic|altsyncr
     Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
     Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
     Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_k3n1.tdf
-    Info (12023): Found entity 1: altsyncram_k3n1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_k3n1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_r_rtl_1"
-Info (12133): Instantiated megafunction "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_r_rtl_1" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "5"
-    Info (12134): Parameter "WIDTHAD_A" = "8"
-    Info (12134): Parameter "NUMWORDS_A" = "256"
-    Info (12134): Parameter "WIDTH_B" = "5"
-    Info (12134): Parameter "WIDTHAD_B" = "8"
-    Info (12134): Parameter "NUMWORDS_B" = "256"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12130): Elaborated megafunction instantiation "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_g_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_g_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "4"
-    Info (12134): Parameter "WIDTHAD_A" = "8"
-    Info (12134): Parameter "NUMWORDS_A" = "256"
-    Info (12134): Parameter "WIDTH_B" = "4"
-    Info (12134): Parameter "WIDTHAD_B" = "8"
-    Info (12134): Parameter "NUMWORDS_B" = "256"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_i3n1.tdf
-    Info (12023): Found entity 1: altsyncram_i3n1 File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_i3n1.tdf Line: 28
 Warning (12241): 19 hierarchies have connectivity warnings - see the Connectivity Checks report folder
 Warning (14284): Synthesized away the following node(s):
     Warning (14285): Synthesized away the following RAM node(s):
         Warning (14320): Synthesized away node "emu:emu|c65_core:core|vic3:vic|altsyncram:pal_r_rtl_1|altsyncram_k3n1:auto_generated|ram_block1a4" File: C:/Users/jnngi/Projects/C65_MiSTer/db/altsyncram_k3n1.tdf Line: 150
 Info (17026): Resynthesizing 0 WYSIWYG logic cells and I/Os using "speed" technology mapper which leaves 14 WYSIWYG logic cells and I/Os untouched
-Warning (14284): Synthesized away the following node(s):
-    Warning (14285): Synthesized away the following LCELL buffer node(s):
-        Warning (14320): Synthesized away node "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|phase_done" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 194
 Warning (13050): Open-drain buffer(s) that do not directly drive top-level pin(s) are removed
     Warning (13051): Converted the fanout from the open-drain buffer "emu:emu|SD_SCK" to the node "emu:emu|SD_SCK" into a wire File: C:/Users/jnngi/Projects/C65_MiSTer/sys/emu_ports.vh Line: 93
     Warning (13051): Converted the fanout from the open-drain buffer "emu:emu|SD_MOSI" to the node "emu:emu|SD_MOSI" into a wire File: C:/Users/jnngi/Projects/C65_MiSTer/sys/emu_ports.vh Line: 94
 Warning (14284): Synthesized away the following node(s):
     Warning (14285): Synthesized away the following LCELL buffer node(s):
+        Warning (14320): Synthesized away node "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|phase_done" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 194
+Warning (14284): Synthesized away the following node(s):
+    Warning (14285): Synthesized away the following LCELL buffer node(s):
         Warning (14320): Synthesized away node "pll_cfg_hdmi:pll_cfg_hdmi|phase_done" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 165
 Warning (13050): Open-drain buffer(s) that do not directly drive top-level pin(s) are removed
     Warning (13051): Converted the fanout from the open-drain buffer "HDMI_I2C_SCL" to the node "hdmi_scl_en" into a wire File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 30
-Info (17049): 1322 registers lost all their fanouts during netlist optimizations.
+Info (17049): 1318 registers lost all their fanouts during netlist optimizations.
 Info (17016): Found the following redundant logic cells in design
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|generic_lcell_comb:lcell_dprio_read|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_0|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
@@ -1771,21 +1680,21 @@ Info (17016): Found the following redundant logic cells in design
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_2|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_3|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_4|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
+    Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|generic_lcell_comb:lcell_fpll_0_1|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|generic_lcell_comb:lcell_dprio_read|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_0|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_1|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_2|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_3|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_4|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
-    Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|generic_lcell_comb:lcell_fpll_0_1|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|generic_lcell_comb:lcell_fpll_0_1|combout" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|up_dn" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 196
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|phase_en" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 195
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dprio_ser_shift_load" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 188
+    Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|gnd" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 1919
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|up_dn" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 167
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|phase_en" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 166
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|dprio_ser_shift_load" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 159
-    Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|gnd" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 1919
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|gnd" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 1919
 Info (144001): Generated suppressed messages file C:/Users/jnngi/Projects/C65_MiSTer/output_files/C65.map.smsg
 Info (16010): Generating hard_block partition "hard_block:auto_generated_inst"
@@ -1795,23 +1704,23 @@ Warning: RST port on the PLL is not properly connected on instance pll_audio:pll
 Warning (21074): Design contains 2 input pin(s) that do not drive logic
     Warning (15610): No output dependent on input pin "SD_SPI_MISO" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 100
     Warning (15610): No output dependent on input pin "ADC_SDO" File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 110
-Info (21057): Implemented 33715 device resources after synthesis - the final resource count might be different
+Info (21057): Implemented 35145 device resources after synthesis - the final resource count might be different
     Info (21058): Implemented 16 input pins
     Info (21059): Implemented 97 output pins
     Info (21060): Implemented 32 bidirectional pins
-    Info (21061): Implemented 32163 logic cells
-    Info (21064): Implemented 1341 RAM segments
+    Info (21061): Implemented 33585 logic cells
+    Info (21064): Implemented 1349 RAM segments
     Info (21065): Implemented 1 PLLs
     Info (21062): Implemented 40 DSP elements
 Info: Quartus Prime Analysis & Synthesis was successful. 0 errors, 65 warnings
-    Info: Peak virtual memory: 6548 megabytes
-    Info: Processing ended: Tue Oct 13 07:58:19 2026
-    Info: Elapsed time: 00:01:57
-    Info: Total CPU time (on all processors): 00:03:11
+    Info: Peak virtual memory: 5670 megabytes
+    Info: Processing ended: Tue Oct 13 08:24:36 2026
+    Info: Elapsed time: 00:01:36
+    Info: Total CPU time (on all processors): 00:02:56
 Info: *******************************************************************
 Info: Running Quartus Prime Fitter
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Oct 13 07:58:20 2026
+    Info: Processing started: Tue Oct 13 08:24:37 2026
 Info: Command: quartus_fit --read_settings_files=off --write_settings_files=off C65 -c C65
 Info: qfit2_default_script.tcl version: #1
 Info: Project  = C65
@@ -1830,29 +1739,29 @@ Warning (15714): Some pins have incomplete I/O assignments. Refer to the I/O Ass
 Info (176045): Design uses memory blocks. Violating setup or hold times of memory block address registers for either read or write operations could cause memory contents to be corrupted. Make sure that all memory block address registers meet the setup and hold time requirements.
 Info (184020): Starting Fitter periphery placement operations
 Info (11178): Promoted 9 clocks (8 global, 1 regional)
+    Info (11162): sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|h2f_rst_n[0]~CLKENA0 with 46 fanout uses global clock CLKCTRL_G14
+    Info (11162): sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|h2f_user0_clk[0]~CLKENA0 with 937 fanout uses global clock CLKCTRL_G15
     Info (11162): aspi_sck~CLKENA0 with 129 fanout uses regional clock CLKCTRL_R76
         Info (11177): Node drives Regional Clock Region 2 from (45, 0) to (89, 36)
-    Info (11162): sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|h2f_rst_n[0]~CLKENA0 with 48 fanout uses global clock CLKCTRL_G14
-    Info (11162): sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|h2f_user0_clk[0]~CLKENA0 with 937 fanout uses global clock CLKCTRL_G15
+    Info (11162): emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|divclk[2]~CLKENA0 with 7071 fanout uses global clock CLKCTRL_G10
     Info (11162): hdmi_tx_clk~CLKENA0 with 84 fanout uses global clock CLKCTRL_G7
     Info (11162): emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|divclk[1]~CLKENA0 with 4716 fanout uses global clock CLKCTRL_G4
-    Info (11162): emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|divclk[2]~CLKENA0 with 6755 fanout uses global clock CLKCTRL_G10
     Info (11162): pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|divclk[0]~CLKENA0 with 4954 fanout uses global clock CLKCTRL_G5
     Info (11162): vga_tx_clk~CLKENA0 with 3 fanout uses global clock CLKCTRL_G6
     Info (11162): pll_audio:pll_audio|pll_audio_0002:pll_audio_inst|altera_pll:altera_pll_i|outclk_wire[0]~CLKENA0 with 1748 fanout uses global clock CLKCTRL_G1
 Info (11191): Automatically promoted 2 clocks (2 global)
     Info (11162): FPGA_CLK1_50~inputCLKENA0 with 705 fanout uses global clock CLKCTRL_G2
     Info (11162): FPGA_CLK2_50~inputCLKENA0 with 388 fanout uses global clock CLKCTRL_G0
-Info (184021): Fitter periphery placement operations ending: elapsed time is 00:00:01
+Info (184021): Fitter periphery placement operations ending: elapsed time is 00:00:00
 Info (332164): Evaluating HDL-embedded SDC commands
     Info (332165): Entity altera_std_synchronizer
         Info (332166): set_false_path -to [get_keepers {*altera_std_synchronizer:*|din_s1}]
 Info (332104): Reading SDC File: 'sys/sys_top.sdc'
 Info (332110): Deriving PLL clocks
-    Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|vco0ph[0]} -divide_by 9 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|vco0ph[0]} -divide_by 18 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}
-    Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|vco0ph[0]} -divide_by 3 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}
+    Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|vco0ph[0]} -divide_by 9 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|refclkin} -divide_by 512 -multiply_by 5811 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]}
+    Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|vco0ph[0]} -divide_by 3 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}
     Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|refclkin} -divide_by 512 -multiply_by 4563 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]}
     Info (332110): create_generated_clock -source {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|refclkin} -divide_by 512 -multiply_by 4279 -duty_cycle 50.00 -name {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|vcoph[0]} {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|vcoph[0]}
     Info (332110): create_generated_clock -source {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|vco0ph[0]} -divide_by 17 -duty_cycle 50.00 -name {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk} {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}
@@ -1905,36 +1814,36 @@ Info (176235): Finished register packing
     Extra Info (176220): Created 157 register duplicates
 Info (128000): Starting physical synthesis optimizations for speed
 Info (128002): Starting physical synthesis algorithm register retiming
-Info (128003): Physical synthesis algorithm register retiming complete: estimated slack improvement of 0 ps
+Info (128003): Physical synthesis algorithm register retiming complete: estimated slack improvement of 288 ps
 Info (128002): Starting physical synthesis algorithm combinational resynthesis using boolean division
 Info (128003): Physical synthesis algorithm combinational resynthesis using boolean division complete: estimated slack improvement of 0 ps
 Info (128002): Starting physical synthesis algorithm register retiming
 Info (128003): Physical synthesis algorithm register retiming complete: estimated slack improvement of 0 ps
 Info (128002): Starting physical synthesis algorithm combinational resynthesis using boolean division
 Info (128003): Physical synthesis algorithm combinational resynthesis using boolean division complete: estimated slack improvement of 0 ps
-Info (128001): Physical synthesis optimizations for speed complete: elapsed time is 00:00:56
+Info (128001): Physical synthesis optimizations for speed complete: elapsed time is 00:00:51
 Info (176233): Starting register packing
 Info (176235): Finished register packing
     Extra Info (176218): Packed 228 registers into blocks of type DSP block
     Extra Info (176220): Created 156 register duplicates
-Info (11798): Fitter preparation operations ending: elapsed time is 00:01:24
+Info (11798): Fitter preparation operations ending: elapsed time is 00:01:21
 Info (170189): Fitter placement preparation operations beginning
 Info (14951): The Fitter is using Advanced Physical Optimization.
-Info (170190): Fitter placement preparation operations ending: elapsed time is 00:01:37
+Info (170190): Fitter placement preparation operations ending: elapsed time is 00:01:35
 Info (170191): Fitter placement operations beginning
 Info (170137): Fitter placement was successful
-Info (170192): Fitter placement operations ending: elapsed time is 00:00:36
+Info (170192): Fitter placement operations ending: elapsed time is 00:00:37
 Info (170193): Fitter routing operations beginning
-Info (170089): 2e+03 ns of routing delay (approximately 1.0% of available device routing delay) has been added to meet hold timing. For more information, refer to the Estimated Delay Added for Hold Timing section in the Fitter report.
+Info (170089): 2e+03 ns of routing delay (approximately 1.1% of available device routing delay) has been added to meet hold timing. For more information, refer to the Estimated Delay Added for Hold Timing section in the Fitter report.
 Info (170195): Router estimated average interconnect usage is 13% of the available device resources
-    Info (170196): Router estimated peak interconnect usage is 29% of the available device resources in the region that extends from location X22_Y35 to location X32_Y45
-Info (170194): Fitter routing operations ending: elapsed time is 00:01:18
-Info (11888): Total time spent on timing analysis during the Fitter is 53.34 seconds.
+    Info (170196): Router estimated peak interconnect usage is 35% of the available device resources in the region that extends from location X22_Y35 to location X32_Y45
+Info (170194): Fitter routing operations ending: elapsed time is 00:01:20
+Info (11888): Total time spent on timing analysis during the Fitter is 52.06 seconds.
 Info (334003): Started post-fitting delay annotation
 Info (334004): Delay annotation completed successfully
 Info (334003): Started post-fitting delay annotation
 Info (334004): Delay annotation completed successfully
-Info (11801): Fitter post-fit operations ending: elapsed time is 00:00:45
+Info (11801): Fitter post-fit operations ending: elapsed time is 00:00:36
 Warning (171167): Found invalid Fitter assignments. See the Ignored Assignments panel in the Fitter Compilation Report for more information.
 Warning (169064): Following 20 pins have no output enable or a GND or VCC output enable - later changes to this connectivity may change fitting results
     Info (169065): Pin SDRAM_DQ[0] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 48
@@ -1952,33 +1861,33 @@ Warning (169064): Following 20 pins have no output enable or a GND or VCC output
     Info (169065): Pin SDRAM_DQ[12] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 48
     Info (169065): Pin SDRAM_DQ[13] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 48
     Info (169065): Pin SDRAM_DQ[14] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 48
+    Info (169065): Pin SDRAM_DQ[15] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 48
     Info (169065): Pin USER_IO[0] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 125
     Info (169065): Pin USER_IO[1] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 125
     Info (169065): Pin USER_IO[3] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 125
     Info (169065): Pin USER_IO[6] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 125
-    Info (169065): Pin SDRAM_DQ[15] has a permanently disabled output enable File: C:/Users/jnngi/Projects/C65_MiSTer/sys/sys_top.v Line: 48
 Info (144001): Generated suppressed messages file C:/Users/jnngi/Projects/C65_MiSTer/output_files/C65.fit.smsg
 Info: Quartus Prime Fitter was successful. 0 errors, 7 warnings
-    Info: Peak virtual memory: 8889 megabytes
-    Info: Processing ended: Tue Oct 13 08:07:09 2026
-    Info: Elapsed time: 00:08:49
-    Info: Total CPU time (on all processors): 00:41:23
+    Info: Peak virtual memory: 8932 megabytes
+    Info: Processing ended: Tue Oct 13 08:33:13 2026
+    Info: Elapsed time: 00:08:36
+    Info: Total CPU time (on all processors): 00:42:44
 Info: *******************************************************************
 Info: Running Quartus Prime Assembler
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Oct 13 08:07:12 2026
+    Info: Processing started: Tue Oct 13 08:33:14 2026
 Info: Command: quartus_asm --read_settings_files=off --write_settings_files=off C65 -c C65
 Info (115030): Assembler is generating device programming files
 Info: Quartus Prime Assembler was successful. 0 errors, 0 warnings
-    Info: Peak virtual memory: 5128 megabytes
-    Info: Processing ended: Tue Oct 13 08:07:35 2026
-    Info: Elapsed time: 00:00:23
-    Info: Total CPU time (on all processors): 00:00:20
+    Info: Peak virtual memory: 5143 megabytes
+    Info: Processing ended: Tue Oct 13 08:33:30 2026
+    Info: Elapsed time: 00:00:16
+    Info: Total CPU time (on all processors): 00:00:16
 Info (293026): Skipped module PowerPlay Power Analyzer due to the assignment FLOW_ENABLE_POWER_ANALYZER
 Info: *******************************************************************
 Info: Running Quartus Prime TimeQuest Timing Analyzer
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Oct 13 08:07:36 2026
+    Info: Processing started: Tue Oct 13 08:33:31 2026
 Info: Command: quartus_sta C65 -c C65
 Info: qsta_default_script.tcl version: #1
 Info (20030): Parallel compilation is enabled and will use 16 of the 16 processors detected
@@ -1989,10 +1898,10 @@ Info (332164): Evaluating HDL-embedded SDC commands
         Info (332166): set_false_path -to [get_keepers {*altera_std_synchronizer:*|din_s1}]
 Info (332104): Reading SDC File: 'sys/sys_top.sdc'
 Info (332110): Deriving PLL clocks
-    Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|vco0ph[0]} -divide_by 9 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|vco0ph[0]} -divide_by 18 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}
-    Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|vco0ph[0]} -divide_by 3 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}
+    Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|vco0ph[0]} -divide_by 9 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|refclkin} -divide_by 512 -multiply_by 5811 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]}
+    Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|vco0ph[0]} -divide_by 3 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}
     Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|refclkin} -divide_by 512 -multiply_by 4563 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]}
     Info (332110): create_generated_clock -source {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|refclkin} -divide_by 512 -multiply_by 4279 -duty_cycle 50.00 -name {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|vcoph[0]} {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|vcoph[0]}
     Info (332110): create_generated_clock -source {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|vco0ph[0]} -divide_by 17 -duty_cycle 50.00 -name {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk} {pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}
@@ -2020,44 +1929,44 @@ Info (332097): The following timing edges are non-unate.  TimeQuest will assume 
     Info (332098): From: sysmem|fpga_interfaces|f2sdram|wr_clk_3  to: sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|f2sdram~FF_0
 Info (332123): Deriving Clock Uncertainty. Please refer to report_sdc in TimeQuest to see clock uncertainties.
 Info: Found TIMEQUEST_REPORT_SCRIPT_INCLUDE_DEFAULT_ANALYSIS = ON
-Info (332146): Worst-case setup slack is 0.239
+Info (332146): Worst-case setup slack is 0.335
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.239               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     3.852               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
-    Info (332119):     4.675               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-    Info (332119):     5.687               0.000 FPGA_CLK2_50 
-    Info (332119):     6.292               0.000 spi_sck 
-    Info (332119):     8.085               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
-    Info (332119):     8.427               0.000 FPGA_CLK1_50 
-    Info (332119):    15.456               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
-Info (332146): Worst-case hold slack is 0.250
+    Info (332119):     0.335               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     3.843               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
+    Info (332119):     4.135               0.000 FPGA_CLK2_50 
+    Info (332119):     4.406               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     5.573               0.000 spi_sck 
+    Info (332119):     7.185               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
+    Info (332119):     8.422               0.000 FPGA_CLK1_50 
+    Info (332119):    13.776               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
+Info (332146): Worst-case hold slack is 0.208
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.250               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
-    Info (332119):     0.250               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
-    Info (332119):     0.253               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
-    Info (332119):     0.256               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     0.331               0.000 spi_sck 
-    Info (332119):     0.334               0.000 FPGA_CLK1_50 
-    Info (332119):     0.347               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-    Info (332119):     0.418               0.000 FPGA_CLK2_50 
-Info (332146): Worst-case recovery slack is 3.823
+    Info (332119):     0.208               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     0.242               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
+    Info (332119):     0.259               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
+    Info (332119):     0.272               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
+    Info (332119):     0.275               0.000 FPGA_CLK1_50 
+    Info (332119):     0.343               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     0.363               0.000 spi_sck 
+    Info (332119):     0.381               0.000 FPGA_CLK2_50 
+Info (332146): Worst-case recovery slack is 3.562
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     3.823               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     6.163               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-    Info (332119):    13.690               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
-    Info (332119):    16.788               0.000 FPGA_CLK1_50 
-    Info (332119):    17.783               0.000 FPGA_CLK2_50 
-Info (332146): Worst-case removal slack is 0.707
+    Info (332119):     3.562               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     7.409               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     9.583               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
+    Info (332119):    16.226               0.000 FPGA_CLK1_50 
+    Info (332119):    17.478               0.000 FPGA_CLK2_50 
+Info (332146): Worst-case removal slack is 1.084
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.707               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-    Info (332119):     0.780               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     0.986               0.000 FPGA_CLK1_50 
-    Info (332119):     1.033               0.000 FPGA_CLK2_50 
-    Info (332119):     1.281               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
+    Info (332119):     1.084               0.000 FPGA_CLK2_50 
+    Info (332119):     1.257               0.000 FPGA_CLK1_50 
+    Info (332119):     1.317               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     1.445               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     3.206               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
 Info (332146): Worst-case minimum pulse width slack is 0.881
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
@@ -2065,14 +1974,14 @@ Info (332146): Worst-case minimum pulse width slack is 0.881
     Info (332119):     1.122               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0] 
     Info (332119):     1.196               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|vcoph[0] 
     Info (332119):     1.931               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     3.599               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-    Info (332119):     4.256               0.000 spi_sck 
-    Info (332119):     6.490               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
+    Info (332119):     3.602               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     4.252               0.000 spi_sck 
+    Info (332119):     6.496               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
     Info (332119):     9.208               0.000 FPGA_CLK1_50 
-    Info (332119):     9.212               0.000 FPGA_CLK2_50 
+    Info (332119):     9.214               0.000 FPGA_CLK2_50 
     Info (332119):     9.730               0.000 FPGA_CLK3_50 
-    Info (332119):    14.421               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
-    Info (332119):    18.906               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
+    Info (332119):    14.414               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
+    Info (332119):    18.902               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
 Info (332114): Report Metastability: Found 369 synchronizer chains.
     Info (332114): Worst-Case MTBF of Design is 1e+09 years or 3.15e+16 seconds.
     Info (332114): Typical MTBF of Design is 1e+09 years or 3.15e+16 seconds.
@@ -2080,7 +1989,7 @@ Info (332114): Report Metastability: Found 369 synchronizer chains.
     Info (332114): Number of Synchronizer Chains Found: 369
     Info (332114): Shortest Synchronizer Chain: 2 Registers
     Info (332114): Fraction of Chains for which MTBFs Could Not be Calculated: 0.989
-    Info (332114): Worst Case Available Settling Time: 2.878 ns
+    Info (332114): Worst Case Available Settling Time: 3.105 ns
     Info (332114): Worst-Case MTBF values are calculated based on the worst-case silicon characteristics, with worst-case operating conditions.
     Info (332114):   - Under worst-case conditions, an increase of 100ps in available settling time will increase MTBF values by a factor of 8.0
     Info (332114): Typical MTBF values are calculated based on the nominal silicon characteristics, at nominal operating conditions.
@@ -2088,14 +1997,14 @@ Info (332114): Report Metastability: Found 369 synchronizer chains.
 Info (332102): Design is not fully constrained for setup requirements
 Info (332102): Design is not fully constrained for hold requirements
 Info: Quartus Prime TimeQuest Timing Analyzer was successful. 0 errors, 0 warnings
-    Info: Peak virtual memory: 5438 megabytes
-    Info: Processing ended: Tue Oct 13 08:07:47 2026
-    Info: Elapsed time: 00:00:11
-    Info: Total CPU time (on all processors): 00:00:15
+    Info: Peak virtual memory: 5446 megabytes
+    Info: Processing ended: Tue Oct 13 08:33:39 2026
+    Info: Elapsed time: 00:00:08
+    Info: Total CPU time (on all processors): 00:00:11
 Info (293000): Quartus Prime Full Compilation was successful. 0 errors, 72 warnings
 Info (23030): Evaluation of Tcl script e:/intelfpga_lite/17.0/quartus/common/tcl/internal/qsh_flow.tcl was successful
 Info: Quartus Prime Shell was successful. 0 errors, 72 warnings
-    Info: Peak virtual memory: 4609 megabytes
-    Info: Processing ended: Tue Oct 13 08:07:48 2026
-    Info: Elapsed time: 00:11:31
-    Info: Total CPU time (on all processors): 00:57:33
+    Info: Peak virtual memory: 4608 megabytes
+    Info: Processing ended: Tue Oct 13 08:33:39 2026
+    Info: Elapsed time: 00:10:42
+    Info: Total CPU time (on all processors): 00:59:28
