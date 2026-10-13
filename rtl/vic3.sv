@@ -60,6 +60,7 @@ logic [7:0] bp_en, bp_comp, bpx, bpy, hpos, vpos;
 logic [7:0] bp_addr [8];
 logic [22:0] sprptr_adr;     // VIC-IV $D06C-$D06E: sprite pointer list address
 logic        sprptr16;       // VIC-IV $D06E.7: 16-bit sprite pointers
+logic  [2:0] bp_bank;        // VIC-IV $D07C.0-2: bitplane address bits 19-17
 
 wire h640  = ctrl_b[7];
 wire attr  = ctrl_b[5];
@@ -84,7 +85,7 @@ always_ff @(posedge clk) begin
 		ctrl_a <= '0; ctrl_b <= '0;
 		bp_en <= '0; bp_comp <= '0; bpx <= '0; bpy <= '0; hpos <= '0; vpos <= '0;
 		ss_coll <= '0; sd_coll <= '0;
-		sprptr_adr <= '0; sprptr16 <= 1'b0;
+		sprptr_adr <= '0; sprptr16 <= 1'b0; bp_bank <= '0;
 		for (int i = 0; i < 8; i++) begin
 			spr_x[i] <= '0; spr_y[i] <= '0; spr_col[i] <= '0; bp_addr[i] <= '0;
 		end
@@ -155,6 +156,7 @@ always_ff @(posedge clk) begin
 					7'h6C: sprptr_adr[7:0]  <= reg_din;
 					7'h6D: sprptr_adr[15:8] <= reg_din;
 					7'h6E: begin sprptr_adr[22:16] <= reg_din[6:0]; sprptr16 <= reg_din[7]; end
+					7'h7C: bp_bank <= reg_din[2:0];
 					default: ;
 				endcase
 			end
@@ -209,7 +211,9 @@ always_comb begin
 		endcase
 	end
 	if (vic4_mode) begin
+		if (reg_addr >= 7'h40) reg_dout = 8'h00;
 		case (reg_addr)
+			7'h7C: reg_dout = {5'd0, bp_bank};
 			7'h6C: reg_dout = sprptr_adr[7:0];
 			7'h6D: reg_dout = sprptr_adr[15:8];
 			7'h6E: reg_dout = {sprptr16, sprptr_adr[22:16]};
@@ -347,7 +351,7 @@ logic        f_go;
 logic [11:0] row_base;       // row * columns
 logic  [7:0] f_scr, f_col_byte, f_gfx;
 logic  [7:0] f_bp [8];
-logic [16:0] vaddr_gfx;
+logic [18:0] vaddr_gfx;
 
 wire [4:0] text_row  = dy[7:3];
 wire [2:0] text_rc   = dy[2:0];
@@ -368,12 +372,12 @@ logic f_rom_sel;
 
 // bitplane byte address: even planes in bank 0, odd planes in bank 1.  Planes
 // are laid out like a VIC-II bitmap (8 bytes per character cell).
-function automatic [16:0] bp_byte_addr(input int n);
+function automatic [18:0] bp_byte_addr(input int n);
 	logic [2:0] sel;
 	logic [15:0] base;
 	sel  = bp_addr[n][3:1];
 	base = h640 ? {sel[2:1], 14'd0} : {sel, 13'd0};
-	bp_byte_addr = {n[0], base + {1'b0, cell_idx, text_rc}};
+	bp_byte_addr = {bp_bank[1:0], n[0], base + {1'b0, cell_idx, text_rc}};
 endfunction
 
 always_ff @(posedge clk) begin
@@ -417,12 +421,12 @@ always_ff @(posedge clk) begin
 		end
 		else begin
 			case (f_step)
-				4'd0: vaddr_gfx <= {1'b0, scr_addr};
-				4'd1: vaddr_gfx <= 17'h1F800 + {5'd0, cell_idx};   // colour RAM
+				4'd0: vaddr_gfx <= {3'b000, scr_addr};
+				4'd1: vaddr_gfx <= 19'h1F800 + {7'd0, cell_idx};   // colour RAM
 				4'd2: f_scr <= vram_q;
 				4'd3: begin
 					f_col_byte <= vram_q;
-					vaddr_gfx  <= gfx_rom ? crom_addr : {1'b0, gfx_addr};
+					vaddr_gfx  <= gfx_rom ? {2'b00, crom_addr} : {3'b000, gfx_addr};
 					f_rom_sel  <= gfx_rom;
 				end
 				4'd5: f_gfx <= f_rom_sel ? vrom_q : vram_q;
@@ -691,7 +695,7 @@ end
 // ------------------------------------------------------------------ output mux
 // vaddr is shared between the character/bitplane fetch and the sprite fetch;
 // the sprite fetch only runs in horizontal blanking.
-assign vaddr = spr_bus ? spr_vaddr : {2'b00, vaddr_gfx};
+assign vaddr = spr_bus ? spr_vaddr : vaddr_gfx;
 
 // the graphics shifter shows a pixel one ce_pix after its X position, so the
 // border window is delayed to match
