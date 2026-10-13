@@ -816,7 +816,8 @@ always_comb begin
 		if (spr_hit[i]) begin
 			spr_any   = 1'b1;
 			spr_front = ~spr_pri[i];
-			if (spr_c16[i]) spr_idx = {4'd0, spr_pix16[i]};
+			// each 16-colour sprite has its own block of 16 palette entries
+			if (spr_c16[i]) spr_idx = {1'b0, 3'(i), spr_pix16[i]};
 			else begin
 				case (spr_pix[i])
 					2'b01:   spr_idx = spr_mc0;

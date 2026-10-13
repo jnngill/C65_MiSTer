@@ -1,0 +1,6 @@
+110 fcsprite clr\r
+150 fcsprdef 0,1,1,"123456789abcdef."\r
+230 fcsprdef 0,1,2,"1111222233334444"\r
+310 fcsprcopy 0,1,1,1:fcsprflip 1,1:fcsprcolor 1,1,0,15,0\r
+430 fcsprite 0,1,0:fcsprframe 0,1:movspr 0,150,120\r
+530 fcsprite 1,1,0:fcsprframe 1,1:movspr 1,200,120\r
