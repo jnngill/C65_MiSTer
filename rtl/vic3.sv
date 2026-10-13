@@ -17,6 +17,7 @@ module vic3 (
 
 	// register interface (strobes are one clk wide)
 	input  logic        vic3_mode,     // $D02F key state: registers >= $30 visible
+	input  logic        vic4_mode,     // MEGA65 key: the few VIC-IV registers we model are visible
 	input  logic  [6:0] reg_addr,
 	input  logic        reg_we,
 	input  logic        reg_re,        // read strobe (clears collision latches)
@@ -31,9 +32,9 @@ module vic3 (
 	output logic  [7:0] ctrl_b,        // $D031
 	output logic        irq_n,
 
-	// video memory: 128K RAM and 128K ROM share the address, 1 clk latency
+	// video memory: RAM ($00000-$5FFFF) and ROM share the address, 1 clk latency
 	input  logic  [1:0] vic_bank,      // from CIA2 (already inverted: 0 = $0000)
-	output logic [16:0] vaddr,
+	output logic [18:0] vaddr,
 	input  logic  [7:0] vram_q,
 	input  logic  [7:0] vrom_q,
 
@@ -57,6 +58,8 @@ logic [3:0] irq_flag, irq_en;
 logic [7:0] col_border, col_bg0, col_bg1, col_bg2, col_bg3;
 logic [7:0] bp_en, bp_comp, bpx, bpy, hpos, vpos;
 logic [7:0] bp_addr [8];
+logic [22:0] sprptr_adr;     // VIC-IV $D06C-$D06E: sprite pointer list address
+logic        sprptr16;       // VIC-IV $D06E.7: 16-bit sprite pointers
 
 wire h640  = ctrl_b[7];
 wire attr  = ctrl_b[5];
@@ -81,6 +84,7 @@ always_ff @(posedge clk) begin
 		ctrl_a <= '0; ctrl_b <= '0;
 		bp_en <= '0; bp_comp <= '0; bpx <= '0; bpy <= '0; hpos <= '0; vpos <= '0;
 		ss_coll <= '0; sd_coll <= '0;
+		sprptr_adr <= '0; sprptr16 <= 1'b0;
 		for (int i = 0; i < 8; i++) begin
 			spr_x[i] <= '0; spr_y[i] <= '0; spr_col[i] <= '0; bp_addr[i] <= '0;
 		end
@@ -146,6 +150,14 @@ always_ff @(posedge clk) begin
 					default: ;
 				endcase
 			end
+			if (vic4_mode) begin
+				case (reg_addr)
+					7'h6C: sprptr_adr[7:0]  <= reg_din;
+					7'h6D: sprptr_adr[15:8] <= reg_din;
+					7'h6E: begin sprptr_adr[22:16] <= reg_din[6:0]; sprptr16 <= reg_din[7]; end
+					default: ;
+				endcase
+			end
 		end
 	end
 end
@@ -193,6 +205,14 @@ always_comb begin
 			7'h3D: reg_dout = bpy;
 			7'h3E: reg_dout = hpos;
 			7'h3F: reg_dout = vpos;
+			default: ;
+		endcase
+	end
+	if (vic4_mode) begin
+		case (reg_addr)
+			7'h6C: reg_dout = sprptr_adr[7:0];
+			7'h6D: reg_dout = sprptr_adr[15:8];
+			7'h6E: reg_dout = {sprptr16, sprptr_adr[22:16]};
 			default: ;
 		endcase
 	end
@@ -553,10 +573,12 @@ logic  [7:0] spr_ptr;
 logic  [2:0] sf_n;
 logic  [2:0] sf_step;
 logic        sf_run;
-logic [16:0] spr_vaddr;
+logic [18:0] spr_vaddr;
 logic        spr_bus;       // sprite fetch owns vaddr
 
 wire [15:0] spr_ptr_addr = (h640 ? {vic_bank, vm[3:1], 11'h7F8} : {vic_bank, vm, 10'h3F8}) + {13'd0, sf_n};
+wire [18:0] spr_ptr_addr4 = sprptr_adr[18:0] + {15'd0, sf_n, 1'b0};
+wire [18:0] spr_row_ofs   = {13'd0, spr_row[sf_n] * 6'd3};
 
 always_ff @(posedge clk) begin
 	if (reset) begin
@@ -586,19 +608,18 @@ always_ff @(posedge clk) begin
 		else if (sf_run) begin
 			sf_step <= sf_step + 3'd1;
 			case (sf_step)
-				3'd0: spr_vaddr <= {1'b0, spr_ptr_addr};
-				3'd2: begin spr_ptr <= vram_q;
-				            spr_vaddr <= {1'b0, vic_bank, vram_q, 6'd0} + {11'd0, spr_row[sf_n] * 6'd3}; end
-				3'd3: spr_vaddr <= spr_vaddr + 17'd1;
-				3'd4: begin spr_data[sf_n][23:16] <= vram_q; spr_vaddr <= spr_vaddr + 17'd1; end
-				3'd5: spr_data[sf_n][15:8] <= vram_q;
-				3'd6: begin
+				3'd0: spr_vaddr <= sprptr16 ? spr_ptr_addr4 : {3'b000, spr_ptr_addr};
+				3'd1: spr_vaddr <= spr_vaddr + 19'd1;                   // high pointer byte (16-bit pointers)
+				3'd2: spr_ptr <= vram_q;
+				3'd3: spr_vaddr <= (sprptr16 ? {vram_q[4:0], spr_ptr, 6'd0} : {3'b000, vic_bank, spr_ptr, 6'd0}) + spr_row_ofs;
+				3'd4: spr_vaddr <= spr_vaddr + 19'd1;
+				3'd5: begin spr_data[sf_n][23:16] <= vram_q; spr_vaddr <= spr_vaddr + 19'd1; end
+				3'd6: spr_data[sf_n][15:8] <= vram_q;
+				3'd7: begin
 					spr_data[sf_n][7:0] <= vram_q;
-					sf_step <= '0;
 					if (sf_n == 3'd7) begin sf_run <= 1'b0; spr_bus <= 1'b0; end
 					else sf_n <= sf_n + 3'd1;
 				end
-				default: ;
 			endcase
 		end
 	end
@@ -670,7 +691,7 @@ end
 // ------------------------------------------------------------------ output mux
 // vaddr is shared between the character/bitplane fetch and the sprite fetch;
 // the sprite fetch only runs in horizontal blanking.
-assign vaddr = spr_bus ? spr_vaddr : vaddr_gfx;
+assign vaddr = spr_bus ? spr_vaddr : {2'b00, vaddr_gfx};
 
 // the graphics shifter shows a pixel one ce_pix after its X position, so the
 // border window is delayed to match

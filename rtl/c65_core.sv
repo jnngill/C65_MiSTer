@@ -104,12 +104,12 @@ logic        vic3_mode;
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
-logic        sel_ram, sel_rom, sel_io, sel_port;
+logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port;
 logic [16:0] mem_addr;
 
 always_comb begin
 	logic [19:0] pa;
-	sel_ram = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
+	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
 	pa = dma_busy ? dma_addr : cpu_paddr;
@@ -119,6 +119,8 @@ always_comb begin
 		mem_addr = cpu_faddr[16:0];
 		if (cpu_faddr[27:17] == 11'd0)              sel_ram = 1'b1;             // $0000000 chip RAM
 		else if (cpu_faddr[27:17] == 11'd1)         sel_rom = !cpu_we;          // $0020000 ROM
+		else if (cpu_faddr[27:17] == 11'd2)         sel_ram2 = 1'b1;            // $0040000 extra chip RAM
+		else if (cpu_faddr[27:12] == 16'hFF7E)      sel_wom = 1'b1;             // $FF7E000 character set
 		else if (cpu_faddr[27:11] == 17'h1FF00)     begin sel_ram = 1'b1; mem_addr = {6'b111111, cpu_faddr[10:0]}; end   // $FF80000 colour RAM
 		else if (cpu_faddr[27:12] == 16'hFFD3)      sel_io = 1'b1;              // $FFD3000 I/O
 	end
@@ -127,6 +129,7 @@ always_comb begin
 		mem_addr = pa[16:0];
 		if (pa[19:17] == 3'd0)      sel_ram = 1'b1;
 		else if (pa[19:17] == 3'd1) sel_rom = 1'b1;
+		else if (pa[19:17] == 3'd2) sel_ram2 = 1'b1;
 	end
 	else if (dma_busy) sel_io = 1'b1;
 	else begin
@@ -230,19 +233,46 @@ wire io_wr = bus_ce && bus_we;
 wire io_rd = bus_ce && !bus_we;
 
 // ------------------------------------------------------------------ memory
-logic  [7:0] ram_q, rom_q, vram_q, vrom_q;
-logic [16:0] vaddr;
+logic  [7:0] ram_q, ram2_q, wom_q, rom_q, vram_q, vram1_q, vram2_q, vrom_q, vrom1_q, vwom_q;
+logic [18:0] vaddr;
+logic  [1:0] vsel;
+logic        wom_loaded;
+
+// $40000-$5FFFF: the extra chip RAM MEGA65 ROMs expect (graphics, sprites)
+dpram #(17, 8) ram2 (
+	.clk(clk),
+	.a_addr(mem_addr), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
+	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram2_q)
+);
+
+// $FF7E000: 4K character set RAM.  MEGA65 ROMs copy their font here and the
+// video chip displays it in place of the character ROM.
+dpram #(12, 8) wom (
+	.clk(clk),
+	.a_addr(mem_addr[11:0]), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_wom), .a_q(wom_q),
+	.b_addr(vaddr[11:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vwom_q)
+);
+
+always_ff @(posedge clk) vsel <= vaddr[18:17];
+assign vram_q = (vsel == 2'd2) ? vram2_q : vram1_q;
+assign vrom_q = wom_loaded ? vwom_q : vrom1_q;
+
+// use the character set RAM once the ROM has filled it
+always_ff @(posedge clk) begin
+	if (reset) wom_loaded <= 1'b0;
+	else if (bus_ce && bus_we && sel_wom && mem_addr[11:0] == 12'hFFF) wom_loaded <= 1'b1;
+end
 
 dpram #(17, 8) ram (
 	.clk(clk),
 	.a_addr(ram_addr), .a_din(bus_dout), .a_we(bus_ce && bus_we && ram_sel), .a_q(ram_q),
-	.b_addr(vaddr), .b_din(8'd0), .b_we(1'b0), .b_q(vram_q)
+	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram1_q)
 );
 
 dpram #(17, 8) rom (
 	.clk(clk),
 	.a_addr(ld_wr ? ld_addr : mem_addr), .a_din(ld_data), .a_we(ld_wr), .a_q(rom_q),
-	.b_addr(vaddr), .b_din(8'd0), .b_we(1'b0), .b_q(vrom_q)
+	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vrom1_q)
 );
 
 // ------------------------------------------------------------------ CPU port
@@ -276,7 +306,7 @@ end
 
 vic3 vic (
 	.clk(clk), .reset(reset), .ce_pix(ce_pix), .ntsc(ntsc),
-	.vic3_mode(vic3_mode),
+	.vic3_mode(vic3_mode), .vic4_mode(gs_mode),
 	.reg_addr(vic_reg), .reg_we(io_wr && io_vic), .reg_re(io_rd && io_vic),
 	.reg_din(bus_dout), .reg_dout(vic_dout),
 	.pal_addr(io_addr[9:0]), .pal_we(io_wr && io_pal), .pal_dout(pal_dout),
@@ -410,7 +440,7 @@ always @(posedge clk) begin
 		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
 	if (bus_ce && io_uart && io_addr[7:0] > 8'h0F)
 		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
-	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_rom && !sel_io)
+	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_wom && !sel_rom && !sel_io)
 		$display("FAR  %s %07x = %02x  PC=%04x", bus_we ? "wr" : "rd", cpu_faddr, bus_dout, dbg_pc);
 end
 `endif
@@ -433,6 +463,8 @@ end
 
 always_comb begin
 	if (ram_sel)       bus_din = ram_q;
+	else if (sel_ram2) bus_din = ram2_q;
+	else if (sel_wom)  bus_din = wom_q;
 	else if (sel_rom)  bus_din = rom_q;
 	else if (sel_port) bus_din = cpu_addr[0] ? port_val : port_ddr;
 	else if (sel_io)   bus_din = io_dout;
