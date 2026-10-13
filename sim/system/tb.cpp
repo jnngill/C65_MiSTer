@@ -7,6 +7,7 @@
 //   -shot <n>        write a frame image every n frames (default: last frame only)
 //   -trace <n>       dump the last n instruction PCs at exit
 //   -stop <hexpc>    stop when an instruction at this PC is executed
+//   -keydelay <n>    extra frames between key events (default 0)
 //   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
 //   -ntsc            60 Hz timing
 //   -f018a           old DMA list format
@@ -113,7 +114,7 @@ static void queue_text(const std::string &s) {
 	}
 }
 
-static long key_wait = 0;
+static long key_wait = 0, key_delay = 0;
 static void key_frame() {   // called once per frame
 	auto r = keyscript.equal_range(frame_no);
 	for (auto it = r.first; it != r.second; ++it) queue_text(it->second);
@@ -123,7 +124,7 @@ static void key_frame() {   // called once per frame
 	int v = top->ps2_key;
 	v = ((v ^ 0x400) & 0x400) | (e.press ? 0x200 : 0) | (e.code & 0x1FF);
 	top->ps2_key = v;
-	key_wait = 0;
+	key_wait = key_delay;
 }
 
 // ---- disk image (hps_io style block device) --------------------------
@@ -229,6 +230,7 @@ int main(int argc, char **argv) {
 		else if (a == "-stop" && i + 1 < argc) stop_pc = (int)strtol(argv[++i], nullptr, 16);
 		else if (a == "-sdlog") sd_verbose = true;
 		else if (a == "-layout" && i + 1 < argc) layout = atoi(argv[++i]);
+		else if (a == "-keydelay" && i + 1 < argc) key_delay = atol(argv[++i]);
 		else if (a == "-ntsc") ntsc = true;
 		else if (a == "-f018a") f018b = false;
 	}

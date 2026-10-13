@@ -48,7 +48,8 @@ wire       motor   = control[5];
 wire       disk_ok = present && drive0;
 wire       index   = motor && disk_ok && (index_cnt[24:19] == 6'd0);
 
-wire [7:0] stat_a = {busy, !eq && rdreq, eq, rnf, crc, lost, disk_ok && readonly, drive0 && head == 7'd0};
+// an absent drive (select 1-7) never leaves "track 0": that is how the ROM detects it
+wire [7:0] stat_a = {busy, !eq && rdreq, eq, rnf, crc, lost, disk_ok && readonly, !drive0 || head == 7'd0};
 wire [7:0] stat_b = {rdreq, wtreq, rdreq, 1'b0, disk_ok, index, irq_flag, dskchg || !disk_ok};
 
 assign led   = motor;
@@ -116,7 +117,7 @@ always_ff @(posedge clk) begin
 					if (reg_din[0]) begin cpu_ptr <= '0; base_ptr <= '0; eq <= 1'b1; rdreq <= 1'b0; end
 					if (reg_din[7:5] == 3'b000 && reg_din[4]) begin
 						// head step: $10 out, $14 settle only, $18 in
-						if (!reg_din[2]) begin
+						if (!reg_din[2] && drive0) begin
 							if (reg_din[3]) begin if (head != 7'd81) head <= head + 7'd1; end
 							else            begin if (head != 7'd0)  head <= head - 7'd1; end
 						end

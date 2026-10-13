@@ -52,3 +52,4 @@ c5_pin_model_dump.txt
 build_id.v
 *.qws
 c5_pin_model_dump.txt
+output_quartus.log

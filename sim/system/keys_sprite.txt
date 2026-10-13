@@ -1,0 +1,2 @@
+110 fori=0to62:poke1536+i,255:poke1600+i,170:next\r
+150 sprite 0,1,2:movspr 0,100,100:sprite 1,1,8,,1,1:movspr 1,200,120\r
