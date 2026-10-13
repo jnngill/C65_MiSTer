@@ -15,6 +15,7 @@ module c65_core (
 	input  logic        ld_wr,
 
 	input  logic [10:0] ps2_key,
+	input  logic  [1:0] kbd_layout,       // 0 US, 1 UK, 2 DE, 3 positional
 	input  logic  [4:0] joy1, joy2,       // active high: fire, right, left, down, up
 
 	// video
@@ -334,7 +335,7 @@ always_comb begin
 end
 
 c65_keyboard keyboard (
-	.clk(clk), .reset(reset), .ps2_key(ps2_key),
+	.clk(clk), .reset(reset), .layout(kbd_layout), .ps2_key(ps2_key),
 	.col_sel(cia1_pa_out), .col8_sel(porte[1]), .row_drive(cia1_pb_out),
 	.row_in(kb_rows), .col_in(kb_cols),
 	.restore_n(restore_n), .capslock_n(capslock_n)

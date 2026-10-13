@@ -53,6 +53,7 @@ localparam CONF_STR = {
 	"O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"O[7:6],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"O[9:8],Stereo Mix,None,25%,50%,100%;",
+	"O[11:10],Keyboard Layout,US,UK,DE,Positional;",
 	"O[3],DMA Revision,F018B,F018A;",
 	"-;",
 	"R[0],Reset;",
@@ -222,6 +223,7 @@ c65_core core
 	.ld_wr(rom_download && ioctl_wr && (ioctl_addr[26:17] == 0)),
 
 	.ps2_key(ps2_key),
+	.kbd_layout(status[11:10]),
 	.joy1(joy_b),
 	.joy2(joy_a),
 

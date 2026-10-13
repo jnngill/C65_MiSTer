@@ -7,6 +7,7 @@
 //   -shot <n>        write a frame image every n frames (default: last frame only)
 //   -trace <n>       dump the last n instruction PCs at exit
 //   -stop <hexpc>    stop when an instruction at this PC is executed
+//   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
 //   -ntsc            60 Hz timing
 //   -f018a           old DMA list format
 #include "Vc65_core.h"
@@ -102,7 +103,10 @@ static void queue_text(const std::string &s) {
 		else if (s[i] == '{') {
 			size_t e = s.find('}', i);
 			if (e == std::string::npos) break;
-			queue_key((int)strtol(s.substr(i + 1, e - i - 1).c_str(), nullptr, 16), false);
+			std::string t = s.substr(i + 1, e - i - 1);
+			if (t[0] == '+')      keyq.push_back({(int)strtol(t.c_str() + 1, nullptr, 16), true});
+			else if (t[0] == '-') keyq.push_back({(int)strtol(t.c_str() + 1, nullptr, 16), false});
+			else queue_key((int)strtol(t.c_str(), nullptr, 16), false);
 			i = e;
 		}
 		else queue_char(s[i]);
@@ -119,7 +123,7 @@ static void key_frame() {   // called once per frame
 	int v = top->ps2_key;
 	v = ((v ^ 0x400) & 0x400) | (e.press ? 0x200 : 0) | (e.code & 0x1FF);
 	top->ps2_key = v;
-	key_wait = 1;
+	key_wait = 0;
 }
 
 // ---- disk image (hps_io style block device) --------------------------
@@ -200,7 +204,7 @@ int main(int argc, char **argv) {
 	setvbuf(stdout, nullptr, _IONBF, 0);
 	std::string outdir = argv[2];
 	long frames = atol(argv[3]);
-	int shot = 0, ntrace = 0, stop_pc = -1;
+	int shot = 0, ntrace = 0, stop_pc = -1, layout = 3;
 	bool ntsc = false, f018b = true;
 	for (int i = 4; i < argc; i++) {
 		std::string a = argv[i];
@@ -224,6 +228,7 @@ int main(int argc, char **argv) {
 		else if (a == "-trace" && i + 1 < argc) ntrace = atoi(argv[++i]);
 		else if (a == "-stop" && i + 1 < argc) stop_pc = (int)strtol(argv[++i], nullptr, 16);
 		else if (a == "-sdlog") sd_verbose = true;
+		else if (a == "-layout" && i + 1 < argc) layout = atoi(argv[++i]);
 		else if (a == "-ntsc") ntsc = true;
 		else if (a == "-f018a") f018b = false;
 	}
@@ -238,7 +243,7 @@ int main(int argc, char **argv) {
 	top = new Vc65_core;
 	top->ntsc = ntsc; top->dma_f018b = f018b;
 	top->reset = 1; top->ld_wr = 0; top->ps2_key = 0;
-	top->joy1 = 0; top->joy2 = 0;
+	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
 	top->sd_ack = 0; top->sd_buff_wr = 0;
 
