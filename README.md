@@ -23,6 +23,7 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 | F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
 | F011 floppy controller, internal drive, `.D81` read/write | done (sector level; no track format command) |
 | CIA 6526 x2, keyboard incl. C65 extra keys, joysticks | done |
+| 1351 mouse on either control port | done in simulation (movement); not yet confirmed on hardware |
 | Dual SID | working (MiSTer C64/C128 SID); only a basic `SOUND` test so far |
 | RAM expansion: 4 MB at `$400000-$7FFFFF`, reached through DMA banks `$40-$7F` | done; needs a MiSTer SDRAM module |
 | UART, external 1565 drive, IEC devices | not implemented |
@@ -106,6 +107,8 @@ set *CPU Speed* to 16 MHz for it).
 OSD options: video standard (PAL/NTSC), aspect ratio, scandoubler effects,
 stereo mix, **keyboard layout** (US / UK / DE / positional), **CPU speed**
 (3.5 MHz as on a C65, or 8 / 16 MHz - MEGA65 ROMs expect a much faster CPU)
+**mouse** (a 1351 on control port 2 or 1; S-BASIC 65's `MOUSE ON` uses
+port 2, on the stock ROM give the port: `MOUSE ON,2`),
 **expansion RAM** (4 MB, kept in the MiSTer SDRAM module; without a module
 the machine reports no expansion) and DMA revision (F018B for ROMs from mid
 1991 on, F018A for older ones).
