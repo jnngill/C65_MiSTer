@@ -1,0 +1,5 @@
+110 10 fori=0to9:poke4864+i,i+65:next\r
+180 20 dma 0,10,4864,0,0,64:fori=0to9:poke4864+i,0:next\r
+290 30 dma 0,10,0,64,4864,0\r
+340 40 fori=0to9:print chr$(peek(4864+i));:next\r
+430 run\r

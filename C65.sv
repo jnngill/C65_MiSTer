@@ -21,7 +21,6 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 assign VGA_F1         = 0;
@@ -55,6 +54,7 @@ localparam CONF_STR = {
 	"O[9:8],Stereo Mix,None,25%,50%,100%;",
 	"O[11:10],Keyboard Layout,US,UK,DE,Positional;",
 	"O[13:12],CPU Speed,3.5 MHz,8 MHz,16 MHz;",
+	"O[14],Expansion RAM,4MB (needs SDRAM),Off;",
 	"O[3],DMA Revision,F018B,F018A;",
 	"-;",
 	"R[0],Reset;",
@@ -139,6 +139,7 @@ wire   [7:0] ioctl_dout;
 
 wire  [10:0] ps2_key;
 wire  [31:0] joystick_0, joystick_1;
+wire  [15:0] sdram_sz;
 
 wire  [31:0] sd_lba[1];
 wire         sd_rd, sd_wr, sd_ack;
@@ -182,7 +183,8 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(1), .BLKSZ(2)) hps_io
 
 	.ps2_key(ps2_key),
 	.joystick_0(joystick_0),
-	.joystick_1(joystick_1)
+	.joystick_1(joystick_1),
+	.sdram_sz(sdram_sz)
 );
 
 // ------------------------------------------------------------------ reset / ROM load
@@ -199,6 +201,75 @@ always @(posedge clk_sys) begin
 	else if (reset_cnt != 0) reset_cnt <= reset_cnt - 1'd1;
 
 	reset <= (reset_cnt != 0);
+end
+
+// ------------------------------------------------------------------ expansion RAM (SDRAM module)
+// The C65's 4 MB RAM expansion lives in the first 4 MB of the MiSTer SDRAM.
+// sdram.v runs one access (or refresh) per 8 clk64 cycle, started by a rising
+// edge on ce / refresh, so every operation here is given 5 clk_sys periods.
+wire        xram_req, xram_we;
+wire [21:0] xram_addr;
+wire  [7:0] xram_din, sdram_dout;
+reg   [7:0] xram_dout;
+reg         xram_ack;
+reg         sd_ce = 0, sd_refresh = 0;
+
+// sdram_sz[15] is set when MiSTer reports the module size; without that
+// information just trust the OSD setting
+wire sdram_fitted = sdram_sz[15] ? (sdram_sz[2:0] != 0) : 1'b1;
+wire xram_present = sdram_fitted && !status[14];
+
+assign SDRAM_CKE = 1;
+
+sdram sdram
+(
+	.sd_addr(SDRAM_A),
+	.sd_data(SDRAM_DQ),
+	.sd_ba(SDRAM_BA),
+	.sd_cs(SDRAM_nCS),
+	.sd_we(SDRAM_nWE),
+	.sd_ras(SDRAM_nRAS),
+	.sd_cas(SDRAM_nCAS),
+	.sd_clk(SDRAM_CLK),
+	.sd_dqm({SDRAM_DQMH, SDRAM_DQML}),
+
+	.clk(clk64),
+	.init(~pll_locked),
+	.refresh(sd_refresh),
+	.addr({3'd0, xram_addr}),
+	.ce(sd_ce),
+	.we(xram_we),
+	.din(xram_din),
+	.dout(sdram_dout)
+);
+
+always @(posedge clk_sys) begin
+	reg [1:0] st = 0;          // 0 idle, 1 access, 2 refresh, 3 recover
+	reg [2:0] cnt;
+	reg [7:0] rf_timer = 0;    // refresh at least every ~8 us (64 ms / 8192 rows)
+	reg       rf_due = 0;
+
+	xram_ack <= 0;
+	rf_timer <= rf_timer + 1'd1;
+	if (&rf_timer) rf_due <= 1;
+
+	case (st)
+		0: begin
+			cnt <= 0;
+			if (rf_due) begin sd_refresh <= 1; rf_due <= 0; st <= 2; end
+			else if (xram_req && !xram_ack) begin sd_ce <= 1; st <= 1; end
+		end
+		1: begin
+			cnt <= cnt + 1'd1;
+			if (cnt == 4) begin sd_ce <= 0; xram_dout <= sdram_dout; xram_ack <= 1; st <= 3; end
+		end
+		2: begin
+			cnt <= cnt + 1'd1;
+			if (cnt == 4) begin sd_refresh <= 0; st <= 3; end
+		end
+		3: st <= 0;
+	endcase
+
 end
 
 // ------------------------------------------------------------------ core
@@ -247,6 +318,14 @@ c65_core core
 	.sd_buff_din(sd_buff_din[0]),
 	.sd_buff_wr(sd_buff_wr),
 	.drive_led(drive_led),
+
+	.xram_present(xram_present),
+	.xram_req(xram_req),
+	.xram_we(xram_we),
+	.xram_addr(xram_addr),
+	.xram_din(xram_din),
+	.xram_dout(xram_dout),
+	.xram_ack(xram_ack),
 
 	.dbg_pc(), .dbg_sync(), .dbg_a(), .dbg_x(), .dbg_y(), .dbg_z(), .dbg_b(), .dbg_p(), .dbg_sp()
 );

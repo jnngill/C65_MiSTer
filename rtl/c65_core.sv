@@ -41,6 +41,15 @@ module c65_core (
 	input  logic        sd_buff_wr,
 	output logic        drive_led,
 
+	// expansion RAM, 4 MB at $400000-$7FFFFF (external memory, request / acknowledge)
+	input  logic        xram_present,
+	output logic        xram_req,         // held until xram_ack
+	output logic        xram_we,
+	output logic [21:0] xram_addr,
+	output logic  [7:0] xram_din,
+	input  logic  [7:0] xram_dout,        // valid from xram_ack until the next request
+	input  logic        xram_ack,
+
 	// debug
 	output logic [15:0] dbg_pc,
 	output logic        dbg_sync,
@@ -79,7 +88,7 @@ cpu4510 cpu (
 
 // ------------------------------------------------------------------ DMA
 logic        dma_busy, dma_io, dma_we, dma_ce, dma_setup;
-logic [19:0] dma_addr;
+logic [22:0] dma_addr;
 logic  [7:0] dma_dout, dma_reg_dout;
 logic        dma_reg_we;
 logic [11:0] io_addr;
@@ -105,15 +114,18 @@ logic        vic3_mode;
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
-logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port;
+logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram;
+logic [21:0] xaddr;
 logic [16:0] mem_addr;
 
 always_comb begin
-	logic [19:0] pa;
+	logic [22:0] pa;
 	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
+	sel_xram = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
-	pa = dma_busy ? dma_addr : cpu_paddr;
+	pa = dma_busy ? dma_addr : {3'd0, cpu_paddr};
+	xaddr = (!dma_busy && cpu_far) ? cpu_faddr[21:0] : pa[21:0];
 
 	if (!dma_busy && cpu_far) begin
 		// flat 28-bit access through a 45GS02 far pointer
@@ -121,6 +133,7 @@ always_comb begin
 		if (cpu_faddr[27:17] == 11'd0)              sel_ram = 1'b1;             // $0000000 chip RAM
 		else if (cpu_faddr[27:17] == 11'd1)         sel_rom = !cpu_we;          // $0020000 ROM
 		else if (cpu_faddr[27:17] == 11'd2)         sel_ram2 = 1'b1;            // $0040000 extra chip RAM
+		else if (cpu_faddr[27:22] == 6'd1)          sel_xram = xram_present;    // $0400000 expansion RAM
 		else if (cpu_faddr[27:12] == 16'hFF7E)      sel_wom = 1'b1;             // $FF7E000 character set
 		else if (cpu_faddr[27:11] == 17'h1FF00)     begin sel_ram = 1'b1; mem_addr = {6'b111111, cpu_faddr[10:0]}; end   // $FF80000 colour RAM
 		else if (cpu_faddr[27:12] == 16'hFFD3)      sel_io = 1'b1;              // $FFD3000 I/O
@@ -128,9 +141,10 @@ always_comb begin
 	else if (dma_busy ? !dma_io : cpu_mapped) begin
 		// physical 1MB address space
 		mem_addr = pa[16:0];
-		if (pa[19:17] == 3'd0)      sel_ram = 1'b1;
-		else if (pa[19:17] == 3'd1) sel_rom = 1'b1;
-		else if (pa[19:17] == 3'd2) sel_ram2 = 1'b1;
+		if (pa[22])                 sel_xram = xram_present;      // $400000-$7FFFFF (DMA only)
+		else if (pa[21:17] == 5'd0) sel_ram = 1'b1;
+		else if (pa[21:17] == 5'd1) sel_rom = 1'b1;
+		else if (pa[21:17] == 5'd2) sel_ram2 = 1'b1;
 	end
 	else if (dma_busy) sel_io = 1'b1;
 	else begin
@@ -161,15 +175,16 @@ always_comb begin
 end
 
 // I/O area decode
-logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2, io_math, io_hyp;
+logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2, io_math, io_hyp, io_rec;
 always_comb begin
 	io_vic = 0; io_fdc = 0; io_pal = 0; io_sid = 0; io_uart = 0; io_dma = 0; io_cram = 0; io_cia1 = 0; io_cia2 = 0;
-	io_math = 0; io_hyp = 0;
+	io_math = 0; io_hyp = 0; io_rec = 0;
 	if (sel_io) begin
 		case (io_addr[11:8])
 			4'h0: begin
 				if (!vic3_mode || io_addr[7] == 1'b0) io_vic = 1'b1;
 				else if (io_addr[7:5] == 3'b100) io_fdc = 1'b1;
+				else io_rec = 1'b1;                                  // $D0A0-$D0FF RAM expansion controller
 			end
 			4'h1, 4'h2, 4'h3: if (vic3_mode) io_pal = 1'b1; else io_vic = 1'b1;
 			4'h4, 4'h5: io_sid = 1'b1;
@@ -194,7 +209,7 @@ wire        slow_dev = io_sid || io_cia1 || io_cia2;
 // One access per cycle.  FAST: 9 clk (3.5 MHz) or 4 / 2 clk with turbo, slow: one
 // full 1 MHz phase.
 // CIA / SID accesses are stretched to cover exactly one phi2 period.
-typedef enum logic [1:0] { C_RUN, C_SYNC, C_SLOW } cyc_t;
+typedef enum logic [1:0] { C_RUN, C_SYNC, C_SLOW, C_XRAM } cyc_t;
 cyc_t       cyc_state;
 logic [3:0] cyc;
 logic       bus_ce;
@@ -216,6 +231,9 @@ always_ff @(posedge clk) begin
 				if (slow_dev) begin
 					if (cyc >= 4'd1) cyc_state <= C_SYNC;
 				end
+				else if (sel_xram) begin
+					if (cyc >= 4'd1) cyc_state <= C_XRAM;
+				end
 				else if (fast ? (cyc >= fast_len) : (cyc >= 4'd3 && ph == 5'd30)) begin
 					bus_ce <= 1'b1; cyc <= '0;
 				end
@@ -225,9 +243,21 @@ always_ff @(posedge clk) begin
 				// the device sees phi2_n on this edge; its read data is valid next clk
 				bus_ce <= 1'b1; cyc <= '0; cyc_state <= C_RUN;
 			end
-			default: cyc_state <= C_RUN;
+			C_XRAM: if (xram_ack) begin bus_ce <= 1'b1; cyc <= '0; cyc_state <= C_RUN; end
 		endcase
 	end
+end
+
+assign xram_req  = (cyc_state == C_XRAM);
+assign xram_we   = bus_we;
+assign xram_addr = xaddr;
+assign xram_din  = bus_dout;
+
+// RAM expansion controller: only the "no expansion" flag (bit 7) matters to the ROM
+logic [6:0] rec_reg;
+always_ff @(posedge clk) begin
+	if (reset) rec_reg <= '0;
+	else if (io_wr && io_rec && io_addr[7:0] == 8'hA0) rec_reg <= bus_dout[6:0];
 end
 
 assign cpu_ce = bus_ce && !dma_busy;
@@ -444,7 +474,7 @@ always @(posedge clk) begin
 		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
 	if (bus_ce && io_uart && io_addr[7:0] > 8'h0F)
 		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
-	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_wom && !sel_rom && !sel_io)
+	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_wom && !sel_rom && !sel_io && !sel_xram)
 		$display("FAR  %s %07x = %02x  PC=%04x", bus_we ? "wr" : "rd", cpu_faddr, bus_dout, dbg_pc);
 end
 `endif
@@ -461,6 +491,7 @@ always_comb begin
 	else if (io_dma)  io_dout = dma_reg_dout;
 	else if (io_math) io_dout = math_dout;
 	else if (io_hyp)  io_dout = 8'h00;
+	else if (io_rec)  io_dout = (io_addr[7:0] == 8'hA0) ? {!xram_present, rec_reg} : 8'hFF;
 	else if (io_cia1) io_dout = cia1_dout;
 	else if (io_cia2) io_dout = cia2_dout;
 end
@@ -469,6 +500,7 @@ always_comb begin
 	if (ram_sel)       bus_din = ram_q;
 	else if (sel_ram2) bus_din = ram2_q;
 	else if (sel_wom)  bus_din = wom_q;
+	else if (sel_xram) bus_din = xram_dout;
 	else if (sel_rom)  bus_din = rom_q;
 	else if (sel_port) bus_din = cpu_addr[0] ? port_val : port_ddr;
 	else if (sel_io)   bus_din = io_dout;

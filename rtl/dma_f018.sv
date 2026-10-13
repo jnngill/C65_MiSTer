@@ -18,7 +18,7 @@ module dma_f018 (
 
 	output logic        busy,
 	output logic        setup,       // decoding the list this clk: no bus cycle may start
-	output logic [19:0] addr,
+	output logic [22:0] addr,        // 8 MB: banks $00-$7F (F018A lists only reach banks $0-$F)
 	output logic        io,          // addr[11:0] is an I/O ($Dxxx) address
 	output logic        we,
 	output logic  [7:0] dout,
@@ -32,7 +32,7 @@ logic [15:0] list_addr;
 logic  [6:0] list_bank;
 logic  [3:0] list_idx;
 logic  [7:0] list [12];
-logic [19:0] src, dst;
+logic [22:0] src, dst;
 logic        src_io, dst_io, src_hold, dst_hold, src_dec, dst_dec;
 logic [16:0] count;
 logic  [1:0] op;
@@ -43,17 +43,17 @@ wire [3:0] list_last = f018b ? 4'd11 : 4'd10;
 wire [7:0] sbank = list[5];
 wire [7:0] dbank = list[8];
 
-function automatic [19:0] step(input logic [19:0] a, input logic is_io, input logic hold, input logic dec);
-	logic [19:0] n;
-	n = hold ? a : (dec ? a - 20'd1 : a + 20'd1);
-	step = is_io ? {a[19:12], n[11:0]} : n;
+function automatic [22:0] step(input logic [22:0] a, input logic is_io, input logic hold, input logic dec);
+	logic [22:0] n;
+	n = hold ? a : (dec ? a - 23'd1 : a + 23'd1);
+	step = is_io ? {a[22:12], n[11:0]} : n;
 endfunction
 
 assign busy  = (state != IDLE);
 assign setup = (state == SETUP);
 
 always_comb begin
-	addr = {list_bank[3:0], list_addr};
+	addr = {list_bank, list_addr};
 	io   = 1'b0;
 	we   = 1'b0;
 	dout = sdata;
@@ -133,8 +133,8 @@ always_ff @(posedge clk) begin
 			op     <= list[0][1:0];
 			chain  <= list[0][2];
 			count  <= {(list[2] == 8'd0 && list[1] == 8'd0), list[2], list[1]};
-			src    <= {sbank[3:0], list[4], list[3]};
-			dst    <= {dbank[3:0], list[7], list[6]};
+			src    <= {f018b ? sbank[6:4] : 3'd0, sbank[3:0], list[4], list[3]};
+			dst    <= {f018b ? dbank[6:4] : 3'd0, dbank[3:0], list[7], list[6]};
 			src_io <= sbank[7];
 			dst_io <= dbank[7];
 			if (f018b) begin

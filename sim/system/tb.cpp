@@ -10,6 +10,7 @@
 //   -keydelay <n>    extra frames between key events (default 0)
 //   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
 //   -turbo <n>       CPU speed 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
+//   -xram            fit the 4 MB expansion RAM
 //   -ntsc            60 Hz timing
 //   -f018a           old DMA list format
 #include "Vc65_core.h"
@@ -172,6 +173,21 @@ static void sd_tick() {
 	}
 }
 
+// ---- expansion RAM model (4 MB, a few clocks of latency) -------------
+static std::vector<unsigned char> xram;
+static int xram_cnt = 0;
+static void xram_tick() {
+	top->xram_ack = 0;
+	if (!top->xram_req) { xram_cnt = 0; return; }
+	if (++xram_cnt == 4) {
+		unsigned a = top->xram_addr & 0x3FFFFF;
+		if (top->xram_we) xram[a] = top->xram_din;
+		top->xram_dout = xram[a];
+		top->xram_ack = 1;
+	}
+	if (xram_cnt > 6) xram_cnt = 6;
+}
+
 // ---- text screen dump ------------------------------------------------
 static char sc2ascii(unsigned char c) {
 	c &= 0x7F;
@@ -207,7 +223,7 @@ int main(int argc, char **argv) {
 	std::string outdir = argv[2];
 	long frames = atol(argv[3]);
 	int shot = 0, ntrace = 0, stop_pc = -1, layout = 3, turbo = 0;
-	bool ntsc = false, f018b = true;
+	bool ntsc = false, f018b = true, use_xram = false;
 	for (int i = 4; i < argc; i++) {
 		std::string a = argv[i];
 		if (a == "-keys" && i + 1 < argc) {
@@ -233,6 +249,7 @@ int main(int argc, char **argv) {
 		else if (a == "-layout" && i + 1 < argc) layout = atoi(argv[++i]);
 		else if (a == "-keydelay" && i + 1 < argc) key_delay = atol(argv[++i]);
 		else if (a == "-ntsc") ntsc = true;
+		else if (a == "-xram") use_xram = true;
 		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
 		else if (a == "-f018a") f018b = false;
 	}
@@ -250,6 +267,8 @@ int main(int argc, char **argv) {
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
 	top->sd_ack = 0; top->sd_buff_wr = 0;
+	top->xram_present = use_xram; top->xram_ack = 0; top->xram_dout = 0;
+	xram.assign(1 << 22, 0);
 
 	auto tick = [&]() { top->clk = 0; top->eval(); top->clk = 1; top->eval(); };
 	for (int i = 0; i < 4; i++) tick();
@@ -269,6 +288,7 @@ int main(int argc, char **argv) {
 		tick(); clks++;
 		video_tick();
 		sd_tick();
+		xram_tick();
 		if (top->dbg_sync && top->rootp->c65_core__DOT__cpu_ce) {
 			instrs++;
 			if ((int)top->dbg_pc == stop_pc) { puts("stop PC reached"); frames = frame_no; }

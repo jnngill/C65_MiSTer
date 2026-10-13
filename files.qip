@@ -3,6 +3,7 @@ set_global_assignment -name SEARCH_PATH rtl/cpu
 set_global_assignment -name QIP_FILE rtl/pll.qip
 set_global_assignment -name QIP_FILE rtl/sid/sid.qip
 set_global_assignment -name VERILOG_FILE rtl/mos6526_8520.v
+set_global_assignment -name VERILOG_FILE rtl/sdram.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/dpram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cpu/cpu4510.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/vic3.sv
