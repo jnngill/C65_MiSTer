@@ -5,6 +5,14 @@ original Commodore C65 ROMs to BASIC 10, with the internal 3.5" drive backed
 by `.D81` images, and carries just enough MEGA65 hardware to run MEGA65-style
 ROMs such as S-BASIC 65 (a completed BASIC).
 
+> **You must supply your own system ROM. The core does not work without one.**
+>
+> No ROM is included in this repository or in its releases: C65 ROMs are
+> copyrighted and cannot be distributed here. Without a ROM the core stays
+> in reset and shows a blank screen. You need to obtain a 128K (131072 byte)
+> C65 system ROM image yourself and place it on the SD card as
+> `/media/fat/games/C65/boot.rom` - see [Installing](#installing).
+
 ## Status
 
 | Part | State |
@@ -69,10 +77,11 @@ newest dated `.rbf` is the one to use) and on the
 
 1. Create the folder `/media/fat/games/C65/`.
 2. Copy the `.rbf` to `/media/fat/_Computer/`.
-3. Copy a 128K C65 ROM image to `/media/fat/games/C65/boot.rom`. **ROMs are
-   copyrighted and are not included.** `boot.rom` is loaded when the core
-   starts; other images in the folder (`.rom` / `.bin`) can be loaded from
-   the OSD with *Load System ROM*.
+3. **Required:** copy a 128K C65 ROM image, which you must obtain yourself,
+   to `/media/fat/games/C65/boot.rom`. ROMs are copyrighted and are not
+   included; the core shows a blank screen until one is present. `boot.rom`
+   is loaded when the core starts; other images in the folder (`.rom` /
+   `.bin`) can be loaded from the OSD with *Load System ROM*.
 4. Copy `blank.d81` to `/media/fat/games/C65/`.
 5. Start **C65** from the Computer menu.
 6. Press F12, choose *Mount Drive 8* and pick `blank.d81`. It is an empty,
