@@ -62,8 +62,24 @@ logic [7:0] bp_addr [8];
 logic [22:0] sprptr_adr;     // VIC-IV $D06C-$D06E: sprite pointer list address
 logic        sprptr16;       // VIC-IV $D06E.7: 16-bit sprite pointers
 logic  [2:0] bp_bank;        // VIC-IV $D07C.0-2: bitplane address bits 19-17
+logic  [7:0] ctrl_c;         // VIC-IV $D054: [0] CHR16, [1] FCLRLO, [2] FCLRHI
+logic  [7:0] spr16;          // VIC-IV $D06B: 16-colour sprites (16 pixels wide, 4 bits per pixel)
+logic  [7:0] sprx64;         // VIC-IV $D057: 64 pixel wide sprites
+logic  [7:0] sprhgten;       // VIC-IV $D055: sprite uses the height in $D056
+logic  [7:0] sprhght;        // VIC-IV $D056: sprite height in rows
+logic  [9:0] linestep;       // VIC-IV $D058/59: bytes from one text row to the next
+logic [19:0] scrnptr;        // VIC-IV $D060-63: screen memory address
+logic [15:0] colptr;         // VIC-IV $D064/65: offset into colour RAM
+logic        hot_reload;     // a VIC-II/III register changed: recompute the pointers above
+logic  [1:0] vic_bank_d;
 
 wire h640  = ctrl_b[7];
+wire [6:0]  n_cols   = h640 ? 7'd80 : 7'd40;
+// VIC-II screen address inside the 16-bit video bank
+wire [15:0] scr_base = h640 ? {vic_bank, vm[3:1], 11'd0} : {vic_bank, vm, 10'd0};
+wire chr16  = ctrl_c[0] && vic4_mode;     // 16-bit character numbers: two bytes per screen and colour cell
+wire fclrlo = ctrl_c[1];                  // full colour for characters $000-$0FF
+wire fclrhi = ctrl_c[2];                  // full colour for characters $100 and up
 wire attr  = ctrl_b[5];
 wire bpm   = ctrl_b[4];
 wire v400  = ctrl_b[3];
@@ -87,6 +103,8 @@ always_ff @(posedge clk) begin
 		bp_en <= '0; bp_comp <= '0; bpx <= '0; bpy <= '0; hpos <= '0; vpos <= '0;
 		ss_coll <= '0; sd_coll <= '0;
 		sprptr_adr <= '0; sprptr16 <= 1'b0; bp_bank <= '0;
+		spr16 <= '0; sprx64 <= '0; sprhgten <= '0; sprhght <= 8'd21;
+		ctrl_c <= '0; linestep <= 10'd40; scrnptr <= '0; colptr <= '0; hot_reload <= 1'b1; vic_bank_d <= '0;
 		for (int i = 0; i < 8; i++) begin
 			spr_x[i] <= '0; spr_y[i] <= '0; spr_col[i] <= '0; bp_addr[i] <= '0;
 		end
@@ -102,6 +120,19 @@ always_ff @(posedge clk) begin
 			sd_coll <= sd_coll | sd_set;
 		end
 		if (irq_raster_set) irq_flag[0] <= 1'b1;
+
+		// "hot registers": like the VIC-IV, writing a VIC-II/III register that
+		// moves or resizes the screen reloads the extended pointers from it
+		hot_reload <= 1'b0;
+		vic_bank_d <= vic_bank;
+		if (vic_bank_d != vic_bank) hot_reload <= 1'b1;
+		if (hot_reload) begin
+			scrnptr  <= {4'd0, scr_base};
+			linestep <= {3'd0, n_cols};
+			colptr   <= '0;
+		end
+		if (reg_we && (reg_addr == 7'h16 || reg_addr == 7'h18 || (vic3_mode && reg_addr == 7'h31)))
+			hot_reload <= 1'b1;
 
 		if (reg_re) begin
 			if (reg_addr == 7'h1E) ss_coll <= '0;
@@ -158,6 +189,18 @@ always_ff @(posedge clk) begin
 					7'h6D: sprptr_adr[15:8] <= reg_din;
 					7'h6E: begin sprptr_adr[22:16] <= reg_din[6:0]; sprptr16 <= reg_din[7]; end
 					7'h7C: bp_bank <= reg_din[2:0];
+					7'h54: ctrl_c <= reg_din;
+					7'h55: sprhgten <= reg_din;
+					7'h56: sprhght  <= reg_din;
+					7'h57: sprx64   <= reg_din;
+					7'h6B: spr16    <= reg_din;
+					7'h58: linestep[7:0] <= reg_din;
+					7'h59: linestep[9:8] <= reg_din[1:0];
+					7'h60: scrnptr[7:0]   <= reg_din;
+					7'h61: scrnptr[15:8]  <= reg_din;
+					7'h62: scrnptr[19:16] <= reg_din[3:0];
+					7'h64: colptr[7:0]  <= reg_din;
+					7'h65: colptr[15:8] <= reg_din;
 					default: ;
 				endcase
 			end
@@ -215,6 +258,19 @@ always_comb begin
 		if (reg_addr >= 7'h40) reg_dout = 8'h00;
 		case (reg_addr)
 			7'h7C: reg_dout = {5'd0, bp_bank};
+			7'h54: reg_dout = ctrl_c;
+			7'h55: reg_dout = sprhgten;
+			7'h56: reg_dout = sprhght;
+			7'h57: reg_dout = sprx64;
+			7'h6B: reg_dout = spr16;
+			7'h58: reg_dout = linestep[7:0];
+			7'h59: reg_dout = {6'd0, linestep[9:8]};
+			7'h5E: reg_dout = {1'b0, n_cols};
+			7'h60: reg_dout = scrnptr[7:0];
+			7'h61: reg_dout = scrnptr[15:8];
+			7'h62: reg_dout = {4'd0, scrnptr[19:16]};
+			7'h64: reg_dout = colptr[7:0];
+			7'h65: reg_dout = colptr[15:8];
 			7'h6C: reg_dout = sprptr_adr[7:0];
 			7'h6D: reg_dout = sprptr_adr[15:8];
 			7'h6E: reg_dout = {sprptr16, sprptr_adr[22:16]};
@@ -344,7 +400,6 @@ wire       hborder = csel ? !(x >= 10'd24 && x < 10'd344) : !(x >= 10'd31 && x <
 
 // cell geometry in 640-mode pixels
 wire [4:0] cell_w   = h640 ? 5'd8 : 5'd16;
-wire [6:0] n_cols   = h640 ? 7'd80 : 7'd40;
 // first displayed pixel.  40 column modes scroll in 320-pixels; in 80 column
 // modes the normal position is XSCROLL = 1 and one step is one 640-pixel.
 wire [10:0] gfx_x0  = h640 ? 11'd47 + {8'd0, xscroll} : 11'd48 + {7'd0, xscroll, 1'b0};
@@ -365,9 +420,20 @@ wire [4:0] text_row  = dy[7:3];
 wire [2:0] text_rc   = dy[2:0];
 wire [11:0] cell_idx = row_base + {5'd0, f_col};
 
-// VIC-II address generation inside the 16-bit video bank
-wire [15:0] scr_base  = h640 ? {vic_bank, vm[3:1], 11'd0} : {vic_bank, vm, 10'd0};
-wire [15:0] scr_addr  = scr_base + {4'd0, cell_idx};
+// screen and colour RAM addresses of the cell being fetched
+logic [11:0] row_ofs;        // bytes from the start of the screen to this text row
+wire  [7:0]  col_ofs  = chr16 ? {f_col, 1'b0} : {1'b0, f_col};
+wire [18:0]  scr_addr = scrnptr[18:0] + {7'd0, row_ofs} + {11'd0, col_ofs};
+wire [18:0]  col_addr = 19'h1F800 + {3'd0, colptr} + {7'd0, row_ofs} + {11'd0, col_ofs};
+
+// full-colour characters: 64 bytes each at character number * 64, one byte per pixel
+logic  [7:0] f_scr_hi, f_col0;
+logic        f_fcm;
+wire [12:0]  char_num  = {f_scr_hi[4:0], f_scr};
+wire         cell_fcm  = (char_num[12:8] != 5'd0) ? fclrhi : fclrlo;
+function automatic [18:0] fcm_addr(input logic [2:0] k, input logic vflip, input logic hflip);
+	fcm_addr = {char_num, vflip ? ~text_rc : text_rc, hflip ? ~k : k};
+endfunction
 wire [7:0]  chr_code  = ecm ? {2'b00, f_scr[5:0]} : f_scr;
 wire [15:0] chr_addr  = {vic_bank, cb[3:1], chr_code, text_rc};
 wire [15:0] bmp_addr  = {vic_bank, cb[3], cell_idx[9:0], text_rc};
@@ -413,9 +479,13 @@ always_ff @(posedge clk) begin
 				// vc is still the old line here; the new line is vc+1
 				if (vc + 9'd1 == y_first) begin
 					row_base <= '0;
+					row_ofs  <= '0;
 				end
 				else if (in_rows) begin
-					if (text_rc == 3'd7) row_base <= row_base + {5'd0, n_cols};
+					if (text_rc == 3'd7) begin
+						row_base <= row_base + {5'd0, n_cols};
+						row_ofs  <= row_ofs + {2'd0, linestep};
+					end
 				end
 			end
 		end
@@ -428,11 +498,41 @@ always_ff @(posedge clk) begin
 			if (f_step < 4'd8) vaddr_gfx <= bp_byte_addr(int'(f_step[2:0]));
 			if (f_step >= 4'd2 && f_step < 4'd10) f_bp[f_step[2:0] - 3'd2] <= vram_q;
 		end
+		else if (chr16 && !bmm) begin
+			// two screen bytes, two colour bytes, then 8 pixel bytes (full
+			// colour) or one glyph byte
+			case (f_step)
+				4'd0: vaddr_gfx <= scr_addr;
+				4'd1: vaddr_gfx <= scr_addr + 19'd1;
+				4'd2: begin f_scr <= vram_q; vaddr_gfx <= col_addr; end
+				4'd3: begin f_scr_hi <= vram_q; vaddr_gfx <= col_addr + 19'd1; end
+				4'd4: begin
+					f_col0 <= vram_q;
+					f_fcm  <= cell_fcm;
+					if (cell_fcm) vaddr_gfx <= fcm_addr(3'd0, vram_q[7], vram_q[6]);
+					else begin
+						vaddr_gfx <= gfx_rom ? {2'b00, crom_addr} : {3'b000, gfx_addr};
+						f_rom_sel <= gfx_rom;
+					end
+				end
+				4'd5: begin
+					f_col_byte <= vram_q;
+					if (f_fcm) vaddr_gfx <= fcm_addr(3'd1, f_col0[7], f_col0[6]);
+				end
+				default: begin
+					if (f_fcm) begin
+						if (f_step >= 4'd6 && f_step <= 4'd13) f_bp[f_step[2:0] - 3'd6] <= vram_q;
+						if (f_step >= 4'd6 && f_step <= 4'd11) vaddr_gfx <= fcm_addr(f_step[2:0] - 3'd4, f_col0[7], f_col0[6]);
+					end
+					else if (f_step == 4'd6) f_gfx <= f_rom_sel ? vrom_q : vram_q;
+				end
+			endcase
+		end
 		else begin
 			case (f_step)
-				4'd0: vaddr_gfx <= {3'b000, scr_addr};
-				4'd1: vaddr_gfx <= 19'h1F800 + {7'd0, cell_idx};   // colour RAM
-				4'd2: f_scr <= vram_q;
+				4'd0: vaddr_gfx <= scr_addr;
+				4'd1: vaddr_gfx <= bmm ? 19'h1F800 + {7'd0, cell_idx} : col_addr;   // colour RAM
+				4'd2: begin f_scr <= vram_q; f_fcm <= 1'b0; end
 				4'd3: begin
 					f_col_byte <= vram_q;
 					vaddr_gfx  <= gfx_rom ? {2'b00, crom_addr} : {3'b000, gfx_addr};
@@ -449,6 +549,7 @@ end
 logic  [7:0] sh_gfx, sh_scr, sh_col;
 logic  [7:0] sh_bp [8];
 logic        sh_on;           // inside the fetched area
+logic        sh_fcm;          // the cell is a full-colour character
 logic  [4:0] d_cnt;
 logic  [6:0] d_col;
 logic        d_run;
@@ -478,6 +579,8 @@ logic [7:0] gfx_idx;      // colour index of the graphics layer
 logic       gfx_fg;       // foreground (for sprite priority / collisions)
 
 wire       px      = sh_gfx[7];
+wire [2:0] fcm_n   = h640 ? d_cnt[2:0] : d_cnt[3:1];     // pixel within the cell
+wire [7:0] fcm_px  = sh_bp[fcm_n];
 wire [1:0] px2     = mc_phase ? mc_bits : sh_gfx[7:6];
 
 always_comb begin
@@ -485,6 +588,13 @@ always_comb begin
 	gfx_fg  = 1'b0;
 	if (!sh_on) begin
 		gfx_idx = col_bg0;
+	end
+	else if (sh_fcm && !bpm) begin
+		// 0 = background, $FF = the cell's foreground colour, anything else = palette entry
+		if (fcm_px == 8'h00)      gfx_idx = col_bg0;
+		else if (fcm_px == 8'hFF) gfx_idx = sh_col;
+		else                      gfx_idx = fcm_px;
+		gfx_fg = (fcm_px != 8'h00);
 	end
 	else if (bpm) begin
 		for (int i = 0; i < 8; i++)
@@ -555,6 +665,7 @@ always_ff @(posedge clk) begin
 			sh_scr <= f_scr;
 			sh_col <= (bmm || mcm || ecm) ? f_col_byte : ld_fg;
 			for (int i = 0; i < 8; i++) sh_bp[i] <= f_bp[i];
+			sh_fcm <= f_fcm && chr16;
 			sh_on  <= 1'b1;
 			mc_phase <= 1'b0;
 		end
@@ -562,7 +673,7 @@ always_ff @(posedge clk) begin
 			// one graphics pixel elapsed (every 640-pixel in 80 column mode,
 			// every second one in 40 column mode)
 			sh_gfx <= {sh_gfx[6:0], 1'b0};
-			for (int i = 0; i < 8; i++) sh_bp[i] <= {sh_bp[i][6:0], 1'b0};
+			if (bpm) for (int i = 0; i < 8; i++) sh_bp[i] <= {sh_bp[i][6:0], 1'b0};
 			mc_phase <= ~mc_phase;
 			if (!mc_phase) mc_bits <= sh_gfx[7:6];
 		end
@@ -570,28 +681,37 @@ always_ff @(posedge clk) begin
 end
 
 // ------------------------------------------------------------------ sprites
-// Line buffer approach: sprite data for the next raster line is fetched during
-// horizontal blanking, then shifted out against the X counter.
+// The data for the next raster line is fetched during horizontal blanking,
+// then shifted out against the X counter.  Besides the VIC-II formats this
+// handles the VIC-IV 16-colour sprites (16 pixels of 4 bits, 8 bytes per row),
+// 64 pixel wide sprites and the programmable sprite height.
 logic  [7:0] spr_active;
-logic  [5:0] spr_row [8];
+logic  [7:0] spr_row [8];
 logic  [7:0] spr_yflop;
-logic [23:0] spr_data [8];
-logic [23:0] spr_sh [8];
+logic [63:0] spr_data [8];     // one row, left-most pixel in the top bits
+logic [63:0] spr_sh [8];
 logic  [7:0] spr_shifting;
 logic  [7:0] spr_xflop, spr_mcflop;
+logic  [5:0] spr_left [8];     // pixels still to come after the current one
 logic  [1:0] spr_pix [8];
+logic  [3:0] spr_pix16 [8];
 logic  [7:0] spr_ptr;
 
-// fetch FSM: runs after the main fetch finished (hblank), 6 steps per sprite
+wire [7:0] spr_wide = (spr16 | sprx64) & {8{vic4_mode}};     // 8 bytes per row
+wire [7:0] spr_c16  = spr16 & {8{vic4_mode}};
+
+// fetch FSM: runs in horizontal blanking, up to 13 steps per sprite
 logic  [2:0] sf_n;
-logic  [2:0] sf_step;
+logic  [3:0] sf_step;
 logic        sf_run;
 logic [18:0] spr_vaddr;
 logic        spr_bus;       // sprite fetch owns vaddr
 
-wire [15:0] spr_ptr_addr = (h640 ? {vic_bank, vm[3:1], 11'h7F8} : {vic_bank, vm, 10'h3F8}) + {13'd0, sf_n};
+wire [15:0] spr_ptr_addr  = (h640 ? {vic_bank, vm[3:1], 11'h7F8} : {vic_bank, vm, 10'h3F8}) + {13'd0, sf_n};
 wire [18:0] spr_ptr_addr4 = sprptr_adr[18:0] + {15'd0, sf_n, 1'b0};
-wire [18:0] spr_row_ofs   = {13'd0, spr_row[sf_n] * 6'd3};
+wire  [7:0] sf_row        = spr_row[sf_n];
+wire [18:0] spr_row_ofs   = spr_wide[sf_n] ? {8'd0, sf_row, 3'd0} : {9'd0, {sf_row, 1'b0} + {1'b0, sf_row}};
+wire  [3:0] sf_last       = spr_wide[sf_n] ? 4'd12 : 4'd7;
 
 always_ff @(posedge clk) begin
 	if (reset) begin
@@ -604,8 +724,8 @@ always_ff @(posedge clk) begin
 			for (int i = 0; i < 8; i++) begin
 				if (spr_active[i]) begin
 					if (!spr_yexp[i] || spr_yflop[i]) begin
-						if (spr_row[i] == 6'd20) spr_active[i] <= 1'b0;
-						else spr_row[i] <= spr_row[i] + 6'd1;
+						if (spr_row[i] == ((sprhgten[i] && vic4_mode) ? sprhght - 8'd1 : 8'd20)) spr_active[i] <= 1'b0;
+						else spr_row[i] <= spr_row[i] + 8'd1;
 					end
 					spr_yflop[i] <= ~spr_yflop[i];
 				end
@@ -619,21 +739,23 @@ always_ff @(posedge clk) begin
 			sf_run <= 1'b1; sf_n <= '0; sf_step <= '0; spr_bus <= 1'b1;
 		end
 		else if (sf_run) begin
-			sf_step <= sf_step + 3'd1;
+			sf_step <= sf_step + 4'd1;
+			// address at step n, data two steps later
 			case (sf_step)
-				3'd0: spr_vaddr <= sprptr16 ? spr_ptr_addr4 : {3'b000, spr_ptr_addr};
-				3'd1: spr_vaddr <= spr_vaddr + 19'd1;                   // high pointer byte (16-bit pointers)
-				3'd2: spr_ptr <= vram_q;
-				3'd3: spr_vaddr <= (sprptr16 ? {vram_q[4:0], spr_ptr, 6'd0} : {3'b000, vic_bank, spr_ptr, 6'd0}) + spr_row_ofs;
-				3'd4: spr_vaddr <= spr_vaddr + 19'd1;
-				3'd5: begin spr_data[sf_n][23:16] <= vram_q; spr_vaddr <= spr_vaddr + 19'd1; end
-				3'd6: spr_data[sf_n][15:8] <= vram_q;
-				3'd7: begin
-					spr_data[sf_n][7:0] <= vram_q;
-					if (sf_n == 3'd7) begin sf_run <= 1'b0; spr_bus <= 1'b0; end
-					else sf_n <= sf_n + 3'd1;
-				end
+				4'd0: spr_vaddr <= sprptr16 ? spr_ptr_addr4 : {3'b000, spr_ptr_addr};
+				4'd1: spr_vaddr <= spr_vaddr + 19'd1;                   // high pointer byte (16-bit pointers)
+				4'd2: spr_ptr <= vram_q;
+				4'd3: spr_vaddr <= (sprptr16 ? {vram_q[4:0], spr_ptr, 6'd0} : {3'b000, vic_bank, spr_ptr, 6'd0}) + spr_row_ofs;
+				default: spr_vaddr <= spr_vaddr + 19'd1;
 			endcase
+			if (sf_step >= 4'd5 && sf_step <= 4'd12)
+				spr_data[sf_n][(4'd12 - sf_step) * 8 +: 8] <= vram_q;      // byte 0 lands in [63:56]
+			if (sf_step == 4'd5 && !spr_wide[sf_n]) spr_data[sf_n][39:0] <= '0;
+			if (sf_step == sf_last) begin
+				sf_step <= '0;
+				if (sf_n == 3'd7) begin sf_run <= 1'b0; spr_bus <= 1'b0; end
+				else sf_n <= sf_n + 3'd1;
+			end
 		end
 	end
 end
@@ -652,19 +774,29 @@ always_ff @(posedge clk) begin
 			end
 			else if (spr_active[i] && !spr_shifting[i] && x[8:0] == spr_x[i] && x < 10'd512) begin
 				spr_shifting[i] <= 1'b1;
-				spr_sh[i]    <= spr_data[i];
-				spr_xflop[i] <= 1'b0;
+				spr_sh[i]     <= spr_data[i];
+				spr_xflop[i]  <= 1'b0;
 				spr_mcflop[i] <= 1'b0;
-				spr_pix[i] <= spr_mc[i] ? spr_data[i][23:22] : {spr_data[i][23], 1'b0};
+				spr_left[i]   <= spr_c16[i] ? 6'd15 : (sprx64[i] && vic4_mode) ? 6'd63 : 6'd23;
+				spr_pix[i]    <= spr_mc[i] ? spr_data[i][63:62] : {spr_data[i][63], 1'b0};
+				spr_pix16[i]  <= spr_data[i][63:60];
 			end
 			else if (spr_shifting[i]) begin
 				if (!spr_xexp[i] || spr_xflop[i]) begin
-					spr_sh[i] <= {spr_sh[i][22:0], 1'b0};
-					spr_mcflop[i] <= ~spr_mcflop[i];
-					if (spr_mc[i]) begin
-						if (spr_mcflop[i]) spr_pix[i] <= spr_sh[i][22:21];
+					if (spr_left[i] == 6'd0) spr_shifting[i] <= 1'b0;
+					spr_left[i] <= spr_left[i] - 6'd1;
+					if (spr_c16[i]) begin
+						spr_sh[i]    <= {spr_sh[i][59:0], 4'd0};
+						spr_pix16[i] <= spr_sh[i][59:56];
 					end
-					else spr_pix[i] <= {spr_sh[i][22], 1'b0};
+					else begin
+						spr_sh[i] <= {spr_sh[i][62:0], 1'b0};
+						spr_mcflop[i] <= ~spr_mcflop[i];
+						if (spr_mc[i]) begin
+							if (spr_mcflop[i]) spr_pix[i] <= spr_sh[i][62:61];
+						end
+						else spr_pix[i] <= {spr_sh[i][62], 1'b0};
+					end
 				end
 				spr_xflop[i] <= ~spr_xflop[i];
 			end
@@ -677,16 +809,21 @@ logic [7:0] spr_idx;
 logic [7:0] spr_hit;
 always_comb begin
 	spr_any = 1'b0; spr_front = 1'b0; spr_idx = 8'd0;
-	for (int i = 0; i < 8; i++) spr_hit[i] = spr_shifting[i] && (spr_pix[i] != 2'b00);
+	// a 16-colour pixel is transparent when it equals the sprite's colour register
+	for (int i = 0; i < 8; i++)
+		spr_hit[i] = spr_shifting[i] && (spr_c16[i] ? (spr_pix16[i] != spr_col[i][3:0]) : (spr_pix[i] != 2'b00));
 	for (int i = 7; i >= 0; i--) begin
 		if (spr_hit[i]) begin
 			spr_any   = 1'b1;
 			spr_front = ~spr_pri[i];
-			case (spr_pix[i])
-				2'b01:   spr_idx = spr_mc0;
-				2'b11:   spr_idx = spr_mc1;
-				default: spr_idx = spr_col[i];
-			endcase
+			if (spr_c16[i]) spr_idx = {4'd0, spr_pix16[i]};
+			else begin
+				case (spr_pix[i])
+					2'b01:   spr_idx = spr_mc0;
+					2'b11:   spr_idx = spr_mc1;
+					default: spr_idx = spr_col[i];
+				endcase
+			end
 		end
 	end
 end
