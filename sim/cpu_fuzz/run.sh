@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fuzz cpu4510.sv against the Python reference model.
-# usage: run.sh [seeds=20] [instructions=200000]
+# usage: run.sh [seeds=20] [instructions=200000] [gs]   (gs = 45GS02 prefixes enabled)
 set -e
 cd "$(dirname "$0")"
 OSS=${OSS:-/c/Users/jnngi/Downloads/oss-cad-suite}
@@ -12,8 +12,8 @@ grep -E '%(Warning|Error)' $B/verilator.log | sort | uniq -c | head -20 || true
 zig c++ -O2 -std=c++17 -I $B/obj -I $VI -I $VI/vltstd tb.cpp $B/obj/*.cpp $VI/verilated.cpp $VI/verilated_threads.cpp -o $B/tb.exe
 fail=0
 for seed in $(seq 1 ${1:-20}); do
-	python -I ref_trace.py $seed ${2:-200000} $B/mem.bin $B/ref.txt
-	$B/tb.exe $B/mem.bin $B/rtl.txt ${2:-200000}
+	python -I ref_trace.py $seed ${2:-200000} $B/mem.bin $B/ref.txt $3
+	$B/tb.exe $B/mem.bin $B/rtl.txt ${2:-200000} $3
 	if cmp -s $B/ref.txt $B/rtl.txt; then echo "seed $seed: PASS"; else
 		echo "seed $seed: FAIL"; fail=1
 		python -I - $B <<'PY'

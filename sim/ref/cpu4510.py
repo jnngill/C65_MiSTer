@@ -21,8 +21,12 @@ def s16(v):
 
 
 class CPU4510:
-    def __init__(self, read, write):
+    def __init__(self, read, write, gs=False, read_far=None, write_far=None):
         self.rd_phys, self.wr_phys = read, write
+        self.gs = gs                      # 45GS02 prefixes (NEG NEG = Q, EOM = far pointer)
+        self.rd_far, self.wr_far = read_far, write_far
+        self.negc = 0
+        self.far = False
         self.a = self.x = self.y = self.z = self.b = 0
         self.sp = 0x01FF
         self.p = FE | FI
@@ -66,7 +70,7 @@ class CPU4510:
         return self.rd(self.sp)
 
     def reset(self):
-        self.__init__(self.rd_phys, self.wr_phys)
+        self.__init__(self.rd_phys, self.wr_phys, self.gs, self.rd_far, self.wr_far)
         self.pc = self.rd(0xFFFC) | (self.rd(0xFFFD) << 8)
 
     # ---- flags / alu --------------------------------------------------
@@ -148,10 +152,81 @@ class CPU4510:
         self.p = (self.p | FI) & ~FD
         self.pc = self.rd(vector) | (self.rd(vector + 1) << 8)
 
+    # ---- 45GS02 helpers ------------------------------------------------
+    def getq(self):
+        return self.a | (self.x << 8) | (self.y << 16) | (self.z << 24)
+
+    def setq(self, v):
+        v &= 0xFFFFFFFF
+        self.a, self.x, self.y, self.z = v & 255, (v >> 8) & 255, (v >> 16) & 255, v >> 24
+        self.setf(FN, v & 0x80000000)
+        self.setf(FZ, v == 0)
+        return v
+
+    def rmw32(self, ins, m):
+        c = self.p & 1
+        if ins == "ASL":
+            self.setf(FC, m & 0x80000000); r = m << 1
+        elif ins == "ROL":
+            self.setf(FC, m & 0x80000000); r = (m << 1) | c
+        elif ins == "LSR":
+            self.setf(FC, m & 1); r = m >> 1
+        elif ins == "ROR":
+            self.setf(FC, m & 1); r = (m >> 1) | (c << 31)
+        elif ins == "ASR":
+            self.setf(FC, m & 1); r = (m >> 1) | (m & 0x80000000)
+        elif ins == "INC":
+            r = m + 1
+        elif ins == "DEC":
+            r = m - 1
+        else:
+            r = -m
+        return r & 0xFFFFFFFF
+
+    def ea_rd(self, ea, i=0):
+        if isinstance(ea, tuple):
+            return self.rd_far((ea[1] + i) & 0xFFFFFFF)
+        return self.rd(ea + i)
+
+    def ea_wr(self, ea, v, i=0):
+        if isinstance(ea, tuple):
+            self.wr_far((ea[1] + i) & 0xFFFFFFF, v & 0xFF)
+        else:
+            self.wr(ea + i, v)
+
     # ---- one instruction ----------------------------------------------
     def step(self):
         op = self.fetch()
         ins, mode = INS[op], MODE[op]
+
+        # prefix handling: they apply to the next instruction only
+        q = self.gs and self.negc == 2
+        far = self.gs and self.far
+        if ins == "NEG":
+            self.far = False
+            if q:
+                self.negc = 0
+                self.setq(self.rmw32("NEG", self.getq()))
+            else:
+                self.a = self.nz(-self.a)
+                if self.gs:
+                    self.negc += 1
+            return
+        if ins == "EOM":
+            self.inhibit = False
+            if self.gs:
+                self.far = True
+                self.negc = 2 if self.negc == 2 else 0
+            return
+        self.negc = 0
+        self.far = False
+
+        Q_ALU = ("BIT", "LDA", "CMP", "ADC", "SBC", "ORA", "EOR", "AND")
+        Q_RMW = ("INC", "DEC", "ASL", "ROL", "LSR", "ROR", "ASR")
+        if q and mode == "IMPL" and ins in Q_RMW:
+            self.setq(self.rmw32(ins, self.getq()))
+            return
+        qmem = q and mode not in ("IMPL", "IMM") and (ins in Q_ALU or ins in Q_RMW or ins == "STA")
         zp = lambda v: (self.b << 8) | (v & 0xFF)
         ea = None
         imm = None
@@ -178,6 +253,11 @@ class CPU4510:
                 ea = (ea + self.y) & 0xFFFF
             if mode in ("IND16", "IND16X"):
                 ea = self.rd(ea) | (self.rd(ea + 1) << 8)
+        elif mode == "INDZ" and far:
+            base = zp(self.fetch())
+            ptr = sum(self.rd(base + i) << (8 * i) for i in range(4))
+            zoff = 0 if (qmem and ins != "LDA") else self.z
+            ea = ("far", (ptr + zoff) & 0xFFFFFFF)
         elif mode in ("INDX", "INDY", "INDZ"):
             n = self.fetch()
             if mode == "INDX":
@@ -185,7 +265,7 @@ class CPU4510:
             ea = self.rd(zp(n)) | (self.rd(zp(n + 1)) << 8)
             if mode == "INDY":
                 ea = (ea + self.y) & 0xFFFF
-            elif mode == "INDZ":
+            elif mode == "INDZ" and not (qmem and ins != "LDA"):
                 ea = (ea + self.z) & 0xFFFF
         elif mode == "INDSPY":
             ptr = self.sp + self.fetch()
@@ -200,7 +280,51 @@ class CPU4510:
         elif mode == "ZPREL":
             ea = zp(self.fetch())
 
-        operand = lambda: imm if mode == "IMM" else self.rd(ea)
+        if qmem:
+            if ins == "STA":
+                v = self.getq()
+                for i in range(4):
+                    self.ea_wr(ea, v >> (8 * i), i)
+                return
+            m = sum(self.ea_rd(ea, i) << (8 * i) for i in range(4))
+            qv = self.getq()
+            if ins in Q_RMW:
+                r = self.rmw32(ins, m)
+                self.setf(FN, r & 0x80000000)
+                self.setf(FZ, r == 0)
+                for i in range(4):
+                    self.ea_wr(ea, r >> (8 * i), i)
+            elif ins == "LDA":
+                self.setq(m)
+            elif ins == "ORA":
+                self.setq(qv | m)
+            elif ins == "AND":
+                self.setq(qv & m)
+            elif ins == "EOR":
+                self.setq(qv ^ m)
+            elif ins == "ADC":
+                r = qv + m + (self.p & 1)
+                self.setf(FC, r > 0xFFFFFFFF)
+                self.setf(FV, ~(qv ^ m) & (qv ^ r) & 0x80000000)
+                self.setq(r)
+            elif ins == "SBC":
+                r = qv - m - (1 - (self.p & 1))
+                self.setf(FC, r >= 0)
+                self.setf(FV, (qv ^ m) & (qv ^ r) & 0x80000000)
+                self.setq(r)
+            elif ins == "CMP":
+                r = qv - m
+                self.setf(FC, r >= 0)
+                self.setf(FN, r & 0x80000000)
+                self.setf(FZ, (r & 0xFFFFFFFF) == 0)
+            else:   # BITQ
+                self.setf(FZ, (qv & m) == 0)
+                self.setf(FN, m & 0x80000000)
+                self.setf(FV, m & 0x40000000)
+            self.p &= 0xFF
+            return
+
+        operand = lambda: imm if mode == "IMM" else self.ea_rd(ea)
 
         if ins in ("ORA", "AND", "EOR"):
             m = operand()
@@ -231,7 +355,7 @@ class CPU4510:
             if mode != "IMM":
                 self.p = (self.p & 0x3F) | (m & 0xC0)
         elif ins == "STA":
-            self.wr(ea, self.a)
+            self.ea_wr(ea, self.a)
         elif ins == "STX":
             self.wr(ea, self.x)
         elif ins == "STY":
@@ -322,8 +446,6 @@ class CPU4510:
         elif ins == "PLP":
             v = self.pull()
             self.p = (self.p & (FE | FB)) | (v & ~(FE | FB) & 0xFF)
-        elif ins == "NEG":
-            self.a = self.nz(-self.a)
         elif ins == "INX":
             self.x = self.nz(self.x + 1)
         elif ins == "INY":
@@ -383,8 +505,6 @@ class CPU4510:
             self.map_hi = self.y | ((self.z & 15) << 8)
             self.map_en = (self.x >> 4) | (self.z & 0xF0)
             self.inhibit = True
-        elif ins == "EOM":
-            self.inhibit = False
         else:
             raise ValueError("unhandled %s %02X" % (ins, op))
         self.p &= 0xFF

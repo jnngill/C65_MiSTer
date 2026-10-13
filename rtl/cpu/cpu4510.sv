@@ -1,5 +1,10 @@
 // CSG 4510 CPU core (65CE02 + MAP) for the C65 MiSTer core.
 //
+// With gs=1 the 45GS02 (MEGA65) prefixes used by MEGA65 ROMs are decoded:
+//   NEG NEG <op>      32-bit operation on Q = {Z,Y,X,A}
+//   EOM <op (nn),Z>   32-bit pointer at nn: [nn],Z far addressing (28 bit)
+//   NEG NEG EOM <op>  both
+//
 // Bus protocol: addr/paddr/dout/we are combinational from the CPU state and
 // stay stable for the whole CPU cycle; the cycle ends on a clk edge with ce=1,
 // at which point din must hold the read data.  Instruction-accurate, not
@@ -11,7 +16,10 @@ module cpu4510 (
 	input  logic        ce,
 	input  logic        irq_n,
 	input  logic        nmi_n,
+	input  logic        gs,       // enable 45GS02 prefix instructions
 
+	output logic        far_sel,  // access uses far_addr (flat 28 bit) instead of addr/paddr
+	output logic [27:0] far_addr,
 	output logic [15:0] addr,     // CPU (virtual) address
 	output logic [19:0] paddr,    // address after MAP translation
 	output logic        mapped,   // paddr comes from a MAPped block
@@ -28,7 +36,7 @@ module cpu4510 (
 `include "cpu4510_tables.svh"
 
 typedef enum logic [4:0] {
-	S_VECLO, S_VECHI, S_FETCH, S_OP1, S_OP2, S_PTRLO, S_PTRHI,
+	S_VECLO, S_VECHI, S_FETCH, S_OP1, S_OP2, S_PTRLO, S_PTRHI, S_PTR2, S_PTR3,
 	S_READ, S_READ2, S_WRITE, S_WRITE2, S_BBREL,
 	S_PUSH_PCH, S_PUSH_PCL, S_PUSH_P, S_PUSH_REG, S_PUSH_WLO, S_PUSH_WHI,
 	S_PULL_REG, S_PULL_P, S_PULL_PCL, S_PULL_PCH
@@ -44,6 +52,16 @@ logic  [7:0] IR, lo, data, datah;
 logic [15:0] ea, ptr, vec;
 logic  [1:0] intr;
 logic        nmi_d, nmi_pend;
+
+// 45GS02 prefix state
+logic  [1:0] neg_cnt;     // consecutive NEGs seen (2 = next instruction works on Q)
+logic        far_pfx;     // EOM seen: next (nn),Z instruction uses a 32-bit pointer
+logic        q_op, far_op;   // latched for the instruction being executed
+logic        ea_far;
+logic [27:0] fea;
+logic  [7:0] fp1, fp2;
+logic [31:0] val32;
+logic  [1:0] qi;
 
 // RTS #nn: the immediate is latched into lo at S_OP1, but lo is reused for
 // PCL during the pulls, so keep a private copy.
@@ -70,12 +88,21 @@ wire is_alurd = (ins == I_ORA) || (ins == I_AND) || (ins == I_EOR) || (ins == I_
 wire is_word  = (ins == I_INW) || (ins == I_DEW) || (ins == I_ASW) || (ins == I_ROW);
 wire is_zpptr = (mode == M_INDX) || (mode == M_INDY) || (mode == M_INDZ);
 
+wire is_q_alu = (ins == I_BIT) || (ins == I_LDA) || (ins == I_CMP) || (ins == I_ADC) || (ins == I_SBC) ||
+                (ins == I_ORA) || (ins == I_EOR) || (ins == I_AND);
+wire is_q_rmw = (ins == I_INC) || (ins == I_DEC) || (ins == I_ASL) || (ins == I_ROL) || (ins == I_LSR) ||
+                (ins == I_ROR) || (ins == I_ASR);
+wire qmem     = q_op && (is_q_alu || is_q_rmw || (ins == I_STA));
+wire far_ptr  = far_op && (mode == M_INDZ);
+wire q_now    = gs && (neg_cnt == 2'd2);
+wire [31:0] Q = {Z, Y, X, A};
+
 wire [7:0] P = {fN, fV, fE, 1'b0, fD, fI, fZ, fC};
 
 wire [15:0] sp_dec = fE ? {SP[15:8], SP[7:0] - 8'd1} : SP - 16'd1;
 wire [15:0] sp_inc = fE ? {SP[15:8], SP[7:0] + 8'd1} : SP + 16'd1;
 
-wire take_int = (nmi_pend || (!irq_n && !fI)) && !map_inhibit;
+wire take_int = (nmi_pend || (!irq_n && !fI)) && !map_inhibit && (neg_cnt == 2'd0) && !far_pfx;
 
 logic branch_cond;
 always_comb begin
@@ -126,7 +153,12 @@ always_comb begin
 		S_VECHI:              addr = vec | 16'd1;
 		S_PTRLO, S_PTRHI:     addr = ptr;
 		S_READ, S_READ2:      addr = ea;
-		S_WRITE:    begin addr = ea; we = 1'b1; dout = is_store ? store_reg : data; end
+		S_PTR2, S_PTR3:       addr = ptr;
+		S_WRITE:    begin
+			addr = ea; we = 1'b1;
+			if (qmem) dout = (ins == I_STA) ? Q[qi*8 +: 8] : val32[qi*8 +: 8];
+			else      dout = is_store ? store_reg : data;
+		end
 		S_WRITE2:   begin addr = ea; we = 1'b1; dout = datah; end
 		S_PUSH_PCH: begin addr = SP; we = 1'b1; dout = PC[15:8]; end
 		S_PUSH_PCL: begin addr = SP; we = 1'b1; dout = PC[7:0]; end
@@ -143,6 +175,8 @@ wire [11:0] map_off = addr[15] ? map_hi : map_lo;
 assign mapped = map_en[addr[15:13]];
 assign paddr  = mapped ? ({4'd0, addr} + {map_off, 8'd0}) : {4'd0, addr};
 assign sync   = (state == S_FETCH) && !take_int;
+assign far_sel  = ea_far && (state == S_READ || state == S_READ2 || state == S_WRITE || state == S_WRITE2);
+assign far_addr = fea;
 
 assign dbg_pc = PC;
 assign dbg_a  = A;
@@ -232,7 +266,62 @@ always_comb begin
 	endcase
 end
 
+// 32-bit (Q register) units.  m32 is the memory operand being assembled.
+wire [31:0] m32 = {din, val32[31:8]};
+
+ins_t        q_ins;
+assign       q_ins = (state == S_FETCH) ? f_ins : ins;
+wire  [31:0] q_in  = (state == S_FETCH) ? Q : m32;
+logic [31:0] q_res;
+logic        q_c, q_setc;
+always_comb begin
+	q_res = q_in; q_c = fC; q_setc = 1'b0;
+	case (q_ins)
+		I_ASL: begin q_res = {q_in[30:0], 1'b0};      q_c = q_in[31]; q_setc = 1'b1; end
+		I_ROL: begin q_res = {q_in[30:0], fC};        q_c = q_in[31]; q_setc = 1'b1; end
+		I_LSR: begin q_res = {1'b0, q_in[31:1]};      q_c = q_in[0];  q_setc = 1'b1; end
+		I_ROR: begin q_res = {fC, q_in[31:1]};        q_c = q_in[0];  q_setc = 1'b1; end
+		I_ASR: begin q_res = {q_in[31], q_in[31:1]};  q_c = q_in[0];  q_setc = 1'b1; end
+		I_INC: q_res = q_in + 32'd1;
+		I_DEC: q_res = q_in - 32'd1;
+		I_NEG: q_res = 32'd0 - q_in;
+		default: ;
+	endcase
+end
+
+wire [32:0] q_add = {1'b0, Q} + {1'b0, m32} + {32'd0, fC};
+wire [32:0] q_sub = {1'b0, Q} - {1'b0, m32} - {32'd0, ~fC};
+wire [32:0] q_cmp = {1'b0, Q} - {1'b0, m32};
+
 // ---------------------------------------------------------------- tasks
+task automatic set_q(input logic [31:0] v);
+	{Z, Y, X, A} <= v;
+	fN <= v[31];
+	fZ <= (v == 32'd0);
+endtask
+
+task automatic exec_q_alu;
+	case (ins)
+		I_LDA: set_q(m32);
+		I_ORA: set_q(Q | m32);
+		I_AND: set_q(Q & m32);
+		I_EOR: set_q(Q ^ m32);
+		I_ADC: begin set_q(q_add[31:0]); fC <= q_add[32];
+		             fV <= (Q[31] ^ q_add[31]) & ~(Q[31] ^ m32[31]); end
+		I_SBC: begin set_q(q_sub[31:0]); fC <= ~q_sub[32];
+		             fV <= (Q[31] ^ q_sub[31]) & (Q[31] ^ m32[31]); end
+		I_CMP: begin fN <= q_cmp[31]; fZ <= (q_cmp[31:0] == 32'd0); fC <= ~q_cmp[32]; end
+		default: begin   // BITQ
+			fZ <= ((Q & m32) == 32'd0); fN <= m32[31]; fV <= m32[30];
+		end
+	endcase
+endtask
+
+task automatic ea_step(input logic back3);
+	if (ea_far) fea <= back3 ? fea - 28'd3 : fea + 28'd1;
+	else        ea  <= back3 ? ea - 16'd3  : ea + 16'd1;
+endtask
+
 task automatic set_nz(input logic [7:0] v);
 	fN <= v[7];
 	fZ <= (v == 8'd0);
@@ -297,6 +386,7 @@ always_ff @(posedge clk) begin
 		nmi_d <= 1'b1;
 		map_lo <= '0; map_hi <= '0; map_en <= '0;
 		map_inhibit <= 1'b0;
+		neg_cnt <= '0; far_pfx <= 1'b0; q_op <= 1'b0; far_op <= 1'b0; ea_far <= 1'b0; qi <= '0;
 	end
 	else if (ce) begin
 		case (state)
@@ -313,6 +403,13 @@ always_ff @(posedge clk) begin
 				IR <= din;
 				PC <= PC + 16'd1;
 				state <= S_OP1;
+				// prefixes apply to this instruction only
+				q_op    <= q_now;
+				far_op  <= gs && far_pfx;
+				neg_cnt <= '0;
+				far_pfx <= 1'b0;
+				ea_far  <= 1'b0;
+				qi      <= '0;
 				if (f_mode == M_IMPL) begin
 					state <= S_FETCH;
 					case (f_ins)
@@ -322,9 +419,16 @@ always_ff @(posedge clk) begin
 						I_PLP, I_RTI:                      state <= S_PULL_P;
 						I_RTS:                             state <= S_PULL_PCL;
 						I_ASL, I_ROL, I_LSR, I_ROR, I_ASR, I_INC, I_DEC, I_NEG: begin
-							A <= rmw_res;
-							set_nz(rmw_res);
-							if (rmw_setc) fC <= rmw_c;
+							if (q_now) begin
+								set_q(q_res);
+								if (q_setc) fC <= q_c;
+							end
+							else begin
+								A <= rmw_res;
+								set_nz(rmw_res);
+								if (rmw_setc) fC <= rmw_c;
+								if (gs && f_ins == I_NEG) neg_cnt <= neg_cnt + 2'd1;
+							end
 						end
 						I_INX: begin X <= X + 8'd1; set_nz(X + 8'd1); end
 						I_INY: begin Y <= Y + 8'd1; set_nz(Y + 8'd1); end
@@ -359,7 +463,13 @@ always_ff @(posedge clk) begin
 							map_en <= {Z[7:4], X[7:4]};
 							map_inhibit <= 1'b1;
 						end
-						I_EOM: map_inhibit <= 1'b0;
+						I_EOM: begin
+							map_inhibit <= 1'b0;
+							if (gs) begin
+								far_pfx <= 1'b1;
+								if (neg_cnt == 2'd2) neg_cnt <= 2'd2;
+							end
+						end
 						default: ;
 					endcase
 				end
@@ -418,14 +528,28 @@ always_ff @(posedge clk) begin
 
 		S_PTRLO: begin
 			lo  <= din;
-			ptr <= is_zpptr ? {ptr[15:8], ptr[7:0] + 8'd1} : ptr + 16'd1;
+			ptr <= (is_zpptr && !far_ptr) ? {ptr[15:8], ptr[7:0] + 8'd1} : ptr + 16'd1;
 			state <= S_PTRHI;
+		end
+
+		S_PTR2: begin fp2 <= din; ptr <= ptr + 16'd1; state <= S_PTR3; end
+		S_PTR3: begin
+			// Q operations other than LDQ do not index with Z (Z is part of Q)
+			fea    <= {din[3:0], fp2, fp1, lo} + ((qmem && ins != I_LDA) ? 28'd0 : {20'd0, Z});
+			ea_far <= 1'b1;
+			goto_access();
 		end
 
 		S_PTRHI: begin
 			case (mode)
 				M_INDX:   begin ea <= w;               goto_access(); end
-				M_INDZ:   begin ea <= w + {8'd0, Z};   goto_access(); end
+				M_INDZ: begin
+					if (far_ptr) begin fp1 <= din; ptr <= ptr + 16'd1; state <= S_PTR2; end
+					else begin
+						ea <= w + ((qmem && ins != I_LDA) ? 16'd0 : {8'd0, Z});
+						goto_access();
+					end
+				end
 				M_INDY,
 				M_INDSPY: begin ea <= w + {8'd0, Y};   goto_access(); end
 				default: begin   // (nnnn) / (nnnn,X)
@@ -437,6 +561,20 @@ always_ff @(posedge clk) begin
 
 		S_READ: begin
 			if (mode == M_ZPREL) begin data <= din; state <= S_BBREL; end
+			else if (qmem) begin
+				val32 <= m32;
+				qi    <= qi + 2'd1;
+				if (qi != 2'd3) ea_step(1'b0);
+				else if (is_q_alu) begin exec_q_alu(); state <= S_FETCH; end
+				else begin
+					val32 <= q_res;
+					fN <= q_res[31];
+					fZ <= (q_res == 32'd0);
+					if (q_setc) fC <= q_c;
+					ea_step(1'b1);
+					state <= S_WRITE;
+				end
+			end
 			else if (is_alurd) begin exec_alu(din, 1'b0); state <= S_FETCH; end
 			else if (is_word || ins == I_PHW) begin
 				lo <= din; ea <= ea + 16'd1; state <= S_READ2;
@@ -464,7 +602,12 @@ always_ff @(posedge clk) begin
 		end
 
 		S_WRITE: begin
-			if (is_word) begin ea <= ea + 16'd1; state <= S_WRITE2; end
+			if (qmem) begin
+				qi <= qi + 2'd1;
+				ea_step(1'b0);
+				if (qi == 2'd3) state <= S_FETCH;
+			end
+			else if (is_word) begin ea <= ea + 16'd1; state <= S_WRITE2; end
 			else state <= S_FETCH;
 		end
 

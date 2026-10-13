@@ -59,12 +59,16 @@ wire   phi2_n = (ph == 5'd31);
 logic [15:0] cpu_addr;
 logic [19:0] cpu_paddr;
 logic        cpu_mapped, cpu_we, cpu_ce;
+logic        cpu_far;
+logic [27:0] cpu_faddr;
+logic        gs_mode;              // MEGA65 (VIC-IV) I/O was unlocked: 45GS02 extensions on
 logic  [7:0] cpu_dout, bus_din;
 logic        irq_n, nmi_n;
 
 cpu4510 cpu (
 	.clk(clk), .reset(reset), .ce(cpu_ce),
-	.irq_n(irq_n), .nmi_n(nmi_n),
+	.irq_n(irq_n), .nmi_n(nmi_n), .gs(gs_mode),
+	.far_sel(cpu_far), .far_addr(cpu_faddr),
 	.addr(cpu_addr), .paddr(cpu_paddr), .mapped(cpu_mapped),
 	.dout(cpu_dout), .we(cpu_we), .din(bus_din),
 	.sync(dbg_sync),
@@ -107,10 +111,18 @@ always_comb begin
 	logic [19:0] pa;
 	sel_ram = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
 	mem_addr = '0;
-	io_addr  = dma_busy ? dma_addr[11:0] : cpu_addr[11:0];
+	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
 	pa = dma_busy ? dma_addr : cpu_paddr;
 
-	if (dma_busy ? !dma_io : cpu_mapped) begin
+	if (!dma_busy && cpu_far) begin
+		// flat 28-bit access through a 45GS02 far pointer
+		mem_addr = cpu_faddr[16:0];
+		if (cpu_faddr[27:17] == 11'd0)              sel_ram = 1'b1;             // $0000000 chip RAM
+		else if (cpu_faddr[27:17] == 11'd1)         sel_rom = !cpu_we;          // $0020000 ROM
+		else if (cpu_faddr[27:11] == 17'h1FF00)     begin sel_ram = 1'b1; mem_addr = {6'b111111, cpu_faddr[10:0]}; end   // $FF80000 colour RAM
+		else if (cpu_faddr[27:12] == 16'hFFD3)      sel_io = 1'b1;              // $FFD3000 I/O
+	end
+	else if (dma_busy ? !dma_io : cpu_mapped) begin
 		// physical 1MB address space
 		mem_addr = pa[16:0];
 		if (pa[19:17] == 3'd0)      sel_ram = 1'b1;
@@ -140,14 +152,15 @@ always_comb begin
 			default: ;
 		endcase
 		// writes always land in the RAM underneath a ROM
-		if (cpu_we && sel_rom) begin sel_rom = 1'b0; sel_ram = 1'b1; mem_addr = {1'b0, cpu_addr}; end
+		if (cpu_we && sel_rom && !cpu_far) begin sel_rom = 1'b0; sel_ram = 1'b1; mem_addr = {1'b0, cpu_addr}; end
 	end
 end
 
 // I/O area decode
-logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2;
+logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2, io_math, io_hyp;
 always_comb begin
 	io_vic = 0; io_fdc = 0; io_pal = 0; io_sid = 0; io_uart = 0; io_dma = 0; io_cram = 0; io_cia1 = 0; io_cia2 = 0;
+	io_math = 0; io_hyp = 0;
 	if (sel_io) begin
 		case (io_addr[11:8])
 			4'h0: begin
@@ -156,8 +169,11 @@ always_comb begin
 			end
 			4'h1, 4'h2, 4'h3: if (vic3_mode) io_pal = 1'b1; else io_vic = 1'b1;
 			4'h4, 4'h5: io_sid = 1'b1;
-			4'h6: io_uart = 1'b1;
-			4'h7: io_dma = 1'b1;
+			4'h6: if (gs_mode && io_addr[7:6] == 2'b01) io_hyp = 1'b1; else io_uart = 1'b1;    // $D640-$D67F
+			4'h7: begin
+				if (gs_mode && (io_addr[7:0] == 8'h0F || io_addr[7:0] >= 8'h68)) io_math = 1'b1;
+				else io_dma = 1'b1;
+			end
 			4'h8, 4'h9, 4'hA, 4'hB: io_cram = 1'b1;
 			4'hC: if (ctrl_a[0]) io_cram = 1'b1; else io_cia1 = 1'b1;
 			4'hD: if (ctrl_a[0]) io_cram = 1'b1; else io_cia2 = 1'b1;
@@ -241,18 +257,20 @@ end
 logic [7:0] vic_dout, pal_dout;
 logic       vic_irq_n;
 logic [1:0] vic_bank;
-logic       key_a5;
+logic       key_a5, key_47;
 
 // VIC-II mode mirrors $D000-$D03F through $D3FF and hides registers $30+
 wire [6:0] vic_reg = vic3_mode ? io_addr[6:0] : {1'b0, io_addr[5:0]};
 
 // $D02F KEY register: $A5 then $96 selects VIC-III I/O mode
 always_ff @(posedge clk) begin
-	if (reset) begin vic3_mode <= 1'b0; key_a5 <= 1'b0; end
+	if (reset) begin vic3_mode <= 1'b0; key_a5 <= 1'b0; key_47 <= 1'b0; gs_mode <= 1'b0; end
 	else if (io_wr && io_vic && vic_reg == 7'h2F) begin
 		key_a5 <= (bus_dout == 8'hA5);
-		if (bus_dout == 8'h96 && key_a5) vic3_mode <= 1'b1;
-		else if (bus_dout != 8'hA5)      vic3_mode <= 1'b0;
+		key_47 <= (bus_dout == 8'h47);
+		if (bus_dout == 8'h96 && key_a5)      vic3_mode <= 1'b1;
+		else if (bus_dout == 8'h53 && key_47) begin vic3_mode <= 1'b1; gs_mode <= 1'b1; end   // MEGA65 key
+		else if (bus_dout != 8'hA5 && bus_dout != 8'h47) vic3_mode <= 1'b0;
 	end
 end
 
@@ -374,6 +392,29 @@ sid_top #(.MULTI_FILTERS(1), .DUAL(1)) sid (
 );
 `endif
 
+// ------------------------------------------------------------------ MEGA65 extras
+logic [7:0] math_dout;
+
+m65_math math (
+	.clk(clk), .reset(reset),
+	.reg_addr(io_addr[7:0]), .reg_we(io_wr && io_math), .reg_din(bus_dout), .reg_dout(math_dout)
+);
+
+`ifdef IO_DEBUG
+always @(posedge clk) begin
+	if (bus_ce && io_hyp)
+		$display("HYP  %s $D6%02x = %02x  PC=%04x A=%02x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc, dbg_a);
+	if (bus_ce && io_vic && vic_reg >= 7'h40)
+		$display("VIC4 %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
+	if (bus_ce && io_dma && io_addr[7:0] > 8'h03)
+		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
+	if (bus_ce && io_uart && io_addr[7:0] > 8'h0F)
+		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
+	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_rom && !sel_io)
+		$display("FAR  %s %07x = %02x  PC=%04x", bus_we ? "wr" : "rd", cpu_faddr, bus_dout, dbg_pc);
+end
+`endif
+
 // ------------------------------------------------------------------ read mux / interrupts
 logic [7:0] io_dout;
 always_comb begin
@@ -384,6 +425,8 @@ always_comb begin
 	else if (io_sid)  io_dout = sid_dout;
 	else if (io_uart) io_dout = uart_dout;
 	else if (io_dma)  io_dout = dma_reg_dout;
+	else if (io_math) io_dout = math_dout;
+	else if (io_hyp)  io_dout = 8'h00;
 	else if (io_cia1) io_dout = cia1_dout;
 	else if (io_cia2) io_dout = cia2_dout;
 end
