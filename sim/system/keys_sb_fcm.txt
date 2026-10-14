@@ -1,0 +1,5 @@
+110 fcm on:fcm cls 32:fcm chardef 200,1,"0102030405060708":fcm chardef 200,2,"0808070706060505"\r
+330 fcm text 3,3,200:v=rfcmtext(3,3):fcm add 1:fcm text 0,5,"abc":fcm add 0:u=rfcmtext(0,5)\r
+530 fcm putscr 0:fcm cls 32:w=rfcmtext(3,3):fcm getscr 0:x=rfcmtext(3,3)\r
+690 fcm save "fc":fcm chardef 200,1,"0000000000000000":fcm load "fc"\r
+870 print v;u;w;x\r
