@@ -1,0 +1,9 @@
+110 10 a=5:x=1:proc "dbl",7:print rproc(0);a;x;rlevel(0)\r
+220 20 proc "fac",5:print rproc(0):end\r
+300 100 defproc "dbl",a\r
+350 110 local x:x=99:print rlevel(0);a;x\r
+440 120 endproc a*2\r
+490 200 defproc "fac",n\r
+540 210 if n<2 then endproc 1\r
+610 220 proc "fac",n-1:endproc n*rproc(0)\r
+710 run\r

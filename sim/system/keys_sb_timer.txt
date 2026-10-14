@@ -1,0 +1,4 @@
+110 10 t=0:u=0:every 10,100:after 25,200:for i=1 to 30000:next:every 0:print t;u:end\r
+290 100 t=t+1:return\r
+340 200 u=u+1:return\r
+390 run\r
