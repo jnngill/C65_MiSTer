@@ -424,7 +424,14 @@ wire [11:0] cell_idx = row_base + {5'd0, f_col};
 logic [11:0] row_ofs;        // bytes from the start of the screen to this text row
 wire  [7:0]  col_ofs  = chr16 ? {f_col, 1'b0} : {1'b0, f_col};
 wire [18:0]  scr_addr = scrnptr[18:0] + {7'd0, row_ofs} + {11'd0, col_ofs};
-wire [18:0]  col_addr = 19'h1F800 + {3'd0, colptr} + {7'd0, row_ofs} + {11'd0, col_ofs};
+wire [15:0]  col_ofs16 = colptr + {4'd0, row_ofs} + {8'd0, col_ofs};
+// colour RAM: the first 2K are chip RAM $1F800, the next 4K ($FF80800-$FF817FF,
+// needed by 80 column full-colour screens) are seen at video address $60000
+function automatic [18:0] cram_vaddr(input logic [15:0] o);
+	cram_vaddr = (o < 16'h0800) ? 19'h1F800 + {8'd0, o[10:0]} : {3'b110, 4'd0, o[11:0] - 12'h800};
+endfunction
+wire [18:0]  col_addr  = cram_vaddr(col_ofs16);
+wire [18:0]  col_addr1 = cram_vaddr(col_ofs16 + 16'd1);
 
 // full-colour characters: 64 bytes each at character number * 64, one byte per pixel
 logic  [7:0] f_scr_hi, f_col0;
@@ -505,7 +512,7 @@ always_ff @(posedge clk) begin
 				4'd0: vaddr_gfx <= scr_addr;
 				4'd1: vaddr_gfx <= scr_addr + 19'd1;
 				4'd2: begin f_scr <= vram_q; vaddr_gfx <= col_addr; end
-				4'd3: begin f_scr_hi <= vram_q; vaddr_gfx <= col_addr + 19'd1; end
+				4'd3: begin f_scr_hi <= vram_q; vaddr_gfx <= col_addr1; end
 				4'd4: begin
 					f_col0 <= vram_q;
 					f_fcm  <= cell_fcm;

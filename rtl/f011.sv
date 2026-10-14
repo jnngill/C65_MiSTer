@@ -4,7 +4,9 @@
 //
 // Sector level emulation, buffered mode only (which is what the C65 DOS
 // uses): a read command fills the 512 byte sector buffer and the CPU then
-// drains it through $D087; a write command stores the buffer.
+// drains it through $D087; a write command stores the buffer.  A write
+// track command ($A0/$A1, used by HEADER to format) fills the 10 sectors of
+// the track under the head, on the side picked by control bit 3, with zeros.
 //
 //   block = track * 20 + (sector - 1) + (side ? 10 : 0)
 
@@ -60,12 +62,13 @@ logic [7:0] buf_q, buf_disk_q;
 wire        data_wr = reg_we && reg_addr == 5'd7;
 wire        data_rd = reg_re && reg_addr == 5'd7;
 
-assign sd_buff_din = buf_disk_q;
+assign sd_buff_din = (state == ST_FMT) ? 8'h00 : buf_disk_q;
 
 // ------------------------------------------------------------------ command execution
-typedef enum logic [2:0] { ST_IDLE, ST_DELAY, ST_READ, ST_WRITE, ST_FAIL } state_t;
+typedef enum logic [2:0] { ST_IDLE, ST_DELAY, ST_READ, ST_WRITE, ST_FAIL, ST_FMT } state_t;
 state_t state;
 logic   ack_seen;
+logic [3:0] fmt_n;
 
 dpram #(9, 8) sector_buf (
 	.clk(clk),
@@ -76,6 +79,8 @@ dpram #(9, 8) sector_buf (
 
 wire [10:0] block     = {4'd0, track[6:0]} * 11'd20 + {7'd0, sector[3:0]} - 11'd1 + (side[0] ? 11'd10 : 11'd0);
 wire        chs_valid = (track < 8'd80) && (sector >= 8'd1) && (sector <= 8'd10) && (side < 8'd2);
+// write track: control bit 3 set selects side 0
+wire [10:0] fmt_block = {4'd0, head} * 11'd20 + {7'd0, fmt_n} + (control[3] ? 11'd0 : 11'd10);
 
 always_ff @(posedge clk) begin
 	index_cnt <= index_cnt + 25'd1;
@@ -123,6 +128,14 @@ always_ff @(posedge clk) begin
 						end
 						if (disk_ok) dskchg <= 1'b0;
 						busy <= 1'b1; delay <= 16'd2000; state <= ST_DELAY;
+					end
+					else if (reg_din[7:5] == 3'b101) begin
+						// write track
+						busy <= 1'b1; fmt_n <= '0;
+						if (disk_ok && head < 7'd80 && !readonly) begin
+							sd_lba <= {21'd0, {4'd0, head} * 11'd20 + (control[3] ? 11'd0 : 11'd10)}; sd_wr <= 1'b1; ack_seen <= 1'b0; state <= ST_FMT;
+						end
+						else begin delay <= 16'd2000; state <= ST_FAIL; end
 					end
 					else if (reg_din[7]) begin
 						busy <= 1'b1;
@@ -174,6 +187,18 @@ always_ff @(posedge clk) begin
 					if (state == ST_READ) begin rdreq <= 1'b1; eq <= 1'b0; end
 					else wtreq <= 1'b1;
 					state <= ST_IDLE;
+				end
+			end
+			ST_FMT: begin
+				if (sd_ack) begin sd_wr <= 1'b0; ack_seen <= 1'b1; end
+				else if (ack_seen) begin
+					ack_seen <= 1'b0;
+					if (fmt_n == 4'd9) begin busy <= 1'b0; irq_flag <= 1'b1; state <= ST_IDLE; end
+					else begin
+						fmt_n  <= fmt_n + 4'd1;
+						sd_lba <= {21'd0, fmt_block + 11'd1};
+						sd_wr  <= 1'b1;
+					end
 				end
 			end
 			default: ;

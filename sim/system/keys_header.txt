@@ -1,0 +1,8 @@
+110 header "fmt test",ixy\r
+200 y\r
+1500 10 print"saved ok"\r
+1540 dsave"after"\r
+1700 new\r
+1740 dload"after"\r
+1900 run\r
+1940 dir\r

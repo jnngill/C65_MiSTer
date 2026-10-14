@@ -1,0 +1,15 @@
+110 mode 40:print"forty"\r
+180 mode 80:print"eighty"\r
+250 window 5,5,40,15:print rwindow(0);rwindow(1):window 0,0,79,24\r
+330 highlight 3:cursor on,10,10:rcursor c,r:print c;r\r
+420 set def 8:mem 0,0:rreg a,x,y,z,s:print a\r
+500 10 rem a\r
+530 20 rem b\r
+560 renumber 100,10:list\r
+640 new\r
+670 30 trap 100:print 1/0:end\r
+710 100 print"trapped";err$(er):resume next\r
+790 run 30\r
+870 print joy(1);joy(2);rspeed(0);rsppos(0,0);rsprite(0,0);rspcolor(1)\r
+970 collision 1:font a:chardef 65,255,129,129,129,129,129,129,255\r
+1070 key on:print"keys"\r

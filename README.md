@@ -21,9 +21,9 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 | Memory map (128K RAM, 128K ROM, MAP, C64 banking, `$D030` ROM enables) | done |
 | VIC-III: text 40/80 col + attributes, VIC-II bitmap modes, bitplanes (up to 8, 320 or 640 wide, 200 or 400 lines), palette, sprites, raster IRQ | done (line based, not cycle exact). 400-line modes are sent as two alternating fields for the scaler to weave; no true interlaced sync on analogue output. H1280 missing |
 | F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
-| F011 floppy controller, internal drive, `.D81` read/write | done (sector level; no track format command) |
+| F011 floppy controller, internal drive, `.D81` read/write | done (sector level). The write-track command blanks the track, which is what `HEADER` with an ID needs to format a disk |
 | CIA 6526 x2, keyboard incl. C65 extra keys, joysticks | done |
-| 1351 mouse on either control port | done; pointer movement confirmed on hardware, buttons untested |
+| 1351 mouse on either control port | done; pointer movement and left button confirmed on hardware |
 | Dual SID | working (MiSTer C64/C128 SID); only a basic `SOUND` test so far |
 | RAM expansion: banks 6-15 (`$60000-$FFFFF`) and 4 MB at `$400000-$7FFFFF` (DMA banks `$40-$7F`) | done; needs a MiSTer SDRAM module |
 | UART, external 1565 drive, IEC devices | not implemented |
@@ -34,7 +34,8 @@ Verified with ROM **911210**:
 - on hardware: boot, BASIC 10 program entry / `RUN`, reading and writing a
   D81 mounted from the OSD, 4 MB expansion RAM (detected at boot, `DMA`
   copy out and back), the 640x400 interlaced Workbench picture from the
-  Commodore C65 demo disk (`FB DEMO`), mouse pointer movement
+  Commodore C65 demo disk (`FB DEMO`), mouse pointer movement, formatting a
+  disk with `HEADER` (simulation)
 - in simulation only: `LIST`, bitplane graphics (`SCREEN`, `PALETTE`,
   `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites, NTSC timing, `GO64`, and from
   the demo disk the Deluxe Paint (640x200, 16 colours) and REGINA
@@ -70,13 +71,13 @@ C65 ROM never does, so it sees a plain C65.
 | Character set RAM at `$FF7E000` | done |
 | Multiplier / divider at `$D768-$D77F` | done |
 | VIC-IV: 16-bit sprite pointers (`$D06C-$D06E`), bitplane bank (`$D07C`) | done |
-| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done for 40 columns; 80-column FCM needs more colour RAM than the core has. Per-character flips untested; alpha, nibble-colour characters and in-row repositioning missing |
+| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done. 6K of colour RAM (`$FF80000-$FF817FF`; the C65 has 2K), enough for an 80x25 screen of 16-bit characters. S-BASIC's own `FCM ON` is always 40x25. Per-character flips untested; alpha, nibble-colour characters and in-row repositioning missing |
 | VIC-IV sprites: 16-colour (`$D06B`) with 16 palette entries per sprite, 64 pixels wide (`$D057`), programmable height (`$D055/56`) (S-BASIC `FCSPRITE` commands) | done; wide and tall sprites untested |
 | Other VIC-IV registers (character pointer, borders, scaling, sprite alpha / tiling) | not implemented |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
 | Hypervisor traps (`$D640`), SD card, attic RAM, a true 40 MHz | not implemented; traps are ignored |
-| Enhanced DMA jobs (`$D705`): megabyte options, list format option (S-BASIC `EDMA`) | done in simulation: copy and fill. Skip rates and transparency options are ignored |
+| Enhanced DMA jobs (`$D705`): megabyte options, list format option (S-BASIC `EDMA`) | done, confirmed on hardware: copy and fill. Skip rates and transparency options are ignored |
 
 Verified with S-BASIC 65 V250507:
 
@@ -87,11 +88,41 @@ Verified with S-BASIC 65 V250507:
   transparency, priority and x/y expansion, `FCSPRDEF`, `FCSPRFRAME`,
   `FCSPRCOPY`, `FCSPRFLIP` both ways, `FCSPRCOLOR`, `PALETTE COPY`:
   pixel-identical to simulation)
-- in simulation only: `LIST`, `SPRITE` / `MOVSPR`, `FCSPRSAVE` /
-  `FCSPRLOAD` round trip, the 8 / 16 MHz CPU speeds
+- also on hardware (checked against the simulator): number and string
+  functions (`BIN$`, `HEX$`, `DEC`, `BYTE`, `ADD` / `SUB` / `SHL` / `SHR`,
+  `MADD` / `MSUB`, `PEEK@`, `MOD`), procedures (`PROC`, `DEFPROC`, `LOCAL`,
+  `ENDPROC`, `RPROC`, `RLEVEL`), `EVERY` / `AFTER`, the inline assembler and
+  `CALL`, `TEXT` / `RTEXT` / `PUTSCR` / `GETSCR` / `INK` / `PAPER` /
+  `BORDER`, sprites (`SPRDEF`, `SPRCOPY`, `SPRFLIP`, `SPRCOLOR`,
+  `SPRSAVE` / `SPRLOAD`, `SPRITE`, `SPRFRAME`, `MOVSPR`, multicolour),
+  `FCALC`, `INFO`, `VIC4`, `SYNC`, `PAUSE`, `PALETTE SAVE` / `LOAD`,
+  `FAST` / `SLOW`, `EDMA`, `HEADER`, `SAVEIFF` / `LOADIFF`, `MOUSE` /
+  `RMOUSE` with the button, `MONITOR`, `HELP`, and `VOL`, `TEMPO`,
+  `ENVELOPE`, `FILTER`, `PLAY`, `SOUND` (a `PLAY` scale sounds correct)
+- in simulation only: `LIST`, `MAN`, `MODE 40` / `80`, graphics (`DRAW`,
+  `BOX` outline and solid, `FILL`, `CUT` / `PASTE`, `GCOPY`, `VIEWPORT`,
+  `PIXEL`, `RPEN`), disk commands (`SAVE` / `VERIFY`, `RENAME`, `COPY`,
+  `CONCAT`, `ERASE`, `COLLECT`, `DCLEAR`, `TYPE`, `MERGE`, sequential files
+  with `DOPEN` / `APPEND` / `PRINT#` / `INPUT#`, `BSAVE` / `BLOAD` /
+  `BVERIFY`), `WINDOW` / `RWINDOW`, `CURSOR` / `RCURSOR`, `HIGHLIGHT`,
+  `RENUMBER`, `TRAP` / `RESUME` / `ERR$`, `JOY`, `RSPEED` / `RSPPOS` /
+  `RSPRITE` / `RSPCOLOR`, `COLLISION`, `FONT`, `CHARDEF`, `KEY`, `SET DEF`,
+  `MEM`, `RREG`, `FCSPRSAVE` / `FCSPRLOAD` round trip, the 8 / 16 MHz CPU
+  speeds
 
-Sound has been heard on hardware (the BASIC `SOUND` command); music with
-`PLAY`, filters and stereo placement have not been judged.
+Known not to work under S-BASIC 65:
+
+- `MOUNT` (needs the MEGA65 hypervisor's SD card access); use the OSD.
+- Relative files: `DOPEN` with `L` and `RECORD` create the file, but
+  `DCLOSE` reports `71,BAM CORRUPTED` and the file stays empty. The stock
+  911210 ROM writes the same relative file correctly on this core, and the
+  failing DOS touches no hardware the core lacks, so this may be a bug in
+  S-BASIC's DOS; it is not yet understood.
+- `BACKUP` and `CHDIR` were not tried (they need a second drive or a
+  partitioned disk).
+
+Sound has been heard on hardware: the BASIC `SOUND` command and a `PLAY`
+scale both sound correct. Filters and stereo placement have not been judged.
 
 Not yet checked on hardware at all: joysticks, the PAL/NTSC switch and the
 UK / DE keyboard layouts.

@@ -1,0 +1,9 @@
+110 screen 320,200,4\r
+200 palette 0,1,15,0,0:pen 1\r
+260 draw 10,10,300,190:draw 10,190,300,10\r
+340 box 20,20,100,80:box 200,120,300,180,1\r
+600 pen 2:fill 60,50\r
+1100 cut 200,120,40,30\r
+1250 paste 10,150\r
+1400 print pixel(60,50);pixel(250,150);pixel(5,5);rpen(0)\r
+1500 pen 3:gcopy 10,10,20,20:viewport 0,0,160,100:viewport clr\r

@@ -1,0 +1,14 @@
+110 header "sbtest",i01\r
+180 y\r
+500 10 print"one"\r
+540 save "prog":verify "prog"\r
+700 rename "prog" to "prog2":copy "prog2" to "prog3"\r
+860 dopen#1,"seqf",w:print#1,"hello":dclose#1\r
+960 append#1,"seqf":print#1,"more":dclose#1\r
+1060 dopen#1,"seqf":input#1,a$,b$:dclose#1:print a$;b$\r
+1160 bsave "bin",p6144 to p6200:bload "bin",p7000:bverify "bin",p7000\r
+1300 erase "prog3":collect:type "seqf"\r
+1440 dopen#2,"rel",l20:record#2,3:print#2,"rec3":dclose#2\r
+1560 dopen#2,"rel":record#2,3:input#2,r$:dclose#2:print r$\r
+1680 copy "seqf" to "seqf2":concat "seqf" to "seqf2":dclear\r
+1820 dir\r

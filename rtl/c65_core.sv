@@ -123,7 +123,7 @@ logic        vic3_mode;
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
-logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc;
+logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2;
 // a DMA address with the I/O flag only means I/O inside $D000-$DFFF; elsewhere it is plain memory
 wire         dma_is_io = dma_io && (dma_addr[15:12] == 4'hD);
 logic [22:0] xaddr;
@@ -133,7 +133,7 @@ always_comb begin
 	logic [22:0] pa;
 	logic [27:0] fa;       // flat 28-bit address: 45GS02 far pointer or DMA
 	logic        flat;
-	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
+	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_cram2 = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
 	sel_xram = 1'b0; sel_rtc = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
@@ -152,6 +152,7 @@ always_comb begin
 		else if (fa[27:20] == 8'd0)      sel_xram = xram_present;    // $0060000 banks 6-15
 		else if (fa[27:12] == 16'hFF7E)  sel_wom = 1'b1;             // $FF7E000 character set
 		else if (fa[27:11] == 17'h1FF00) begin sel_ram = 1'b1; mem_addr = {6'b111111, fa[10:0]}; end   // $FF80000 colour RAM
+		else if (fa[27:13] == 15'h7FC0 && fa[12:11] != 2'd3) begin sel_cram2 = 1'b1; mem_addr = {5'd0, fa[11:0] - 12'h800}; end   // $FF80800 more colour RAM
 		else if (fa[27:12] == 16'hFFD3)  sel_io = 1'b1;              // $FFD3000 I/O
 		else if (fa[27:4] == 24'hFFD711) sel_rtc = 1'b1;             // $FFD7110 real-time clock
 	end
@@ -285,7 +286,7 @@ wire io_wr = bus_ce && bus_we;
 wire io_rd = bus_ce && !bus_we;
 
 // ------------------------------------------------------------------ memory
-logic  [7:0] ram_q, ram2_q, wom_q, rom_q, vram_q, vram1_q, vram2_q, vrom_q, vrom1_q, vwom_q;
+logic  [7:0] ram_q, ram2_q, wom_q, rom_q, vram_q, vram1_q, vram2_q, vrom_q, vrom1_q, vwom_q, cram2_q, vcram2_q;
 logic [18:0] vaddr;
 logic  [1:0] vsel;
 logic        wom_loaded;
@@ -305,8 +306,16 @@ dpram #(12, 8) wom (
 	.b_addr(vaddr[11:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vwom_q)
 );
 
+// $FF80800-$FF817FF: colour RAM beyond the C65's 2K (80 column full-colour
+// screens).  The video chip sees it at $60000.
+dpram #(12, 8) cram2 (
+	.clk(clk),
+	.a_addr(mem_addr[11:0]), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_cram2), .a_q(cram2_q),
+	.b_addr(vaddr[11:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vcram2_q)
+);
+
 always_ff @(posedge clk) vsel <= vaddr[18:17];
-assign vram_q = (vsel == 2'd2) ? vram2_q : vram1_q;
+assign vram_q = (vsel == 2'd2) ? vram2_q : (vsel == 2'd3) ? vcram2_q : vram1_q;
 assign vrom_q = wom_loaded ? vwom_q : vrom1_q;
 
 // use the character set RAM once the ROM has filled it
@@ -525,7 +534,7 @@ always @(posedge clk) begin
 		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
 	if (bus_ce && io_uart && io_addr[7:0] > 8'h0F)
 		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
-	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
+	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_cram2 && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
 		$display("FAR  %s %07x = %02x  PC=%04x", bus_we ? "wr" : "rd", cpu_faddr, bus_dout, dbg_pc);
 end
 `endif
@@ -550,6 +559,7 @@ end
 always_comb begin
 	if (ram_sel)       bus_din = ram_q;
 	else if (sel_ram2) bus_din = ram2_q;
+	else if (sel_cram2) bus_din = cram2_q;
 	else if (sel_wom)  bus_din = wom_q;
 	else if (sel_xram) bus_din = xram_dout;
 	else if (sel_rtc)  bus_din = rtc_dout;
