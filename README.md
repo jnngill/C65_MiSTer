@@ -74,7 +74,8 @@ C65 ROM never does, so it sees a plain C65.
 | VIC-IV sprites: 16-colour (`$D06B`) with 16 palette entries per sprite, 64 pixels wide (`$D057`), programmable height (`$D055/56`) (S-BASIC `FCSPRITE` commands) | done; wide and tall sprites untested |
 | Other VIC-IV registers (character pointer, borders, scaling, sprite alpha / tiling) | not implemented |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
-| Hypervisor traps (`$D640`), SD card, attic RAM, 40 MHz | not implemented; traps are ignored |
+| Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
+| Hypervisor traps (`$D640`), SD card, attic RAM, a true 40 MHz | not implemented; traps are ignored |
 | Enhanced DMA jobs (`$D705`): megabyte options, list format option (S-BASIC `EDMA`) | done in simulation: copy and fill. Skip rates and transparency options are ignored |
 
 Verified with S-BASIC 65 V250507:
@@ -121,8 +122,7 @@ newest dated `.rbf` is the one to use) and on the
    `scripts/mkd81.py` makes more, optionally with PRG files on them.
 
 ROMs this core has been run with: **911210** (the last original Commodore
-ROM; runs as a plain C65) and **S-BASIC 65 V250507** (a MEGA65-style ROM;
-set *CPU Speed* to 16 MHz for it).
+ROM; runs as a plain C65) and **S-BASIC 65 V250507** (a MEGA65-style ROM).
 
 ## Using it
 
@@ -138,7 +138,7 @@ set *CPU Speed* to 16 MHz for it).
 | Video Standard | PAL, NTSC | |
 | Aspect Ratio, Scandoubler Fx, Stereo Mix | | standard MiSTer settings |
 | Keyboard Layout | US, UK, DE, Positional | see below |
-| CPU Speed | 3.5 MHz, 8 MHz, 16 MHz | 3.5 MHz is a real C65; MEGA65-style ROMs expect a much faster CPU, use 16 MHz |
+| CPU Speed | 3.5 MHz, 8 MHz, 16 MHz | speed of the C65 FAST mode; 3.5 MHz is a real C65. MEGA65-style ROMs switch to 16 MHz by themselves when they ask for full speed (S-BASIC 65 does at start; `SLOW` / `FAST` change it) |
 | Expansion RAM | 4MB, Off | the C65 RAM expansion, kept in the MiSTer SDRAM module; without a module the machine reports no expansion |
 | Mouse | Port 2, Port 1, Off | a Commodore 1351 on that control port. S-BASIC 65's `MOUSE ON` uses port 2; on the stock ROM name the port, e.g. `MOUSE ON,2` |
 | DMA Revision | F018B, F018A | F018B for ROMs from mid 1991 on, F018A for older ones |

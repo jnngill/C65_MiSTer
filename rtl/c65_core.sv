@@ -231,8 +231,9 @@ cyc_t       cyc_state;
 logic [3:0] cyc;
 logic       bus_ce;
 logic       slow_cs;
-wire        fast = ctrl_b[6];
-wire  [3:0] fast_len = (turbo == 2'd0) ? 4'd7 : (turbo == 2'd1) ? 4'd2 : 4'd0;
+logic       force_fast;          // MEGA65 "40 MHz" request: run at the core's top speed (16 MHz)
+wire        fast = ctrl_b[6] || force_fast;
+wire  [3:0] fast_len = force_fast ? 4'd0 : (turbo == 2'd0) ? 4'd7 : (turbo == 2'd1) ? 4'd2 : 4'd0;
 
 always_ff @(posedge clk) begin
 	bus_ce <= 1'b0;
@@ -328,9 +329,13 @@ dpram #(17, 8) rom (
 
 // ------------------------------------------------------------------ CPU port
 always_ff @(posedge clk) begin
-	if (reset) begin port_ddr <= '0; port_dat <= '0; end
+	if (reset) begin port_ddr <= '0; port_dat <= '0; force_fast <= 1'b0; end
 	else if (io_wr && sel_port) begin
-		if (cpu_addr[0]) port_dat <= bus_dout; else port_ddr <= bus_dout;
+		// MEGA65: writing 65 / 64 to address 0 switches full CPU speed on / off
+		// and is not a data direction write
+		if (!cpu_addr[0] && gs_mode && bus_dout[7:1] == 7'b0100000) force_fast <= bus_dout[0];
+		else if (cpu_addr[0]) port_dat <= bus_dout;
+		else port_ddr <= bus_dout;
 	end
 end
 

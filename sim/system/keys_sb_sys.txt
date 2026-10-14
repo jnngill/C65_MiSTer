@@ -1,0 +1,6 @@
+110 fcalc on:print rfcalc(0);:fcalc off:print rfcalc(0);bump(1)\r
+250 slow:info\r
+310 fast:info\r
+370 vic4:sync 100:print"synced"\r
+450 palette save "pal":palette load "pal"\r
+620 pause 1:print"paused"\r

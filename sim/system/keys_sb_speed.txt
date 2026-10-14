@@ -1,0 +1,4 @@
+110 10 slow:t=0:every 5,100:for i=1 to 1500:next:every 0:a=t\r
+260 20 fast:t=0:every 5,100:for i=1 to 1500:next:every 0:print a;t:end\r
+430 100 t=t+1:return\r
+480 run\r
