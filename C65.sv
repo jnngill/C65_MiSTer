@@ -56,6 +56,7 @@ localparam CONF_STR = {
 	"O[14],Expansion RAM,4MB (needs SDRAM),Off;",
 	"O[16:15],Mouse,Port 2,Port 1,Off;",
 	"O[3],DMA Revision,F018B,F018A;",
+	"O[17],MEGA65 Extensions,Off,On;",
 	"-;",
 	"R[0],Reset;",
 	"J,Fire;",
@@ -198,10 +199,14 @@ reg  reset;
 
 always @(posedge clk_sys) begin
 	reg [19:0] reset_cnt = '1;
+	reg        m65_ext_d;
 
 	if (rom_download && ioctl_wr) rom_loaded <= 1;
 
-	if (RESET | status[0] | buttons[1] | !pll_locked | rom_download | !rom_loaded) reset_cnt <= '1;
+	m65_ext_d <= status[17];
+
+	// changing the MEGA65 Extensions option restarts the machine
+	if (RESET | status[0] | buttons[1] | !pll_locked | rom_download | !rom_loaded | (m65_ext_d != status[17])) reset_cnt <= '1;
 	else if (reset_cnt != 0) reset_cnt <= reset_cnt - 1'd1;
 
 	reset <= (reset_cnt != 0);
@@ -309,6 +314,7 @@ c65_core core
 	.joy2(joy_a),
 	.ps2_mouse(ps2_mouse),
 	.mouse_port(status[16:15] == 2'd0 ? 2'd2 : status[16:15] == 2'd1 ? 2'd1 : 2'd0),
+	.m65_ext(status[17]),
 
 	.ce_pix(ce_pix),
 	.r(r), .g(g), .b(b),

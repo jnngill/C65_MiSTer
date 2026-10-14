@@ -240,6 +240,7 @@ int main(int argc, char **argv) {
 	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, layout = 3, turbo = 0;
 	bool ntsc = false, f018b = true, use_xram = false, stop_brk = false;
 	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
+	int m65_ext = 1;
 	long mount_frame = 2;
 	for (int i = 4; i < argc; i++) {
 		std::string a = argv[i];
@@ -270,6 +271,7 @@ int main(int argc, char **argv) {
 		else if (a == "-stopbrk") stop_brk = true;
 		else if (a == "-after" && i + 1 < argc) after_pc = (int)strtol(argv[++i], nullptr, 16);
 		else if (a == "-mountat" && i + 1 < argc) mount_frame = atol(argv[++i]);
+		else if (a == "-strict") m65_ext = 0;
 		else if (a == "-mouse" && i + 3 < argc) { mouse_port = atoi(argv[++i]); mouse_from = atol(argv[++i]); mouse_to = atol(argv[++i]); }
 		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
 		else if (a == "-f018a") f018b = false;
@@ -286,7 +288,7 @@ int main(int argc, char **argv) {
 	top->ntsc = ntsc; top->dma_f018b = f018b; top->turbo = turbo;
 	top->reset = 1; top->ld_wr = 0; top->ps2_key = 0;
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
-	top->ps2_mouse = 0; top->mouse_port = mouse_port;
+	top->ps2_mouse = 0; top->mouse_port = mouse_port; top->m65_ext = m65_ext;
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
 	top->sd_ack = 0; top->sd_buff_wr = 0;
 	top->xram_present = use_xram; top->xram_ack = 0; top->xram_dout = 0;

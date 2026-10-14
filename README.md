@@ -1,9 +1,14 @@
 # Commodore 65 for MiSTer
 
-A from-scratch Commodore 65 core for the MiSTer (DE10-Nano). It boots the
-original Commodore C65 ROMs to BASIC 10, with the internal 3.5" drive backed
-by `.D81` images, and carries just enough MEGA65 hardware to run MEGA65-style
-ROMs such as S-BASIC 65 (a completed BASIC).
+A from-scratch Commodore 65 core for the MiSTer (DE10-Nano). It recreates
+the original C65 (4510 CPU, VIC-III, F018 DMA, F011 floppy controller, two
+SIDs) and boots the original Commodore ROMs to BASIC 10, with the internal
+3.5" drive backed by `.D81` images.
+
+By default it is a plain C65. An OSD option, **MEGA65 Extensions**, adds the
+small part of the MEGA65 hardware needed by S-BASIC 65, a MEGA65-style ROM
+with a completed BASIC 10 (see [MEGA65 extensions](#mega65-extensions)).
+It does not turn the core into a MEGA65.
 
 > **You must supply your own system ROM. The core does not work without one.**
 >
@@ -15,10 +20,10 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 
 **Test builds, testers wanted.** Releases are test builds: please try your
 ROMs, software, keyboards and controllers and report what works and what
-doesn't (see [Feedback and problems](#feedback-and-problems)). This is a C65
-with a small MEGA65 subset, not a MEGA65: MEGA65 games and demos that use the
-SD card, digital audio, attic RAM or 40 MHz will not run, and for C64 games
-the MiSTer C64 core is the better choice than `GO64`.
+doesn't (see [Feedback and problems](#feedback-and-problems)). This is not a
+MEGA65, even with the MEGA65 Extensions option on: MEGA65 games and demos
+that use the SD card, digital audio, attic RAM or 40 MHz will not run, and
+for C64 games the MiSTer C64 core is the better choice than `GO64`.
 
 ## Status
 
@@ -34,7 +39,7 @@ the MiSTer C64 core is the better choice than `GO64`.
 | Dual SID | done (MiSTer C64/C128 SID): `SOUND`, `PLAY`, the filter and stereo placement (`$D400` SID right, `$D420` SID left) confirmed on hardware |
 | RAM expansion: banks 6-15 (`$60000-$FFFFF`) and 4 MB at `$400000-$7FFFFF` (DMA banks `$40-$7F`) | done; needs a MiSTer SDRAM module |
 | UART, external 1565 drive, IEC devices | not implemented |
-| MEGA65 subset for S-BASIC 65 | see below |
+| MEGA65 extensions for S-BASIC 65 (OSD option, off by default) | see below |
 
 Verified with ROM **911210**:
 
@@ -63,12 +68,19 @@ lines, then `DLOAD"FB DEMO"`, `DLOAD"DP DEMO"` or `DLOAD"REGINA DEMO"` and
 `RUN`. The disk needs a stock C65 ROM; its programs do not run under
 S-BASIC 65.
 
-### MEGA65 subset
+### MEGA65 extensions
 
 ROMs built for the MEGA65 (the 92xxxx series and derivatives such as
-"S-BASIC 65") do not run on a real C65. The core switches the following on
-when the ROM unlocks MEGA65 I/O (`$47`,`$53` written to `$D02F`); a stock
-C65 ROM never does, so it sees a plain C65.
+"S-BASIC 65") do not run on a real C65, and they do not run on this core
+with the OSD option **MEGA65 Extensions** at its default, *Off*: the
+machine is then a plain C65 and the MEGA65 unlock (`$47`,`$53` written to
+`$D02F`) is treated as a wrong key, as on a real C65. S-BASIC 65 stops at a
+blue screen.
+
+With the option *On*, the core switches the following on when the ROM
+unlocks MEGA65 I/O. A stock C65 ROM never does that, so it still sees a
+plain C65 either way. The extra chip RAM at `$40000-$5FFFF` is present in
+both settings (C65 software does not use it).
 
 | Part | State |
 |------|-------|
@@ -169,6 +181,10 @@ newest dated `.rbf` is the one to use) and on the
 ROMs this core has been run with: **911210** (the last original Commodore
 ROM; runs as a plain C65) and **S-BASIC 65 V250507** (a MEGA65-style ROM).
 
+**Using S-BASIC 65 or another MEGA65-style ROM?** Set **MEGA65 Extensions**
+to *On* in the OSD, then choose *Save settings* (on the OSD's System page) so
+it stays on; with the default *Off* the ROM stops at a blue screen.
+
 ## Using it
 
 *Reset* in the OSD restarts the machine; it is also the only way back from
@@ -217,6 +233,7 @@ Relative (REL) files on a `.d64` are skipped.
 | Expansion RAM | 4MB, Off | the C65 RAM expansion, kept in the MiSTer SDRAM module; without a module the machine reports no expansion |
 | Mouse | Port 2, Port 1, Off | a Commodore 1351 on that control port. S-BASIC 65's `MOUSE ON` uses port 2; on the stock ROM name the port, e.g. `MOUSE ON,2` |
 | DMA Revision | F018B, F018A | F018B for ROMs from mid 1991 on, F018A for older ones |
+| MEGA65 Extensions | Off, On | Off: a plain C65. On: the MEGA65 subset that S-BASIC 65 needs (see [MEGA65 extensions](#mega65-extensions)). Changing it restarts the machine |
 | Reset | | restarts the machine |
 
 ### Clock

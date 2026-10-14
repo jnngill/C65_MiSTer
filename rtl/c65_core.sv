@@ -20,6 +20,7 @@ module c65_core (
 	input  logic  [4:0] joy1, joy2,       // active high: fire, right, left, down, up
 	input  logic [24:0] ps2_mouse,        // MiSTer hps_io mouse word
 	input  logic  [1:0] mouse_port,       // 1351 mouse: 0 = none, 1 = control port 1, 2 = control port 2
+	input  logic        m65_ext,          // allow the MEGA65 extensions; 0 = strict C65
 
 	// video
 	output logic        ce_pix,
@@ -364,7 +365,8 @@ always_ff @(posedge clk) begin
 		key_a5 <= (bus_dout == 8'hA5);
 		key_47 <= (bus_dout == 8'h47);
 		if (bus_dout == 8'h96 && key_a5)      vic3_mode <= 1'b1;
-		else if (bus_dout == 8'h53 && key_47) begin vic3_mode <= 1'b1; gs_mode <= 1'b1; end   // MEGA65 key
+		else if (bus_dout == 8'h53 && key_47 && m65_ext) begin vic3_mode <= 1'b1; gs_mode <= 1'b1; end   // MEGA65 key
+		// with the extensions off, $47,$53 is just a wrong key, as on a real C65
 		else if (bus_dout != 8'hA5 && bus_dout != 8'h47) vic3_mode <= 1'b0;
 	end
 end
@@ -569,7 +571,8 @@ always_comb begin
 	else               bus_din = 8'hFF;
 end
 
-assign dma_reg_we = io_wr && io_dma && (io_addr[7:3] == 5'd0);
+// $D705 (enhanced DMA job) only exists in MEGA65 mode
+assign dma_reg_we = io_wr && io_dma && (io_addr[7:3] == 5'd0) && (io_addr[2:0] != 3'd5 || gs_mode);
 assign dbg_op     = bus_din;
 
 assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n;
