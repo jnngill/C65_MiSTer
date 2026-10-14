@@ -1,0 +1,5 @@
+110 print bin$(5);" ";hex$(255);dec("$ff");dec("%101");$ff;%101;byte(4660,0);byte(4660,1)\r
+270 a%=5:add a%:add a%,10:print a%;:sub a%,6:print a%;:shl a%,2:print a%;:shr a%:print a%\r
+460 b&=250:add b&,10:print b&\r
+530 poke 6144,250:madd 6144:madd 6144,10:print peek(6144);:msub 6144,6:print peek(6144)\r
+710 poke 6145,1:print peek@(6144);petscr(65);scrpet(1);mod(7,3)\r

@@ -1,0 +1,4 @@
+110 cls:text 5,3,1:text 6,3,2:text 5,3,7,2:print rtext(5,3,1);rtext(6,3,1);rtext(5,3,2)\r
+300 putscr 0:cls:print"cleared"\r
+380 getscr 0\r
+420 ink 2:print"red text":paper 6:border 3\r
