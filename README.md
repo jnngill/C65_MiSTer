@@ -22,9 +22,9 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 | VIC-III: text 40/80 col + attributes, VIC-II bitmap modes, bitplanes (up to 8, 320 or 640 wide, 200 or 400 lines), palette, sprites, raster IRQ | done (line based, not cycle exact). 400-line modes are sent as two alternating fields for the scaler to weave; no true interlaced sync on analogue output. H1280 missing |
 | F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
 | F011 floppy controller, internal drive, `.D81` read/write | done (sector level). The write-track command blanks the track, which is what `HEADER` with an ID needs to format a disk |
-| CIA 6526 x2, keyboard incl. C65 extra keys, joysticks | done |
+| CIA 6526 x2, keyboard incl. C65 extra keys, joysticks | done; keyboard and joysticks confirmed on hardware |
 | 1351 mouse on either control port | done; pointer movement and left button confirmed on hardware |
-| Dual SID | working (MiSTer C64/C128 SID); only a basic `SOUND` test so far |
+| Dual SID | done (MiSTer C64/C128 SID): `SOUND`, `PLAY`, the filter and stereo placement (`$D400` SID right, `$D420` SID left) confirmed on hardware |
 | RAM expansion: banks 6-15 (`$60000-$FFFFF`) and 4 MB at `$400000-$7FFFFF` (DMA banks `$40-$7F`) | done; needs a MiSTer SDRAM module |
 | UART, external 1565 drive, IEC devices | not implemented |
 | MEGA65 subset for S-BASIC 65 | see below |
@@ -107,8 +107,7 @@ Verified with S-BASIC 65 V250507:
   `BVERIFY`), `WINDOW` / `RWINDOW`, `CURSOR` / `RCURSOR`, `HIGHLIGHT`,
   `RENUMBER`, `TRAP` / `RESUME` / `ERR$`, `JOY`, `RSPEED` / `RSPPOS` /
   `RSPRITE` / `RSPCOLOR`, `COLLISION`, `FONT`, `CHARDEF`, `KEY`, `SET DEF`,
-  `MEM`, `RREG`, `FCSPRSAVE` / `FCSPRLOAD` round trip, the 8 / 16 MHz CPU
-  speeds
+  `MEM`, `RREG`, `FCSPRSAVE` / `FCSPRLOAD` round trip
 
 Known not to work under S-BASIC 65:
 
@@ -121,11 +120,17 @@ Known not to work under S-BASIC 65:
 - `BACKUP` and `CHDIR` were not tried (they need a second drive or a
   partitioned disk).
 
-Sound has been heard on hardware: the BASIC `SOUND` command and a `PLAY`
-scale both sound correct. Filters and stereo placement have not been judged.
+Sound has been heard on hardware: `SOUND`, a `PLAY` scale, a filter sweep,
+and each SID on its own side of the stereo mix.
 
-Not yet checked on hardware at all: joysticks, the PAL/NTSC switch and the
-UK / DE keyboard layouts.
+Also checked on hardware: the PAL / NTSC switch (312 and 263 line frames),
+all four keyboard layouts (US, UK, DE, Positional give the expected
+characters for the same keys) and the 3.5 / 8 / 16 MHz OSD speeds with the
+stock ROM's `FAST`.
+
+Also confirmed on hardware by hand: a real keyboard (symbols, graphics
+characters, colour keys, cursor and editing keys, RUN/STOP and RESTORE, key
+repeat), joysticks in both ports, the SID filter and stereo placement.
 
 ## Installing
 

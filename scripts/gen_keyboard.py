@@ -163,6 +163,16 @@ logic [71:0] f_on, f_off; // held keys that force the C65 SHIFT state
 logic        ps2_stb;
 logic        caps;
 
+// A key that changes the C65 SHIFT state (":" is shift+";" on a PC but its
+// own key on the C65) must not meet a keyboard scan that is half done: the
+// ROM could read SHIFT before the change and the key after it, and type
+// shift+":" = "[".  So the new key is kept out of the matrix for ~2 ms after
+// the SHIFT change (longer than one scan), and on release the SHIFT override
+// is kept for ~2 ms after the key has gone.
+logic [71:0] hold;        // pressed, not yet visible
+logic        lin_off, lin_on;
+logic [16:0] hold_cnt, lin_cnt;
+
 assign capslock_n = ~caps;
 
 wire       host_shift = keys[K_LSHIFT] | keys[K_RSHIFT];
@@ -174,31 +184,42 @@ always_ff @(posedge clk) begin
 	ps2_stb <= ps2_key[10];
 	if (reset) begin
 		keys <= '0; f_on <= '0; f_off <= '0; restore_n <= 1'b1; caps <= 1'b0;
+		hold <= '0; lin_off <= 1'b0; lin_on <= 1'b0; hold_cnt <= '0; lin_cnt <= '0;
 	end
-	else if (ps2_stb != ps2_key[10]) begin
+	else begin
+		if (hold_cnt != 0) hold_cnt <= hold_cnt - 1'd1; else hold <= '0;
+		if (lin_cnt != 0)  lin_cnt  <= lin_cnt - 1'd1;  else begin lin_off <= 1'b0; lin_on <= 1'b0; end
+		if (ps2_stb != ps2_key[10]) begin
 		if (ps2_key[9]) begin
 			if (m_now[6:0] != K_NONE) begin
 				keys[m_now[6:0]]  <= 1'b1;
 				f_off[m_now[6:0]] <= (m_now[8:7] == 2'd1);
 				f_on[m_now[6:0]]  <= (m_now[8:7] == 2'd2);
+				if (m_now[8:7] != 2'd0) begin hold[m_now[6:0]] <= 1'b1; hold_cnt <= 17'd65535; end
 			end
 		end
 		else begin
 			// the shift state may have changed since the press: release both candidates
-			if (m_s0[6:0] != K_NONE) begin keys[m_s0[6:0]] <= 1'b0; f_off[m_s0[6:0]] <= 1'b0; f_on[m_s0[6:0]] <= 1'b0; end
-			if (m_s1[6:0] != K_NONE) begin keys[m_s1[6:0]] <= 1'b0; f_off[m_s1[6:0]] <= 1'b0; f_on[m_s1[6:0]] <= 1'b0; end
+			if (m_s0[6:0] != K_NONE) begin keys[m_s0[6:0]] <= 1'b0; f_off[m_s0[6:0]] <= 1'b0; f_on[m_s0[6:0]] <= 1'b0; hold[m_s0[6:0]] <= 1'b0; end
+			if (m_s1[6:0] != K_NONE) begin keys[m_s1[6:0]] <= 1'b0; f_off[m_s1[6:0]] <= 1'b0; f_on[m_s1[6:0]] <= 1'b0; hold[m_s1[6:0]] <= 1'b0; end
+			if ((m_s0[6:0] != K_NONE && (f_off[m_s0[6:0]] || f_on[m_s0[6:0]])) || (m_s1[6:0] != K_NONE && (f_off[m_s1[6:0]] || f_on[m_s1[6:0]]))) begin
+				lin_off  <= (m_s0[6:0] != K_NONE && f_off[m_s0[6:0]]) || (m_s1[6:0] != K_NONE && f_off[m_s1[6:0]]);
+				lin_on   <= (m_s0[6:0] != K_NONE && f_on[m_s0[6:0]])  || (m_s1[6:0] != K_NONE && f_on[m_s1[6:0]]);
+				lin_cnt  <= 17'd65535;
+			end
 		end
 		if (ps2_key[8:0] == 9'h078) restore_n <= ~ps2_key[9];        // F11
 		if (ps2_key[8:0] == 9'h058 && ps2_key[9]) caps <= ~caps;     // Caps Lock
+		end
 	end
 end
 
 // matrix scan, including "reverse" scanning (rows driven, columns read)
 always_comb begin
 	logic [71:0] k;
-	k = keys;
-	if (|f_off) begin k[K_LSHIFT] = 1'b0; k[K_RSHIFT] = 1'b0; end
-	else if (|f_on) k[K_RSHIFT] = 1'b1;
+	k = keys & ~hold;
+	if (|f_off || lin_off) begin k[K_LSHIFT] = 1'b0; k[K_RSHIFT] = 1'b0; end
+	else if (|f_on || lin_on) k[K_RSHIFT] = 1'b1;
 	row_in = 8'hFF;
 	col_in = 8'hFF;
 	for (int c = 0; c < 9; c++) begin
