@@ -13,6 +13,13 @@ ROMs such as S-BASIC 65 (a completed BASIC).
 > C65 system ROM image yourself and place it on the SD card as
 > `/media/fat/games/C65/boot.rom` - see [Installing](#installing).
 
+**Test builds, testers wanted.** Releases are test builds: please try your
+ROMs, software, keyboards and controllers and report what works and what
+doesn't (see [Feedback and problems](#feedback-and-problems)). This is a C65
+with a small MEGA65 subset, not a MEGA65: MEGA65 games and demos that use the
+SD card, digital audio, attic RAM or 40 MHz will not run, and for C64 games
+the MiSTer C64 core is the better choice than `GO64`.
+
 ## Status
 
 | Part | State |
@@ -210,11 +217,21 @@ MEGA65-style ROMs get the date and time from the MiSTer (`PRINT TI$` and
 the MiSTer's own clock, including its time zone setting. A stock C65 ROM has
 no clock.
 
-### Reporting problems
+### Feedback and problems
 
 Please open an issue at
 <https://github.com/jnngill/C65_MiSTer/issues> and include the ROM version,
 the OSD settings, what you typed and, if you can, a screenshot.
+
+Especially useful:
+
+- other ROM versions and how far they get
+- C65 / MEGA65 BASIC software on `.D81` images that works or doesn't
+- keyboard and controller setups
+- anything that looks or sounds different from a real C65 or MEGA65
+
+Many BASIC 10 commands on the 911210 ROM answer `UNIMPLEMENTED COMMAND`:
+that ROM was never finished by Commodore, it is not a fault of the core.
 
 ### Keyboard
 
