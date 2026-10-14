@@ -147,7 +147,7 @@ all four keyboard layouts (US, UK, DE, Positional give the expected
 characters for the same keys) and the 3.5 / 8 / 16 MHz OSD speeds with the
 stock ROM's `FAST`.
 
-Also confirmed on hardware by hand: a real keyboard (symbols, graphics
+Also confirmed on hardware by hand: real US and UK keyboards (symbols, graphics
 characters, colour keys, cursor and editing keys, RUN/STOP and RESTORE, key
 repeat), joysticks in both ports, the SID filter and stereo placement.
 
