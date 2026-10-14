@@ -150,7 +150,7 @@ newest dated `.rbf` is the one to use) and on the
 | `releases/C65_<date>.rbf` (or `output_files/C65.rbf` if you build it) | `/media/fat/_Computer/` |
 | your C65 system ROM, renamed `boot.rom` | `/media/fat/games/C65/` |
 | `blank.d81` (release, or `disks/blank.d81`) | `/media/fat/games/C65/` |
-| `c65_prg_disk.sh` (optional; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
+| `c65_prg_disk.sh` (optional, for `.prg` / `.d64` files; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
 
 1. Create the folder `/media/fat/games/C65/`.
 2. Copy the `.rbf` to `/media/fat/_Computer/`.
@@ -164,7 +164,7 @@ newest dated `.rbf` is the one to use) and on the
 6. Press F12, choose *Mount Drive 8* and pick `blank.d81`. It is an empty,
    formatted 1581 disk; keep a spare copy, the core writes to the image.
    `scripts/mkd81.py` makes more, optionally with PRG files on them; see
-   [Loading .PRG files](#loading-prg-files).
+   [Loading .PRG and .D64 files](#loading-prg-and-d64-files).
 
 ROMs this core has been run with: **911210** (the last original Commodore
 ROM; runs as a plain C65) and **S-BASIC 65 V250507** (a MEGA65-style ROM).
@@ -174,26 +174,35 @@ ROM; runs as a plain C65) and **S-BASIC 65 V250507** (a MEGA65-style ROM).
 *Reset* in the OSD restarts the machine; it is also the only way back from
 `GO64`.
 
-### Loading .PRG files
+### Loading .PRG and .D64 files
 
-The core cannot read single `.prg` files; programs have to be on a disk
-image. The `c65_prg_disk.sh` script makes that easy:
+The core cannot read single `.prg` files, and its drive is a 1581, so it
+cannot read 1541 `.d64` images either; programs have to be on a `.d81`
+disk. The `c65_prg_disk.sh` script makes that easy:
 
 1. Copy `c65_prg_disk.sh` to `/media/fat/Scripts/`.
 2. Run **c65_prg_disk** from the MiSTer *Scripts* menu once. It creates the
    folder `/media/fat/games/C65/PRG/`.
-3. Copy your `.prg` files into that folder (over the network, or with the SD
+3. Copy your `.prg` and `.d64` files into that folder (over the network, or with the SD
    card in a PC).
-4. Run **c65_prg_disk** again. It packs every `.prg` in the folder into
+4. Run **c65_prg_disk** again. It packs every `.prg` in the folder, and
+   every file (PRG, SEQ, USR) inside every `.d64`, into
    `/media/fat/games/C65/prg.d81` and lists what it added.
 5. In the C65 core, mount `prg.d81` from the OSD, then `DIR` and
-   `DLOAD"NAME"` (or `LOAD "NAME"` in S-BASIC 65) and `RUN`.
+   `DLOAD"NAME"` (or `LOAD "NAME"` in S-BASIC 65) and `RUN`. In C64 mode
+   (`GO64`) use `LOAD"$",8` / `LIST` and `LOAD"NAME",8` or `LOAD"NAME",8,1`.
 
 Run the script again whenever you add or remove programs, then mount
 `prg.d81` again. The disk is rebuilt from the folder each time, so files
 saved onto `prg.d81` from the C65 are replaced; the previous image is kept as
-`prg.d81.bak`. Names longer than 16 characters are shortened. On a PC,
-`scripts/mkd81.py` does the same job.
+`prg.d81.bak`. Names longer than 16 characters are shortened, and files
+with the same name get a `~2`, `~3` ... suffix. On a PC,
+`scripts/mkd81.py` does the same job for `.prg` files.
+
+Only the files are copied from a `.d64`. Software that reads the 1541 disk
+directly (fast loaders, copy protection, most demos and multi-load games)
+needs a real 1541 and will not work; use the MiSTer C64 core for those.
+Relative (REL) files on a `.d64` are skipped.
 
 ### OSD options
 
