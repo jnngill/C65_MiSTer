@@ -143,6 +143,7 @@ newest dated `.rbf` is the one to use) and on the
 | `releases/C65_<date>.rbf` (or `output_files/C65.rbf` if you build it) | `/media/fat/_Computer/` |
 | your C65 system ROM, renamed `boot.rom` | `/media/fat/games/C65/` |
 | `blank.d81` (release, or `disks/blank.d81`) | `/media/fat/games/C65/` |
+| `c65_prg_disk.sh` (optional; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
 
 1. Create the folder `/media/fat/games/C65/`.
 2. Copy the `.rbf` to `/media/fat/_Computer/`.
@@ -155,7 +156,8 @@ newest dated `.rbf` is the one to use) and on the
 5. Start **C65** from the Computer menu.
 6. Press F12, choose *Mount Drive 8* and pick `blank.d81`. It is an empty,
    formatted 1581 disk; keep a spare copy, the core writes to the image.
-   `scripts/mkd81.py` makes more, optionally with PRG files on them.
+   `scripts/mkd81.py` makes more, optionally with PRG files on them; see
+   [Loading .PRG files](#loading-prg-files).
 
 ROMs this core has been run with: **911210** (the last original Commodore
 ROM; runs as a plain C65) and **S-BASIC 65 V250507** (a MEGA65-style ROM).
@@ -164,6 +166,27 @@ ROM; runs as a plain C65) and **S-BASIC 65 V250507** (a MEGA65-style ROM).
 
 *Reset* in the OSD restarts the machine; it is also the only way back from
 `GO64`.
+
+### Loading .PRG files
+
+The core cannot read single `.prg` files; programs have to be on a disk
+image. The `c65_prg_disk.sh` script makes that easy:
+
+1. Copy `c65_prg_disk.sh` to `/media/fat/Scripts/`.
+2. Run **c65_prg_disk** from the MiSTer *Scripts* menu once. It creates the
+   folder `/media/fat/games/C65/PRG/`.
+3. Copy your `.prg` files into that folder (over the network, or with the SD
+   card in a PC).
+4. Run **c65_prg_disk** again. It packs every `.prg` in the folder into
+   `/media/fat/games/C65/prg.d81` and lists what it added.
+5. In the C65 core, mount `prg.d81` from the OSD, then `DIR` and
+   `DLOAD"NAME"` (or `LOAD "NAME"` in S-BASIC 65) and `RUN`.
+
+Run the script again whenever you add or remove programs, then mount
+`prg.d81` again. The disk is rebuilt from the folder each time, so files
+saved onto `prg.d81` from the C65 are replaced; the previous image is kept as
+`prg.d81.bak`. Names longer than 16 characters are shortened. On a PC,
+`scripts/mkd81.py` does the same job.
 
 ### OSD options
 
