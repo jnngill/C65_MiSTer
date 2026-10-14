@@ -1,0 +1,5 @@
+110 sprdef 1,1,1,"111100001111000011110000":sprdef 1,1,2,"1.1.1.1.1.1.1.1.1.1.1.1."\r
+300 sprcopy 1,1,2,1:sprflip 2,1:sprdef 3,1,1,"123123123123":sprcolor 7,8\r
+450 sprsave "sp":sprdef 1,1,1,"........................":sprload "sp"\r
+650 sprite 1,1,2:sprframe 1,1:movspr 1,100,150:sprite 2,1,3:sprframe 2,1:movspr 2,150,150\r
+840 sprite 3,1,5,0,0,0,1:sprframe 3,1:movspr 3,200,150\r
