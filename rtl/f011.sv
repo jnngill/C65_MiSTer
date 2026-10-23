@@ -9,6 +9,11 @@
 // the track under the head, on the side picked by control bit 3, with zeros.
 //
 //   block = track * 20 + (sector - 1) + (side ? 10 : 0)
+//
+// Drive select 0 (control bits 2-0) is the internal drive, drive select 1 an
+// external 1565 on the C65's drive port, each with its own image and head.
+// Drive 1 only exists while an image is mounted for it; an absent drive
+// (and selects 2-7) never leaves "track 0", which is how the ROM tells.
 
 module f011 (
 	input  logic        clk,
@@ -21,13 +26,13 @@ module f011 (
 	output logic  [7:0] reg_dout,
 	output logic        irq_n,
 
-	input  logic        img_mounted,
+	input  logic  [1:0] img_mounted,     // one bit per drive
 	input  logic        img_readonly,
 	input  logic [31:0] img_size,
 	output logic [31:0] sd_lba,
-	output logic        sd_rd,
-	output logic        sd_wr,
-	input  logic        sd_ack,
+	output logic  [1:0] sd_rd,
+	output logic  [1:0] sd_wr,
+	input  logic  [1:0] sd_ack,
 	input  logic  [8:0] sd_buff_addr,
 	input  logic  [7:0] sd_buff_dout,
 	output logic  [7:0] sd_buff_din,
@@ -37,22 +42,27 @@ module f011 (
 
 // ------------------------------------------------------------------ registers
 logic [7:0] control, command, track, sector, side, clock, step;
-logic       busy, rnf, crc, lost, eq, rdreq, wtreq, irq_flag, dskchg;
-logic       present = 1'b0, readonly = 1'b0;
-logic [6:0] head;
+logic       busy, rnf, crc, lost, eq, rdreq, wtreq, irq_flag;
+logic [1:0] dskchg;
+logic [1:0] present = 2'b00, readonly = 2'b00;
+logic [6:0] heads [2];
+logic       xdrv;              // drive of the transfer in progress
 logic [8:0] cpu_ptr, base_ptr;
 logic [24:0] index_cnt;
 logic [15:0] delay;
 
-wire       drive0  = (control[2:0] == 3'd0);
+wire       drv     = control[0];
+wire       exists  = (control[2:0] == 3'd0) || (control[2:0] == 3'd1 && present[1]);
+wire [6:0] head    = heads[drv];
 wire       swap    = control[4];
 wire       motor   = control[5];
-wire       disk_ok = present && drive0;
+wire       disk_ok = exists && present[drv];
+wire       ro      = readonly[drv];
+wire       ack     = |sd_ack;
 wire       index   = motor && disk_ok && (index_cnt[24:19] == 6'd0);
 
-// an absent drive (select 1-7) never leaves "track 0": that is how the ROM detects it
-wire [7:0] stat_a = {busy, !eq && rdreq, eq, rnf, crc, lost, disk_ok && readonly, !drive0 || head == 7'd0};
-wire [7:0] stat_b = {rdreq, wtreq, rdreq, 1'b0, disk_ok, index, irq_flag, dskchg || !disk_ok};
+wire [7:0] stat_a = {busy, !eq && rdreq, eq, rnf, crc, lost, disk_ok && ro, !exists || head == 7'd0};
+wire [7:0] stat_b = {rdreq, wtreq, rdreq, 1'b0, disk_ok, index, irq_flag, dskchg[drv] || !disk_ok};
 
 assign led   = motor;
 assign irq_n = 1'b1;
@@ -73,7 +83,7 @@ logic [3:0] fmt_n;
 dpram #(9, 8) sector_buf (
 	.clk(clk),
 	.a_addr({cpu_ptr[8] ^ swap, cpu_ptr[7:0]}), .a_din(reg_din), .a_we(data_wr), .a_q(buf_q),
-	.b_addr(base_ptr + sd_buff_addr), .b_din(sd_buff_dout), .b_we(sd_buff_wr && sd_ack && state == ST_READ),
+	.b_addr(base_ptr + sd_buff_addr), .b_din(sd_buff_dout), .b_we(sd_buff_wr && ack && state == ST_READ),
 	.b_q(buf_disk_q)
 );
 
@@ -86,17 +96,19 @@ always_ff @(posedge clk) begin
 	index_cnt <= index_cnt + 25'd1;
 	if (index_cnt == 25'd6299999) index_cnt <= '0;          // ~200 ms per revolution
 
-	if (img_mounted) begin
-		present  <= (img_size != 32'd0);
-		readonly <= img_readonly;
-		dskchg   <= 1'b1;
+	for (int d = 0; d < 2; d++) begin
+		if (img_mounted[d]) begin
+			present[d]  <= (img_size != 32'd0);
+			readonly[d] <= img_readonly;
+			dskchg[d]   <= 1'b1;
+		end
 	end
 
 	if (reset) begin
 		control <= '0; command <= '0; track <= '0; sector <= '0; side <= '0; clock <= 8'hFF; step <= 8'h80;
 		busy <= 1'b0; rnf <= 1'b0; crc <= 1'b0; lost <= 1'b0; eq <= 1'b1; rdreq <= 1'b0; wtreq <= 1'b0;
-		irq_flag <= 1'b0; dskchg <= 1'b1; head <= 7'd0; cpu_ptr <= '0; base_ptr <= '0;
-		state <= ST_IDLE; sd_rd <= 1'b0; sd_wr <= 1'b0; ack_seen <= 1'b0; delay <= '0;
+		irq_flag <= 1'b0; dskchg <= 2'b11; heads[0] <= 7'd0; heads[1] <= 7'd0; cpu_ptr <= '0; base_ptr <= '0;
+		state <= ST_IDLE; sd_rd <= '0; sd_wr <= '0; ack_seen <= 1'b0; delay <= '0; xdrv <= 1'b0;
 	end
 	else begin
 		// CPU side of the sector buffer
@@ -122,25 +134,25 @@ always_ff @(posedge clk) begin
 					if (reg_din[0]) begin cpu_ptr <= '0; base_ptr <= '0; eq <= 1'b1; rdreq <= 1'b0; end
 					if (reg_din[7:5] == 3'b000 && reg_din[4]) begin
 						// head step: $10 out, $14 settle only, $18 in
-						if (!reg_din[2] && drive0) begin
-							if (reg_din[3]) begin if (head != 7'd81) head <= head + 7'd1; end
-							else            begin if (head != 7'd0)  head <= head - 7'd1; end
+						if (!reg_din[2] && exists) begin
+							if (reg_din[3]) begin if (head != 7'd81) heads[drv] <= head + 7'd1; end
+							else            begin if (head != 7'd0)  heads[drv] <= head - 7'd1; end
 						end
-						if (disk_ok) dskchg <= 1'b0;
+						if (disk_ok) dskchg[drv] <= 1'b0;
 						busy <= 1'b1; delay <= 16'd2000; state <= ST_DELAY;
 					end
 					else if (reg_din[7:5] == 3'b101) begin
 						// write track
 						busy <= 1'b1; fmt_n <= '0;
-						if (disk_ok && head < 7'd80 && !readonly) begin
-							sd_lba <= {21'd0, {4'd0, head} * 11'd20 + (control[3] ? 11'd0 : 11'd10)}; sd_wr <= 1'b1; ack_seen <= 1'b0; state <= ST_FMT;
+						if (disk_ok && head < 7'd80 && !ro) begin
+							sd_lba <= {21'd0, {4'd0, head} * 11'd20 + (control[3] ? 11'd0 : 11'd10)}; sd_wr[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_FMT;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
 					end
 					else if (reg_din[7]) begin
 						busy <= 1'b1;
-						if (disk_ok && chs_valid && !readonly) begin
-							sd_lba <= {21'd0, block}; sd_wr <= 1'b1; ack_seen <= 1'b0; state <= ST_WRITE;
+						if (disk_ok && chs_valid && !ro) begin
+							sd_lba <= {21'd0, block}; sd_wr[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_WRITE;
 							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
@@ -148,7 +160,7 @@ always_ff @(posedge clk) begin
 					else if (reg_din[6]) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid) begin
-							sd_lba <= {21'd0, block}; sd_rd <= 1'b1; ack_seen <= 1'b0; state <= ST_READ;
+							sd_lba <= {21'd0, block}; sd_rd[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_READ;
 							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
@@ -159,7 +171,7 @@ always_ff @(posedge clk) begin
 					end
 					else if (reg_din[7:1] == 7'd0) begin
 						// cancel / reset pointers
-						busy <= 1'b0; state <= ST_IDLE; sd_rd <= 1'b0; sd_wr <= 1'b0;
+						busy <= 1'b0; state <= ST_IDLE; sd_rd <= '0; sd_wr <= '0;
 					end
 				end
 				5'd4: track  <= reg_din;
@@ -181,7 +193,7 @@ always_ff @(posedge clk) begin
 				end
 			end
 			ST_READ, ST_WRITE: begin
-				if (sd_ack) begin sd_rd <= 1'b0; sd_wr <= 1'b0; ack_seen <= 1'b1; end
+				if (ack) begin sd_rd <= '0; sd_wr <= '0; ack_seen <= 1'b1; end
 				else if (ack_seen) begin
 					busy <= 1'b0; irq_flag <= 1'b1;
 					if (state == ST_READ) begin rdreq <= 1'b1; eq <= 1'b0; end
@@ -190,14 +202,14 @@ always_ff @(posedge clk) begin
 				end
 			end
 			ST_FMT: begin
-				if (sd_ack) begin sd_wr <= 1'b0; ack_seen <= 1'b1; end
+				if (ack) begin sd_wr <= '0; ack_seen <= 1'b1; end
 				else if (ack_seen) begin
 					ack_seen <= 1'b0;
 					if (fmt_n == 4'd9) begin busy <= 1'b0; irq_flag <= 1'b1; state <= ST_IDLE; end
 					else begin
 						fmt_n  <= fmt_n + 4'd1;
 						sd_lba <= {21'd0, fmt_block + 11'd1};
-						sd_wr  <= 1'b1;
+						sd_wr[xdrv] <= 1'b1;
 					end
 				end
 			end
@@ -205,6 +217,18 @@ always_ff @(posedge clk) begin
 		endcase
 	end
 end
+
+`ifdef F011_DEBUG
+logic [7:0] dbg_last_a, dbg_last_b;
+always_ff @(posedge clk) begin
+	if (reg_re && control[2:0] == 3'd1 && reg_addr == 5'd2 && stat_a != dbg_last_a) begin
+		$display("F011 drv1 stat_a %02x", stat_a); dbg_last_a <= stat_a;
+	end
+	if (reg_re && control[2:0] == 3'd1 && reg_addr == 5'd3 && stat_b != dbg_last_b) begin
+		$display("F011 drv1 stat_b %02x", stat_b); dbg_last_b <= stat_b;
+	end
+end
+`endif
 
 always_comb begin
 	case (reg_addr)

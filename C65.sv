@@ -19,7 +19,7 @@ module emu
 
 assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
-assign {UART_RTS, UART_TXD, UART_DTR} = 0;
+assign {UART_RTS, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
@@ -43,9 +43,11 @@ assign VIDEO_ARY = (!ar) ? 13'd3 : 13'd0;
 
 `include "build_id.v"
 localparam CONF_STR = {
-	"C65;;",
+	"C65;UART38400:19200:9600:4800:2400:1200:300;",
 	"S0,D81,Mount Drive 8;",
+	"S1,D81,Mount Drive 9 (1565);",
 	"F1,ROMBIN,Load System ROM;",
+	"F2,PRG,Load Program;",
 	"-;",
 	"O[2],Video Standard,PAL,NTSC;",
 	"O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -144,17 +146,17 @@ wire  [15:0] sdram_sz;
 wire  [24:0] ps2_mouse;
 wire  [64:0] RTC;
 
-wire  [31:0] sd_lba[1];
-wire         sd_rd, sd_wr, sd_ack;
+wire  [31:0] sd_lba[2];
+wire   [1:0] sd_rd, sd_wr, sd_ack;
 wire  [13:0] sd_buff_addr;
 wire   [7:0] sd_buff_dout;
-wire   [7:0] sd_buff_din[1];
+wire   [7:0] sd_buff_din[2];
 wire         sd_buff_wr;
-wire         img_mounted;
+wire   [1:0] img_mounted;
 wire         img_readonly;
 wire  [63:0] img_size;
 
-hps_io #(.CONF_STR(CONF_STR), .VDNUM(1), .BLKSZ(2)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(2)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -172,7 +174,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(1), .BLKSZ(2)) hps_io
 	.ioctl_wait(1'b0),
 
 	.sd_lba(sd_lba),
-	.sd_blk_cnt('{6'd0}),
+	.sd_blk_cnt('{6'd0, 6'd0}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
@@ -194,6 +196,9 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(1), .BLKSZ(2)) hps_io
 
 // ------------------------------------------------------------------ reset / ROM load
 wire rom_download = ioctl_download && (ioctl_index[5:0] <= 6'd1);
+wire prg_download = ioctl_download && (ioctl_index[5:0] == 6'd2);
+
+
 reg  rom_loaded = 0;
 reg  reset;
 
@@ -296,6 +301,10 @@ wire        drive_led;
 wire [4:0] joy_a = {joystick_0[4], joystick_0[0], joystick_0[1], joystick_0[2], joystick_0[3]};
 wire [4:0] joy_b = {joystick_1[4], joystick_1[0], joystick_1[1], joystick_1[2], joystick_1[3]};
 
+// the two drives share the controller's one transfer: same address, same data
+assign sd_lba[1] = sd_lba[0];
+assign sd_buff_din[1] = sd_buff_din[0];
+
 c65_core core
 (
 	.clk(clk_sys),
@@ -307,6 +316,7 @@ c65_core core
 	.ld_addr(ioctl_addr[16:0]),
 	.ld_data(ioctl_dout),
 	.ld_wr(rom_download && ioctl_wr && (ioctl_addr[26:17] == 0)),
+	.prg_dl(prg_download), .prg_wr(prg_download && ioctl_wr), .prg_ofs(ioctl_addr[15:0]), .prg_byte(ioctl_dout),
 
 	.ps2_key(ps2_key),
 	.kbd_layout(status[11:10]),
@@ -315,6 +325,8 @@ c65_core core
 	.ps2_mouse(ps2_mouse),
 	.mouse_port(status[16:15] == 2'd0 ? 2'd2 : status[16:15] == 2'd1 ? 2'd1 : 2'd0),
 	.m65_ext(status[17]),
+	.uart_rxd(UART_RXD),
+	.uart_txd(UART_TXD),
 
 	.ce_pix(ce_pix),
 	.r(r), .g(g), .b(b),
@@ -361,11 +373,16 @@ reg        ce_pix64;
 reg  [3:0] r64, g64, b64;
 reg        hs64, vs64, hbl64, vbl64;
 
+// ce_pix marks each new pixel (every second clk_sys, or every clk_sys in the
+// 1280 pixel modes).  A toggle carries it to clk64, which samples each level.
+reg pix_tg = 0;
+always @(posedge clk_sys) if (ce_pix) pix_tg <= ~pix_tg;
+
 always @(posedge clk64) begin
-	reg ce_d;
-	ce_d     <= ce_pix;
-	ce_pix64 <= ce_pix & ~ce_d;
-	if (ce_pix & ~ce_d) begin
+	reg tg_d;
+	tg_d     <= pix_tg;
+	ce_pix64 <= (pix_tg != tg_d);
+	if (pix_tg != tg_d) begin
 		r64 <= r; g64 <= g; b64 <= b;
 		hs64 <= hsync; vs64 <= vsync; hbl64 <= hblank; vbl64 <= vblank;
 	end

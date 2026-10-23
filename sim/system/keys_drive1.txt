@@ -1,0 +1,3 @@
+110 dir d1\r
+260 dload"catch",d1\r
+400 list 10-30\r

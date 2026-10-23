@@ -3,7 +3,10 @@
 // usage: tb.exe <rom.bin> <outdir> <frames> [options]
 //   -keys <file>     key script: lines of "<frame> <text>" typed starting at that frame
 //                    (text escapes: \r = RETURN, {NAME} = raw PS/2 make/break of a hex code)
-//   -d81 <file>      mount a disk image
+//   -d81 <file>      mount a disk image (internal drive)
+//   -d81b <file>     mount a disk image in the external 1565 drive (drive 1)
+//   -prg <file> <n>  load a .PRG through the OSD program loader at frame n
+//   -uartloop        connect the serial port output back to its input
 //   -mountat <n>     insert it at frame n (default 2; later avoids auto-booting from it)
 //   -shot <n>        write a frame image every n frames (default: last frame only)
 //   -trace <n>       dump the last n instruction PCs at exit
@@ -30,11 +33,12 @@
 double sc_time_stamp() { return 0; }
 
 static Vc65_core *top;
-static std::vector<unsigned char> d81;
-static bool d81_dirty = false;
+static std::vector<unsigned char> d81s[2];       // drive 0 (internal), drive 1 (external 1565)
+static bool d81_dirty[2] = {false, false};
+static int sd_drv = 0;
 
 // ---- frame capture ---------------------------------------------------
-static const int MAXW = 1100, MAXH = 320;
+static const int MAXW = 1800, MAXH = 320;     // 1280 pixel modes: 1664 wide
 static std::vector<unsigned char> fb(MAXW * MAXH * 3);
 static std::vector<unsigned char> fields[2];     // last complete frame of each interlace field
 static int cap_x = 0, cap_y = 0, cap_w = 0, cap_h = 0;
@@ -144,8 +148,9 @@ static void sd_tick() {
 	switch (sd_state) {
 	case 0:
 		if (top->sd_rd || top->sd_wr) {
-			sd_is_wr = top->sd_wr; sd_lba_l = top->sd_lba; sd_state = 1; sd_cnt = -200; top->sd_ack = 1;
-			if (sd_verbose) fprintf(stderr, "sd %s lba %u frame %ld\n", sd_is_wr ? "WR" : "RD", sd_lba_l, frame_no);
+			sd_drv = ((top->sd_rd | top->sd_wr) & 2) ? 1 : 0;
+			sd_is_wr = (top->sd_wr >> sd_drv) & 1; sd_lba_l = top->sd_lba; sd_state = 1; sd_cnt = -200; top->sd_ack = 1 << sd_drv;
+			if (sd_verbose) fprintf(stderr, "sd%d %s lba %u frame %ld\n", sd_drv, sd_is_wr ? "WR" : "RD", sd_lba_l, frame_no);
 		}
 		break;
 	case 1:
@@ -157,7 +162,7 @@ static void sd_tick() {
 			size_t off = (size_t)sd_lba_l * 512 + i;
 			top->sd_buff_addr = i;
 			if (!sd_is_wr) {
-				top->sd_buff_dout = off < d81.size() ? d81[off] : 0;
+				top->sd_buff_dout = off < d81s[sd_drv].size() ? d81s[sd_drv][off] : 0;
 				top->sd_buff_wr = 1;
 			} else if (i > 0) {
 				// din for the previous address is valid by now
@@ -173,7 +178,7 @@ static void sd_tick() {
 		int i = sd_cnt >> 2;
 		if (i < 512) {
 			size_t off = (size_t)sd_lba_l * 512 + i;
-			if (off < d81.size()) { d81[off] = top->sd_buff_din; d81_dirty = true; }
+			if (off < d81s[sd_drv].size()) { d81s[sd_drv][off] = top->sd_buff_din; d81_dirty[sd_drv] = true; }
 		}
 	}
 }
@@ -240,7 +245,9 @@ int main(int argc, char **argv) {
 	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, layout = 3, turbo = 0;
 	bool ntsc = false, f018b = true, use_xram = false, stop_brk = false;
 	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
-	int m65_ext = 1;
+	int m65_ext = 1; bool uart_loop = false;
+	std::vector<unsigned char> prg; long prg_at = -1; size_t prg_pos = 0; int prg_div = 0; bool prg_busy = false;
+	int watch_addr = -1, watch_len = 0; unsigned char watch_old[64] = {0}; bool watch_init = false;
 	long mount_frame = 2;
 	for (int i = 4; i < argc; i++) {
 		std::string a = argv[i];
@@ -256,7 +263,8 @@ int main(int argc, char **argv) {
 			}
 			if (f) fclose(f);
 		}
-		else if (a == "-d81" && i + 1 < argc) {
+		else if ((a == "-d81" || a == "-d81b") && i + 1 < argc) {
+			auto &d81 = d81s[a == "-d81b" ? 1 : 0];
 			FILE *f = fopen(argv[++i], "rb");
 			if (f) { d81.resize(819200); size_t n = fread(d81.data(), 1, d81.size(), f); d81.resize(n); fclose(f); }
 		}
@@ -269,9 +277,16 @@ int main(int argc, char **argv) {
 		else if (a == "-ntsc") ntsc = true;
 		else if (a == "-xram") use_xram = true;
 		else if (a == "-stopbrk") stop_brk = true;
+		else if (a == "-watch" && i + 2 < argc) { watch_addr = (int)strtol(argv[++i], nullptr, 16); watch_len = atoi(argv[++i]); }
 		else if (a == "-after" && i + 1 < argc) after_pc = (int)strtol(argv[++i], nullptr, 16);
 		else if (a == "-mountat" && i + 1 < argc) mount_frame = atol(argv[++i]);
 		else if (a == "-strict") m65_ext = 0;
+		else if (a == "-uartloop") uart_loop = true;
+		else if (a == "-prg" && i + 2 < argc) {
+			FILE *f = fopen(argv[++i], "rb");
+			if (f) { prg.resize(65536); prg.resize(fread(prg.data(), 1, prg.size(), f)); fclose(f); }
+			prg_at = atol(argv[++i]);
+		}
 		else if (a == "-mouse" && i + 3 < argc) { mouse_port = atoi(argv[++i]); mouse_from = atol(argv[++i]); mouse_to = atol(argv[++i]); }
 		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
 		else if (a == "-f018a") f018b = false;
@@ -289,6 +304,8 @@ int main(int argc, char **argv) {
 	top->reset = 1; top->ld_wr = 0; top->ps2_key = 0;
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
 	top->ps2_mouse = 0; top->mouse_port = mouse_port; top->m65_ext = m65_ext;
+	top->prg_dl = 0; top->prg_wr = 0; top->prg_ofs = 0; top->prg_byte = 0;
+	top->uart_rxd = 1;
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
 	top->sd_ack = 0; top->sd_buff_wr = 0;
 	top->xram_present = use_xram; top->xram_ack = 0; top->xram_dout = 0;
@@ -308,13 +325,22 @@ int main(int argc, char **argv) {
 
 	std::deque<std::string> trace;
 	std::vector<unsigned> pchist(65536, 0);
-	long mount_at = d81.empty() ? -1 : mount_frame;
+	long mount_at = (d81s[0].empty() && d81s[1].empty()) ? -1 : mount_frame;
+	int mount_next = 0;      // the two drives are mounted on consecutive frames
 	unsigned long long clks = 0, instrs = 0;
 
 	while (frame_no < frames) {
 		tick(); clks++;
 		video_tick();
 		sd_tick();
+		if (uart_loop) top->uart_rxd = top->uart_txd;     // serial loopback plug
+		// OSD program download: one byte every 8 clocks, like hps_io
+		top->prg_wr = 0;
+		if (prg_busy && ++prg_div == 8) {
+			prg_div = 0;
+			if (prg_pos < prg.size()) { top->prg_ofs = (unsigned)prg_pos; top->prg_byte = prg[prg_pos]; top->prg_wr = 1; prg_pos++; }
+			else { top->prg_dl = 0; prg_busy = false; printf("prg loaded: %zu bytes, frame %ld\n", prg.size(), frame_no); }
+		}
 		xram_tick();
 		if (top->dbg_sync && top->rootp->c65_core__DOT__cpu_ce) {
 			instrs++;
@@ -322,10 +348,19 @@ int main(int argc, char **argv) {
 			if (stop_brk && top->dbg_op == 0) { puts("BRK reached"); frames = frame_no; }
 			if ((int)top->dbg_pc == stop_pc && after_pc < 0) { puts("stop PC reached"); frames = frame_no; }
 			pchist[top->dbg_pc]++;
+			if (watch_addr >= 0) {
+				for (int w = 0; w < watch_len && w < 64; w++) {
+					unsigned char v = top->rootp->c65_core__DOT__ram__DOT__mem[watch_addr + w];
+					if (watch_init && v != watch_old[w])
+						printf("WATCH %05X %02X->%02X PC=%04X frame %d\n", watch_addr + w, watch_old[w], v, top->dbg_pc, frame_no);
+					watch_old[w] = v;
+				}
+				watch_init = true;
+			}
 			if (ntrace) {
 				char tb_[96];
-				snprintf(tb_, sizeof tb_, "%04X A=%02X X=%02X Y=%02X Z=%02X B=%02X SP=%04X P=%02X", top->dbg_pc, top->dbg_a,
-					top->dbg_x, top->dbg_y, top->dbg_z, top->dbg_b, top->dbg_sp, top->dbg_p);
+				snprintf(tb_, sizeof tb_, "%04X A=%02X X=%02X Y=%02X Z=%02X B=%02X SP=%04X P=%02X OP=%02X", top->dbg_pc, top->dbg_a,
+					top->dbg_x, top->dbg_y, top->dbg_z, top->dbg_b, top->dbg_sp, top->dbg_p, top->dbg_op);
 				trace.push_back(tb_);
 				if ((int)trace.size() > ntrace) trace.pop_front();
 			}
@@ -339,9 +374,12 @@ int main(int argc, char **argv) {
 				top->ps2_mouse = ((top->ps2_mouse ^ 0x1000000) & 0x1000000) | (2 << 16) | (3 << 8) | 0x09;
 			else if (frame_no == mouse_to)
 				top->ps2_mouse = ((top->ps2_mouse ^ 0x1000000) & 0x1000000) | 0x08;
-			if (frame_no == mount_at) {
-				top->img_size = (unsigned)d81.size(); top->img_readonly = 0; top->img_mounted = 1;
+			// mount drive 0 at mount_at and drive 1 on the next frame (one image per pulse)
+			if (mount_at >= 0 && frame_no >= mount_at && mount_next < 2) {
+				int d = mount_next++;
+				if (!d81s[d].empty()) { top->img_size = (unsigned)d81s[d].size(); top->img_readonly = 0; top->img_mounted = 1 << d; }
 			}
+			if (frame_no == prg_at && !prg.empty()) { top->prg_dl = 1; prg_busy = true; prg_pos = 0; prg_div = 0; }
 			if (shot && frame_no % shot == 0) {
 				char name[64]; snprintf(name, sizeof name, "/frame%05ld.ppm", frame_no);
 				write_ppm(outdir + name);
@@ -387,9 +425,10 @@ int main(int argc, char **argv) {
 		for (size_t i = 0; i < hot.size() && i < 16; i++) printf(" %04X:%u", hot[i].second, hot[i].first);
 		printf("\n");
 	}
-	if (d81_dirty) {
-		FILE *o = fopen((outdir + "/disk_out.d81").c_str(), "wb");
-		fwrite(d81.data(), 1, d81.size(), o); fclose(o);
+	for (int d = 0; d < 2; d++) {
+		if (!d81_dirty[d]) continue;
+		FILE *o = fopen((outdir + (d ? "/disk_out_b.d81" : "/disk_out.d81")).c_str(), "wb");
+		fwrite(d81s[d].data(), 1, d81s[d].size(), o); fclose(o);
 	}
 	delete top;
 	return 0;

@@ -1,0 +1,6 @@
+110 10 open 2,2,0,chr$(14)+chr$(0)\r
+170 20 print#2,"hello c65";\r
+220 30 for i=1 to 3000:next\r
+270 40 a$="":for i=1 to 9:get#2,c$:a$=a$+c$:next\r
+330 50 print"got: ";a$:close 2\r
+380 run\r

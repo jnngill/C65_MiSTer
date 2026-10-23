@@ -15,12 +15,23 @@ module c65_core (
 	input  logic  [7:0] ld_data,
 	input  logic        ld_wr,
 
+	// program loader (OSD "Load Program", MiSTer ioctl style): prg_dl is high
+	// for the whole download, prg_wr strobes byte prg_ofs of the .PRG file
+	input  logic        prg_dl,
+	input  logic        prg_wr,
+	input  logic [15:0] prg_ofs,
+	input  logic  [7:0] prg_byte,
+
 	input  logic [10:0] ps2_key,
 	input  logic  [1:0] kbd_layout,       // 0 US, 1 UK, 2 DE, 3 positional
 	input  logic  [4:0] joy1, joy2,       // active high: fire, right, left, down, up
 	input  logic [24:0] ps2_mouse,        // MiSTer hps_io mouse word
 	input  logic  [1:0] mouse_port,       // 1351 mouse: 0 = none, 1 = control port 1, 2 = control port 2
 	input  logic        m65_ext,          // allow the MEGA65 extensions; 0 = strict C65
+
+	// serial port (C65 UART)
+	input  logic        uart_rxd,
+	output logic        uart_txd,
 
 	// video
 	output logic        ce_pix,
@@ -32,13 +43,13 @@ module c65_core (
 	output logic [17:0] audio_l, audio_r,
 
 	// floppy image (512 byte block interface, MiSTer hps_io style)
-	input  logic        img_mounted,
+	input  logic  [1:0] img_mounted,      // bit 0 internal drive, bit 1 external 1565
 	input  logic        img_readonly,
 	input  logic [31:0] img_size,
 	output logic [31:0] sd_lba,
-	output logic        sd_rd,
-	output logic        sd_wr,
-	input  logic        sd_ack,
+	output logic  [1:0] sd_rd,
+	output logic  [1:0] sd_wr,
+	input  logic  [1:0] sd_ack,
 	input  logic  [8:0] sd_buff_addr,
 	input  logic  [7:0] sd_buff_dout,
 	output logic  [7:0] sd_buff_din,
@@ -71,7 +82,8 @@ module c65_core (
 logic [4:0] ph;
 always_ff @(posedge clk) ph <= reset ? 5'd0 : ph + 5'd1;
 
-assign ce_pix = ph[0];
+wire   ce640 = ph[0];          // 640-pixel clock enable for the video chip
+// the video output enable: the 640-pixel rate, or every clk in 1280 pixel modes
 wire   phi2_p = (ph == 5'd15);
 wire   phi2_n = (ph == 5'd31);
 
@@ -228,6 +240,12 @@ wire        slow_dev = io_sid || io_cia1 || io_cia2;
 // One access per cycle.  FAST: 9 clk (3.5 MHz) or 4 / 2 clk with turbo, slow: one
 // full 1 MHz phase.
 // CIA / SID accesses are stretched to cover exactly one phi2 period.
+// program loader state (see below)
+logic        prg_pause, prg_we, prg_was;
+logic [15:0] prg_addr, prg_load, prg_end;
+logic  [7:0] prg_data;
+logic  [2:0] prg_ptr;       // end pointer bytes still to write
+
 typedef enum logic [1:0] { C_RUN, C_SYNC, C_SLOW, C_XRAM } cyc_t;
 cyc_t       cyc_state;
 logic [3:0] cyc;
@@ -243,7 +261,7 @@ always_ff @(posedge clk) begin
 		cyc_state <= C_RUN; cyc <= '0; slow_cs <= 1'b0;
 	end
 	else if (bus_ce) slow_cs <= 1'b0;
-	else if (dma_setup) cyc <= '0;        // DMA addresses are not valid yet
+	else if (dma_setup || prg_pause) cyc <= '0;   // DMA addresses not valid yet / program being loaded
 	else begin
 		case (cyc_state)
 			C_RUN: begin
@@ -286,6 +304,53 @@ assign dma_ce = bus_ce && dma_busy;
 wire io_wr = bus_ce && bus_we;
 wire io_rd = bus_ce && !bus_we;
 
+// ------------------------------------------------------------------ program loader
+// A .PRG is copied into chip RAM bank 0 at the address in its first two bytes
+// while the CPU and DMA are held between bus cycles.  Afterwards BASIC is
+// told where the program ends: $82/$83 for a C65 BASIC program ($2001),
+// $2D-$32 for a C64 one ($0801, after GO64).  Other load addresses (machine
+// code) are left alone for SYS.
+
+always_ff @(posedge clk) begin
+	prg_we  <= 1'b0;
+	prg_was <= prg_dl;
+	if (prg_dl) begin
+		prg_pause <= 1'b1;
+		prg_ptr   <= 3'd0;
+		if (prg_wr) begin
+			if (prg_ofs == 16'd0)      prg_load[7:0]  <= prg_byte;
+			else if (prg_ofs == 16'd1) prg_load[15:8] <= prg_byte;
+			else begin
+				prg_addr <= prg_load + prg_ofs - 16'd2;
+				prg_data <= prg_byte;
+				prg_we   <= 1'b1;
+				prg_end  <= prg_load + prg_ofs - 16'd1;
+			end
+		end
+	end
+	else if (prg_was) begin
+		// download finished: write the end pointer(s)
+		prg_ptr <= (prg_load == 16'h2001) ? 3'd2 : (prg_load == 16'h0801) ? 3'd6 : 3'd0;
+		if (prg_load != 16'h2001 && prg_load != 16'h0801) prg_pause <= 1'b0;
+	end
+	else if (prg_ptr != 3'd0 && !prg_we) begin
+		prg_ptr <= prg_ptr - 3'd1;
+		prg_we  <= 1'b1;
+		if (prg_load == 16'h2001) begin
+			// ptr 2: $83 = high byte, ptr 1: $82 = low byte
+			prg_addr <= 16'h0083 - {15'd0, prg_ptr[0]};
+			prg_data <= prg_ptr[0] ? prg_end[7:0] : prg_end[15:8];
+		end
+		else begin
+			// ptr 6..1: $2D lo, $2E hi, $2F lo, $30 hi, $31 lo, $32 hi
+			prg_addr <= 16'h002D + {13'd0, 3'd6 - prg_ptr};
+			prg_data <= prg_ptr[0] ? prg_end[15:8] : prg_end[7:0];
+		end
+		if (prg_ptr == 3'd1) prg_pause <= 1'b0;
+	end
+	if (reset && !prg_dl) begin prg_pause <= 1'b0; prg_ptr <= 3'd0; end
+end
+
 // ------------------------------------------------------------------ memory
 logic  [7:0] ram_q, ram2_q, wom_q, rom_q, vram_q, vram1_q, vram2_q, vrom_q, vrom1_q, vwom_q, cram2_q, vcram2_q;
 logic [18:0] vaddr;
@@ -327,7 +392,8 @@ end
 
 dpram #(17, 8) ram (
 	.clk(clk),
-	.a_addr(ram_addr), .a_din(bus_dout), .a_we(bus_ce && bus_we && ram_sel), .a_q(ram_q),
+	.a_addr(prg_we ? {1'b0, prg_addr} : ram_addr), .a_din(prg_we ? prg_data : bus_dout),
+	.a_we(prg_we || (bus_ce && bus_we && ram_sel)), .a_q(ram_q),
 	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram1_q)
 );
 
@@ -372,7 +438,7 @@ always_ff @(posedge clk) begin
 end
 
 vic3 vic (
-	.clk(clk), .reset(reset), .ce_pix(ce_pix), .ntsc(ntsc),
+	.clk(clk), .reset(reset), .ce_pix(ce640), .pix_ce(ce_pix), .ntsc(ntsc),
 	.vic3_mode(vic3_mode), .vic4_mode(gs_mode),
 	.reg_addr(vic_reg), .reg_we(io_wr && io_vic), .reg_re(io_rd && io_vic),
 	.reg_din(bus_dout), .reg_dout(vic_dout),
@@ -462,11 +528,21 @@ always_ff @(posedge clk) begin
 	else if (io_wr && io_uart && !m65_reg) uart_regs[io_addr[3:0]] <= bus_dout;
 end
 
+// $D600-$D606: the serial port
+wire        ser_sel = io_uart && !m65_reg && (io_addr[3:0] < 4'd7);
+logic [7:0] ser_dout;
+logic       ser_irq_n;
+c65_uart serial (
+	.clk(clk), .reset(reset), .ntsc(ntsc),
+	.reg_addr(io_addr[2:0]), .reg_we(io_wr && ser_sel), .reg_re(io_rd && ser_sel),
+	.reg_din(bus_dout), .reg_dout(ser_dout), .irq_n(ser_irq_n),
+	.rxd(uart_rxd), .txd(uart_txd)
+);
+
 always_comb begin
 	case (io_addr[3:0])
-		4'd1:    uart_dout = 8'h00;
 		4'd7:    uart_dout = porte;
-		default: uart_dout = uart_regs[io_addr[3:0]];
+		default: uart_dout = (io_addr[3:0] < 4'd7) ? ser_dout : uart_regs[io_addr[3:0]];
 	endcase
 	// $D629 is the MEGA65 hardware model: answer as a MEGA65 R3
 	if (m65_reg) uart_dout = (io_addr[7:0] == 8'h29) ? 8'h03 : 8'h00;
@@ -528,6 +604,8 @@ m65_math math (
 
 `ifdef IO_DEBUG
 always @(posedge clk) begin
+	if (bus_ce && ser_sel)
+		$display("SER  %s $D60%01x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[3:0], bus_we ? bus_dout : ser_dout, dbg_pc);
 	if (bus_ce && io_hyp)
 		$display("HYP  %s $D6%02x = %02x  PC=%04x A=%02x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc, dbg_a);
 	if (bus_ce && io_vic && vic_reg >= 7'h40)
@@ -575,7 +653,7 @@ end
 assign dma_reg_we = io_wr && io_dma && (io_addr[7:3] == 5'd0) && (io_addr[2:0] != 3'd5 || gs_mode);
 assign dbg_op     = bus_din;
 
-assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n;
+assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n & ser_irq_n;
 assign nmi_n = cia2_irq_n & restore_n;
 
 endmodule

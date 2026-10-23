@@ -39,6 +39,7 @@ module vic3 (
 	input  logic  [7:0] vrom_q,
 
 	output logic  [3:0] r, g, b,
+	output logic        pix_ce,        // r, g, b and the syncs were updated on this clk
 	output logic        hsync, vsync, hblank, vblank,
 	output logic        field,         // 400-line (interlaced) modes: 0 = first field, 1 = second
 	output logic  [8:0] raster
@@ -83,6 +84,7 @@ wire fclrhi = ctrl_c[2];                  // full colour for characters $100 and
 wire attr  = ctrl_b[5];
 wire bpm   = ctrl_b[4];
 wire v400  = ctrl_b[3];
+wire h1280 = ctrl_b[2] && bpm;   // 1280 pixels across: bitplane modes only, one pixel per clk
 wire palram = ctrl_a[2];
 wire crom9 = ctrl_a[6];
 
@@ -400,13 +402,15 @@ wire       hborder = csel ? !(x >= 10'd24 && x < 10'd344) : !(x >= 10'd31 && x <
 
 // cell geometry in 640-mode pixels
 wire [4:0] cell_w   = h640 ? 5'd8 : 5'd16;
+wire [4:0] cell_wf  = h1280 ? 5'd4 : cell_w;                   // fetch cell, in 640-pixels
+wire [7:0] n_cols_f = h1280 ? 8'd160 : {1'b0, n_cols};          // cells per line
 // first displayed pixel.  40 column modes scroll in 320-pixels; in 80 column
 // modes the normal position is XSCROLL = 1 and one step is one 640-pixel.
 wire [10:0] gfx_x0  = h640 ? 11'd47 + {8'd0, xscroll} : 11'd48 + {7'd0, xscroll, 1'b0};
-wire [10:0] fetch_x0 = gfx_x0 - {6'd0, cell_w};              // fetch runs one cell ahead
+wire [10:0] fetch_x0 = gfx_x0 - {6'd0, cell_wf};              // fetch runs one cell ahead
 
 // ------------------------------------------------------------------ fetch engine
-logic  [6:0] f_col;          // column being fetched
+logic  [7:0] f_col;          // column being fetched
 logic  [4:0] f_cnt;          // 640-pixel counter inside the fetch cell
 logic        f_run;
 logic  [3:0] f_step;         // clk step inside the cell
@@ -418,11 +422,11 @@ logic [18:0] vaddr_gfx;
 
 wire [4:0] text_row  = dy[7:3];
 wire [2:0] text_rc   = dy[2:0];
-wire [11:0] cell_idx = row_base + {5'd0, f_col};
+wire [11:0] cell_idx = row_base + {4'd0, f_col};
 
 // screen and colour RAM addresses of the cell being fetched
 logic [11:0] row_ofs;        // bytes from the start of the screen to this text row
-wire  [7:0]  col_ofs  = chr16 ? {f_col, 1'b0} : {1'b0, f_col};
+wire  [7:0]  col_ofs  = chr16 ? {f_col[6:0], 1'b0} : f_col;
 wire [18:0]  scr_addr = scrnptr[18:0] + {7'd0, row_ofs} + {11'd0, col_ofs};
 wire [15:0]  col_ofs16 = colptr + {4'd0, row_ofs} + {8'd0, col_ofs};
 // colour RAM: the first 2K are chip RAM $1F800, the next 4K ($FF80800-$FF817FF,
@@ -458,7 +462,7 @@ function automatic [18:0] bp_byte_addr(input int n);
 	logic [15:0] base;
 	// 400 line modes: the second field's lines come from the "odd" address
 	sel  = (v400 && field) ? bp_addr[n][7:5] : bp_addr[n][3:1];
-	base = h640 ? {sel[2:1], 14'd0} : {sel, 13'd0};
+	base = h1280 ? {sel[2], 15'd0} : h640 ? {sel[2:1], 14'd0} : {sel, 13'd0};
 	bp_byte_addr = {bp_bank[1:0], n[0], base + {1'b0, cell_idx, text_rc}};
 endfunction
 
@@ -474,10 +478,10 @@ always_ff @(posedge clk) begin
 				f_run <= 1'b1; f_col <= '0; f_cnt <= '0; f_go <= 1'b1;
 			end
 			else if (f_run) begin
-				if (f_cnt == cell_w - 5'd1) begin
+				if (f_cnt == cell_wf - 5'd1) begin
 					f_cnt <= '0;
-					if (f_col == n_cols - 7'd1) f_run <= 1'b0;
-					else begin f_col <= f_col + 7'd1; f_go <= 1'b1; end
+					if (f_col == n_cols_f - 8'd1) f_run <= 1'b0;
+					else begin f_col <= f_col + 8'd1; f_go <= 1'b1; end
 				end
 				else f_cnt <= f_cnt + 5'd1;
 			end
@@ -490,7 +494,7 @@ always_ff @(posedge clk) begin
 				end
 				else if (in_rows) begin
 					if (text_rc == 3'd7) begin
-						row_base <= row_base + {5'd0, n_cols};
+						row_base <= row_base + {4'd0, n_cols_f};
 						row_ofs  <= row_ofs + {2'd0, linestep};
 					end
 				end
@@ -558,7 +562,7 @@ logic  [7:0] sh_bp [8];
 logic        sh_on;           // inside the fetched area
 logic        sh_fcm;          // the cell is a full-colour character
 logic  [4:0] d_cnt;
-logic  [6:0] d_col;
+logic  [7:0] d_col;
 logic        d_run;
 logic        mc_phase;
 logic  [1:0] mc_bits;
@@ -652,17 +656,17 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		d_run <= 1'b0; sh_on <= 1'b0; d_cnt <= '0; d_col <= '0; mc_phase <= 1'b0;
 	end
-	else if (ce_pix) begin
+	else if (ce_pix || h1280) begin
 		logic load;
 		load = 1'b0;
-		if (hx == gfx_x0 && in_rows) begin
+		if (ce_pix && hx == gfx_x0 && in_rows) begin
 			d_run <= 1'b1; d_col <= '0; d_cnt <= '0; load = 1'b1;
 		end
 		else if (d_run) begin
-			if (d_cnt == cell_w - 5'd1) begin
+			if (d_cnt == (h1280 ? 5'd7 : cell_w - 5'd1)) begin
 				d_cnt <= '0;
-				if (d_col == n_cols - 7'd1) begin d_run <= 1'b0; sh_on <= 1'b0; end
-				else begin d_col <= d_col + 7'd1; load = 1'b1; end
+				if (d_col == n_cols_f - 8'd1) begin d_run <= 1'b0; sh_on <= 1'b0; end
+				else begin d_col <= d_col + 8'd1; load = 1'b1; end
 			end
 			else d_cnt <= d_cnt + 5'd1;
 		end
@@ -676,9 +680,9 @@ always_ff @(posedge clk) begin
 			sh_on  <= 1'b1;
 			mc_phase <= 1'b0;
 		end
-		else if (h640 || d_cnt[0]) begin
-			// one graphics pixel elapsed (every 640-pixel in 80 column mode,
-			// every second one in 40 column mode)
+		else if (h1280 || h640 || d_cnt[0]) begin
+			// one graphics pixel elapsed (every clk in 1280 mode, every 640-pixel
+			// in 80 column mode, every second one in 40 column mode)
 			sh_gfx <= {sh_gfx[6:0], 1'b0};
 			if (bpm) for (int i = 0; i < 8; i++) sh_bp[i] <= {sh_bp[i][6:0], 1'b0};
 			mc_phase <= ~mc_phase;
@@ -865,12 +869,17 @@ end
 
 logic hbl_q, vbl_q, hs_q, vs_q;
 
+// pixels leave at the 640-pixel rate, or every clk in 1280 mode
+assign pix_ce = ce_pix || h1280;
+logic [7:0] pix_idx_q;      // pix_idx one clk later, lined up with the palette RAM output
+always_ff @(posedge clk) pix_idx_q <= pix_idx;
+
 always_ff @(posedge clk) begin
-	if (ce_pix) begin
+	if (pix_ce) begin
 		pix_idx <= idx_c;
 		hbl_q <= hbl_i; vbl_q <= vbl_i; hs_q <= hs_i; vs_q <= vs_i;
-		// the palette RAM outputs (pr_q..) now hold the entry for pix_idx
-		if (pix_idx[7:4] == 4'd0 && !palram) {r, g, b} <= rom_pal(pix_idx[3:0]);
+		// the palette RAM outputs (pr_q..) now hold the entry for pix_idx_q
+		if (pix_idx_q[7:4] == 4'd0 && !palram) {r, g, b} <= rom_pal(pix_idx_q[3:0]);
 		else begin r <= pr_q[3:0]; g <= pg_q; b <= pb_q; end
 		hblank <= hbl_q; vblank <= vbl_q; hsync <= hs_q; vsync <= vs_q;
 	end

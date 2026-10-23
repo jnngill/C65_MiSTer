@@ -31,14 +31,17 @@ for C64 games the MiSTer C64 core is the better choice than `GO64`.
 |------|-------|
 | CSG 4510 CPU (65CE02 + MAP) | done, fuzz-tested against a reference model (`sim/cpu_fuzz`) |
 | Memory map (128K RAM, 128K ROM, MAP, C64 banking, `$D030` ROM enables) | done |
-| VIC-III: text 40/80 col + attributes, VIC-II bitmap modes, bitplanes (up to 8, 320 or 640 wide, 200 or 400 lines), palette, sprites, raster IRQ | done (line based, not cycle exact). 400-line modes are sent as two alternating fields for the scaler to weave; no true interlaced sync on analogue output. H1280 missing |
+| VIC-III: text 40/80 col + attributes, VIC-II bitmap modes, bitplanes (up to 8, 320 or 640 wide, 200 or 400 lines), palette, sprites, raster IRQ | done (line based, not cycle exact). 400-line modes are sent as two alternating fields for the scaler to weave; no true interlaced sync on analogue output |
+| VIC-III 1280 pixel bitplane modes (`$D031` H1280) | done, confirmed on hardware over HDMI: 160 cells across, up to 6 bitplanes (the fetch has time for no more). The core then sends pixels at twice the normal rate; with the analogue scandoubler this is untested. The 911210 ROM's `SCREEN` command does not set these modes up (that part of BASIC 10 was never finished), so they are reached by programming the registers |
 | F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
 | F011 floppy controller, internal drive, `.D81` read/write | done (sector level). The write-track command blanks the track, which is what `HEADER` with an ID needs to format a disk |
+| External 1565 drive (second `.D81`, OSD *Mount Drive 9*) | done: both ROMs report it at start-up and use it as unit 9 (`DIR U9`, `DLOAD"X",U9`, S-BASIC `BACKUP U8 TO U9`). `D1` is not supported by either ROM |
+| Serial port (UART at `$D600`), RS-232 through the MiSTer's UART modes | done, sending and receiving confirmed on hardware: 5-8 data bits, parity, 300-38400 baud. The stock ROM's KERNAL drives it as device 2 (`OPEN 2,2,0,CHR$(14)`); S-BASIC 65 has no RS-232 driver |
 | CIA 6526 x2, keyboard incl. C65 extra keys, joysticks | done; keyboard and joysticks confirmed on hardware |
 | 1351 mouse on either control port | done; pointer movement and left button confirmed on hardware |
 | Dual SID | done (MiSTer C64/C128 SID): `SOUND`, `PLAY`, the filter and stereo placement (`$D400` SID right, `$D420` SID left) confirmed on hardware |
 | RAM expansion: banks 6-15 (`$60000-$FFFFF`) and 4 MB at `$400000-$7FFFFF` (DMA banks `$40-$7F`) | done; needs a MiSTer SDRAM module |
-| UART, external 1565 drive, IEC devices | not implemented |
+| IEC serial bus (drives 10+, printers, a real 1541) | not implemented |
 | MEGA65 extensions for S-BASIC 65 (OSD option, off by default) | see below |
 
 Verified with ROM **911210**:
@@ -131,13 +134,18 @@ Verified with S-BASIC 65 V250507:
 Known not to work under S-BASIC 65:
 
 - `MOUNT` (needs the MEGA65 hypervisor's SD card access); use the OSD.
-- Relative files: `DOPEN` with `L` and `RECORD` create the file, but
-  `DCLOSE` reports `71,BAM CORRUPTED` and the file stays empty. The stock
-  911210 ROM writes the same relative file correctly on this core, and the
-  failing DOS touches no hardware the core lacks, so this may be a bug in
-  S-BASIC's DOS; it is not yet understood.
-- `BACKUP` and `CHDIR` were not tried (they need a second drive or a
-  partitioned disk).
+- Relative files (`DOPEN` with `L`, `RECORD`) do not work: records are not
+  stored, `DCLOSE` can report `71,BAM CORRUPTED`, and the directory entry
+  can get a nonsense block count. Traced in simulation, this is a bug in
+  S-BASIC's DOS rather than in the core: the DOS starts using a second data
+  buffer for the file without ever recording which track that buffer holds,
+  then looks up the BAM entry for "track 0". It uses no hardware the core
+  lacks, and the stock 911210 ROM's DOS handles relative files correctly on
+  this core.
+- `CHDIR` was not tried (it needs a partitioned disk). `BACKUP U8 TO U9`
+  (and the other way round) works with a second image in *Mount Drive 9*.
+- RS-232 (`OPEN` on device 2): S-BASIC 65's KERNAL has no driver for it
+  (`?DEV NOT PRESENT`); it works with the stock ROM.
 
 Sound has been heard on hardware: `SOUND`, a `PLAY` scale, a filter sweep,
 and each SID on its own side of the stereo mix.
@@ -192,9 +200,16 @@ it stays on; with the default *Off* the ROM stops at a blue screen.
 
 ### Loading .PRG and .D64 files
 
-The core cannot read single `.prg` files, and its drive is a 1581, so it
-cannot read 1541 `.d64` images either; programs have to be on a `.d81`
-disk. The `c65_prg_disk.sh` script makes that easy:
+**One program:** choose *Load Program* in the OSD and pick a `.prg` file.
+It is copied straight into memory at its load address while the machine is
+held, then `RUN` (or `LIST`) it. C65 BASIC programs (load address `$2001`)
+and C64 BASIC programs after `GO64` (`$0801`) get BASIC's end-of-program
+pointer set, so `RUN`, `LIST` and `SAVE` work; anything else is machine code,
+started with `SYS` and its address.
+
+**A whole folder, or `.d64` images:** the drive is a 1581, so it cannot read
+1541 `.d64` images, and the OSD loads one program at a time. The
+`c65_prg_disk.sh` script builds a `.d81` disk from a folder instead:
 
 1. Copy `c65_prg_disk.sh` to `/media/fat/Scripts/`.
 2. Run **c65_prg_disk** from the MiSTer *Scripts* menu once. It creates the
@@ -225,7 +240,9 @@ Relative (REL) files on a `.d64` are skipped.
 | Option | Choices | Notes |
 |--------|---------|-------|
 | Mount Drive 8 | a `.D81` file | the internal 3.5" drive |
+| Mount Drive 9 (1565) | a `.D81` file | the external 1565 drive, unit 9. It can be mounted at any time; the start-up message only reports it if it was mounted before the machine started |
 | Load System ROM | a `.rom` / `.bin` file | replaces the ROM loaded from `boot.rom` and resets |
+| Load Program | a `.prg` file | copies the program into memory, see [Loading .PRG and .D64 files](#loading-prg-and-d64-files) |
 | Video Standard | PAL, NTSC | |
 | Aspect Ratio, Scandoubler Fx, Stereo Mix | | standard MiSTer settings |
 | Keyboard Layout | US, UK, DE, Positional | see below |
@@ -235,6 +252,21 @@ Relative (REL) files on a `.d64` are skipped.
 | DMA Revision | F018B, F018A | F018B for ROMs from mid 1991 on, F018A for older ones |
 | MEGA65 Extensions | Off, On | Off: a plain C65. On: the MEGA65 subset that S-BASIC 65 needs (see [MEGA65 extensions](#mega65-extensions)). Changing it restarts the machine |
 | Reset | | restarts the machine |
+
+### Serial port
+
+The C65's serial port (UART) is connected to the MiSTer's UART. Pick a
+*UART mode* on the OSD's System page (for example *Modem* for telnet BBSes,
+*MIDI*, or *Console*) and set its *Baud* to the rate the C65 program uses.
+
+With the stock 911210 ROM, BASIC opens it as device 2; the first character
+of the name sets the speed and format as on a C64, e.g.
+
+    OPEN 2,2,0,CHR$(14)+CHR$(0)    : REM 9600 baud, 8 data bits, no parity
+    PRINT#2,"ATZ"                  : GET#2,A$ ... : CLOSE 2
+
+`CHR$(6)` is 300 baud, `CHR$(8)` 1200, `CHR$(10)` 2400, `CHR$(12)` 4800,
+`CHR$(14)` 9600, `CHR$(15)` 19200. S-BASIC 65 has no RS-232 driver.
 
 ### Clock
 
