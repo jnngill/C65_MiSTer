@@ -29,6 +29,13 @@ module c65_core (
 	input  logic  [1:0] mouse_port,       // 1351 mouse: 0 = none, 1 = control port 1, 2 = control port 2
 	input  logic        m65_ext,          // allow the MEGA65 extensions; 0 = strict C65
 
+	// IEC serial bus (1 = line released): the C65's outputs, and the drives' outputs
+	output logic        iec_atn_o,
+	output logic        iec_clk_o,
+	output logic        iec_data_o,
+	input  logic        iec_clk_i,
+	input  logic        iec_data_i,
+
 	// serial port (C65 UART)
 	input  logic        uart_rxd,
 	output logic        uart_txd,
@@ -501,7 +508,12 @@ mos6526_8520 cia1 (
 // CIA2 port A: [1:0] video bank, [3] ATN out, [4] CLK out, [5] DATA out,
 // [6] CLK in, [7] DATA in.  No external IEC devices yet: the bus just
 // reflects what the C65 itself drives.
-wire [7:0] cia2_pa_in = {~cia2_pa_out[5], ~cia2_pa_out[4], cia2_pa_out[5:0]};
+// CIA2 port A: [3] ATN out, [4] CLK out, [5] DATA out (1 pulls the line low),
+// [6] CLK in, [7] DATA in.  The bus is wired-AND of the C65 and the drives.
+assign iec_atn_o  = ~cia2_pa_out[3];
+assign iec_clk_o  = ~cia2_pa_out[4];
+assign iec_data_o = ~cia2_pa_out[5];
+wire [7:0] cia2_pa_in = {iec_data_o & iec_data_i, iec_clk_o & iec_clk_i, cia2_pa_out[5:0]};
 
 mos6526_8520 cia2 (
 	.mode(2'd0), .clk(clk), .phi2_p(phi2_p), .phi2_n(phi2_n), .res_n(~reset),

@@ -41,7 +41,7 @@ for C64 games the MiSTer C64 core is the better choice than `GO64`.
 | 1351 mouse on either control port | done; pointer movement and left button confirmed on hardware |
 | Dual SID | done (MiSTer C64/C128 SID): `SOUND`, `PLAY`, the filter and stereo placement (`$D400` SID right, `$D420` SID left) confirmed on hardware |
 | RAM expansion: banks 6-15 (`$60000-$FFFFF`) and 4 MB at `$400000-$7FFFFF` (DMA banks `$40-$7F`) | done; needs a MiSTer SDRAM module |
-| IEC serial bus (drives 10+, printers, a real 1541) | not implemented |
+| IEC serial bus with an emulated 1541 (unit 10, `.D64` images) | done, confirmed on hardware with the stock ROM, in C64 mode and with S-BASIC 65: directory, load, save. Needs a 1541 DOS ROM (`boot1.rom`) and the SDRAM module, where the drive's ROM is kept. Built from the MiSTer C64 / C128 cores' 1541 (D64 only, no G64, no parallel cable). Printers and other IEC devices are not emulated |
 | MEGA65 extensions for S-BASIC 65 (OSD option, off by default) | see below |
 
 Verified with ROM **911210**:
@@ -180,6 +180,11 @@ newest dated `.rbf` is the one to use) and on the
    is loaded when the core starts; other images in the folder (`.rom` /
    `.bin`) can be loaded from the OSD with *Load System ROM*.
 4. Copy `blank.d81` to `/media/fat/games/C65/`.
+   *Optional, for `.D64` images:* copy a 16K Commodore 1541 DOS ROM (for
+   example 325302-01 + 901229-05, as shipped with VICE as `dos1541`) to
+   `/media/fat/games/C65/boot1.rom`. Like the C65 ROM it is copyrighted and
+   not included. The emulated 1541 keeps it in the SDRAM module, so it needs
+   one.
 5. Start **C65** from the Computer menu.
 6. Press F12, choose *Mount Drive 8* and pick `blank.d81`. It is an empty,
    formatted 1581 disk; keep a spare copy, the core writes to the image.
@@ -207,9 +212,14 @@ and C64 BASIC programs after `GO64` (`$0801`) get BASIC's end-of-program
 pointer set, so `RUN`, `LIST` and `SAVE` work; anything else is machine code,
 started with `SYS` and its address.
 
-**A whole folder, or `.d64` images:** the drive is a 1581, so it cannot read
-1541 `.d64` images, and the OSD loads one program at a time. The
-`c65_prg_disk.sh` script builds a `.d81` disk from a folder instead:
+**A `.d64` image:** mount it with *Mount Drive 10 (1541)* and use it as unit
+10: `DIR U10`, `DLOAD"NAME",U10`, `DSAVE"NAME",U10` (S-BASIC 65:
+`DIR U10`, `LOAD "NAME",U10`); in C64 mode `LOAD"$",10`, `LOAD"NAME",10`.
+This needs a 1541 ROM, see [Installing](#installing). Fast loaders and copy
+protection mostly fail, because C64 mode is not cycle exact.
+
+**A whole folder of programs:** the `c65_prg_disk.sh` script builds a `.d81`
+disk for the internal drive from a folder of `.prg` and `.d64` files:
 
 1. Copy `c65_prg_disk.sh` to `/media/fat/Scripts/`.
 2. Run **c65_prg_disk** from the MiSTer *Scripts* menu once. It creates the
@@ -241,8 +251,10 @@ Relative (REL) files on a `.d64` are skipped.
 |--------|---------|-------|
 | Mount Drive 8 | a `.D81` file | the internal 3.5" drive |
 | Mount Drive 9 (1565) | a `.D81` file | the external 1565 drive, unit 9. It can be mounted at any time; the start-up message only reports it if it was mounted before the machine started |
+| Mount Drive 10 (1541) | a `.D64` file | the emulated 1541 on the IEC bus, unit 10 (needs a 1541 ROM and the SDRAM module) |
 | Load System ROM | a `.rom` / `.bin` file | replaces the ROM loaded from `boot.rom` and resets |
 | Load Program | a `.prg` file | copies the program into memory, see [Loading .PRG and .D64 files](#loading-prg-and-d64-files) |
+| Load 1541 ROM | a `.rom` / `.bin` file | the 1541's DOS ROM, if it is not in `boot1.rom` |
 | Video Standard | PAL, NTSC | |
 | Aspect Ratio, Scandoubler Fx, Stereo Mix | | standard MiSTer settings |
 | Keyboard Layout | US, UK, DE, Positional | see below |

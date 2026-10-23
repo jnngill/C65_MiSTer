@@ -1,6 +1,7 @@
 // CSG F011 floppy disk controller for the C65's internal 3.5" drive, backed
-// by a .D81 image through the MiSTer block interface (512 byte blocks, which
-// are exactly the physical sectors of a 1581 disk).
+// by a .D81 image through the MiSTer block interface.  Each physical 1581
+// sector (512 bytes) is fetched as two 256 byte blocks: sd_lba counts 256 byte
+// blocks and the top level asks for a block count of 2.
 //
 // Sector level emulation, buffered mode only (which is what the C65 DOS
 // uses): a read command fills the 512 byte sector buffer and the CPU then
@@ -145,14 +146,14 @@ always_ff @(posedge clk) begin
 						// write track
 						busy <= 1'b1; fmt_n <= '0;
 						if (disk_ok && head < 7'd80 && !ro) begin
-							sd_lba <= {21'd0, {4'd0, head} * 11'd20 + (control[3] ? 11'd0 : 11'd10)}; sd_wr[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_FMT;
+							sd_lba <= {20'd0, {4'd0, head} * 11'd20 + (control[3] ? 11'd0 : 11'd10), 1'b0}; sd_wr[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_FMT;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
 					end
 					else if (reg_din[7]) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid && !ro) begin
-							sd_lba <= {21'd0, block}; sd_wr[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_WRITE;
+							sd_lba <= {20'd0, block, 1'b0}; sd_wr[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_WRITE;
 							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
@@ -160,7 +161,7 @@ always_ff @(posedge clk) begin
 					else if (reg_din[6]) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid) begin
-							sd_lba <= {21'd0, block}; sd_rd[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_READ;
+							sd_lba <= {20'd0, block, 1'b0}; sd_rd[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_READ;
 							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
@@ -208,7 +209,7 @@ always_ff @(posedge clk) begin
 					if (fmt_n == 4'd9) begin busy <= 1'b0; irq_flag <= 1'b1; state <= ST_IDLE; end
 					else begin
 						fmt_n  <= fmt_n + 4'd1;
-						sd_lba <= {21'd0, fmt_block + 11'd1};
+						sd_lba <= {20'd0, fmt_block + 11'd1, 1'b0};
 						sd_wr[xdrv] <= 1'b1;
 					end
 				end

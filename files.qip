@@ -16,3 +16,15 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/m65_rtc.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE C65.sv
+set_global_assignment -name VHDL_FILE rtl/t65/T65_Pack.vhd
+set_global_assignment -name VHDL_FILE rtl/t65/T65_MCode.vhd
+set_global_assignment -name VHDL_FILE rtl/t65/T65_ALU.vhd
+set_global_assignment -name VHDL_FILE rtl/t65/T65.vhd
+set_global_assignment -name VHDL_FILE rtl/iec_drive/iecdrv_via6522.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/iec_drive/iecdrv_misc.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/iec_drive/c1541_logic.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/iec_drive/c1541_track.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/iec_drive/c1541_gcr.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/iec_drive/c1541_direct_gcr.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/iec_drive/c1541_drv.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/iec_drive/c1541_sdrom.sv

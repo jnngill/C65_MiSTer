@@ -159,7 +159,7 @@ static void sd_tick() {
 		{
 			int i = sd_cnt >> 2;
 			if (i >= 512) { sd_state = 2; break; }
-			size_t off = (size_t)sd_lba_l * 512 + i;
+			size_t off = (size_t)sd_lba_l * 256 + i;      // 256 byte blocks, two per F011 sector
 			top->sd_buff_addr = i;
 			if (!sd_is_wr) {
 				top->sd_buff_dout = off < d81s[sd_drv].size() ? d81s[sd_drv][off] : 0;
@@ -177,7 +177,7 @@ static void sd_tick() {
 	if (sd_state == 1 && sd_is_wr && sd_cnt > 0 && (sd_cnt & 3) == 3) {
 		int i = sd_cnt >> 2;
 		if (i < 512) {
-			size_t off = (size_t)sd_lba_l * 512 + i;
+			size_t off = (size_t)sd_lba_l * 256 + i;      // 256 byte blocks, two per F011 sector
 			if (off < d81s[sd_drv].size()) { d81s[sd_drv][off] = top->sd_buff_din; d81_dirty[sd_drv] = true; }
 		}
 	}
@@ -306,6 +306,7 @@ int main(int argc, char **argv) {
 	top->ps2_mouse = 0; top->mouse_port = mouse_port; top->m65_ext = m65_ext;
 	top->prg_dl = 0; top->prg_wr = 0; top->prg_ofs = 0; top->prg_byte = 0;
 	top->uart_rxd = 1;
+	top->iec_clk_i = 1; top->iec_data_i = 1;     // no IEC device (drives are VHDL and not simulated)
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
 	top->sd_ack = 0; top->sd_buff_wr = 0;
 	top->xram_present = use_xram; top->xram_ack = 0; top->xram_dout = 0;

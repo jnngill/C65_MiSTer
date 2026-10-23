@@ -31,7 +31,7 @@ assign HDMI_BOB_DEINT = 0;
 
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
-assign LED_USER  = drive_led | ioctl_download;
+assign LED_USER  = drive_led | drv_led | ioctl_download;
 assign BUTTONS   = 0;
 
 assign AUDIO_S   = 1;
@@ -46,8 +46,10 @@ localparam CONF_STR = {
 	"C65;UART38400:19200:9600:4800:2400:1200:300;",
 	"S0,D81,Mount Drive 8;",
 	"S1,D81,Mount Drive 9 (1565);",
+	"S2,D64,Mount Drive 10 (1541);",
 	"F1,ROMBIN,Load System ROM;",
 	"F2,PRG,Load Program;",
+	"F3,ROMBIN,Load 1541 ROM;",
 	"-;",
 	"O[2],Video Standard,PAL,NTSC;",
 	"O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -139,6 +141,7 @@ wire  [15:0] ioctl_index;
 wire         ioctl_wr;
 wire  [26:0] ioctl_addr;
 wire   [7:0] ioctl_dout;
+wire         ioctl_wait;
 
 wire  [10:0] ps2_key;
 wire  [31:0] joystick_0, joystick_1;
@@ -146,17 +149,18 @@ wire  [15:0] sdram_sz;
 wire  [24:0] ps2_mouse;
 wire  [64:0] RTC;
 
-wire  [31:0] sd_lba[2];
-wire   [1:0] sd_rd, sd_wr, sd_ack;
+wire  [31:0] sd_lba[3];
+wire   [2:0] sd_rd, sd_wr, sd_ack;
+wire   [5:0] sd_blk_cnt[3];
 wire  [13:0] sd_buff_addr;
 wire   [7:0] sd_buff_dout;
-wire   [7:0] sd_buff_din[2];
+wire   [7:0] sd_buff_din[3];
 wire         sd_buff_wr;
-wire   [1:0] img_mounted;
+wire   [2:0] img_mounted;
 wire         img_readonly;
 wire  [63:0] img_size;
 
-hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(2)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(3), .BLKSZ(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -171,10 +175,10 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(2)) hps_io
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
-	.ioctl_wait(1'b0),
+	.ioctl_wait(ioctl_wait),
 
 	.sd_lba(sd_lba),
-	.sd_blk_cnt('{6'd0, 6'd0}),
+	.sd_blk_cnt(sd_blk_cnt),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
@@ -195,8 +199,11 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(2)) hps_io
 );
 
 // ------------------------------------------------------------------ reset / ROM load
-wire rom_download = ioctl_download && (ioctl_index[5:0] <= 6'd1);
+// boot.rom arrives as index 0, boot1.rom as $40; OSD files as n plus the
+// extension number in bits 7:6 (ROM / BIN)
+wire rom_download = ioctl_download && (ioctl_index == 16'd0 || ioctl_index[5:0] == 6'd1);
 wire prg_download = ioctl_download && (ioctl_index[5:0] == 6'd2);
+wire drv_download = ioctl_download && (ioctl_index == 16'h0040 || ioctl_index[5:0] == 6'd3);
 
 
 reg  rom_loaded = 0;
@@ -217,11 +224,13 @@ always @(posedge clk_sys) begin
 	reset <= (reset_cnt != 0);
 end
 
-// ------------------------------------------------------------------ expansion RAM (SDRAM module)
+// ------------------------------------------------------------------ SDRAM module
 // The C65's expansion RAM (banks 6-15 and the 4 MB DMA region) lives in the
-// first 8 MB of the MiSTer SDRAM.
+// first 8 MB of the MiSTer SDRAM, the 1541's 16K DOS ROM at 8 MB.
 // sdram.v runs one access (or refresh) per 8 clk64 cycle, started by a rising
 // edge on ce / refresh, so every operation here is given 5 clk_sys periods.
+// Priority: 1541 ROM reads (the drive needs its byte within 1 us), refresh,
+// the 1541 ROM download, then the C65.
 wire        xram_req, xram_we;
 wire [22:0] xram_addr;
 wire  [7:0] xram_din, sdram_dout;
@@ -251,32 +260,73 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(sd_refresh),
-	.addr({2'd0, xram_addr}),
+	.addr(sd_a),
 	.ce(sd_ce),
-	.we(xram_we),
-	.din(xram_din),
+	.we(sd_we_r),
+	.din(sd_d),
 	.dout(sdram_dout)
 );
 
+reg  [24:0] sd_a;
+reg         sd_we_r;
+reg   [7:0] sd_d;
+
+// 1541 ROM: read port for the drive, write port for the download
+wire        drv_rom_req;
+wire [13:0] drv_rom_addr;
+reg         drv_rom_ack = 0;
+reg   [7:0] drv_rom_q;
+reg         romw_pend = 0;
+reg  [13:0] romw_addr;
+reg   [7:0] romw_data;
+reg         drv_rom_ok = 0;      // a 1541 ROM has been loaded
+assign      ioctl_wait = drv_download && romw_pend;
+
 always @(posedge clk_sys) begin
 	reg [1:0] st = 0;          // 0 idle, 1 access, 2 refresh, 3 recover
+	reg [1:0] owner;           // 1 C65, 2 1541 ROM read, 3 1541 ROM write
 	reg [2:0] cnt;
 	reg [7:0] rf_timer = 0;    // refresh at least every ~8 us (64 ms / 8192 rows)
 	reg       rf_due = 0;
+	reg       drv_was = 0;
 
-	xram_ack <= 0;
+	xram_ack    <= 0;
+	drv_rom_ack <= 0;
 	rf_timer <= rf_timer + 1'd1;
 	if (&rf_timer) rf_due <= 1;
+
+	// 1541 ROM download: one SDRAM write per byte, the download waits meanwhile
+	drv_was <= drv_download;
+	if (drv_download && ioctl_wr) begin
+		romw_pend <= 1; romw_addr <= ioctl_addr[13:0]; romw_data <= ioctl_dout;
+		drv_rom_ok <= 0;
+	end
+	if (drv_was && !drv_download) drv_rom_ok <= 1;
 
 	case (st)
 		0: begin
 			cnt <= 0;
-			if (rf_due) begin sd_refresh <= 1; rf_due <= 0; st <= 2; end
-			else if (xram_req && !xram_ack) begin sd_ce <= 1; st <= 1; end
+			if (drv_rom_req && !drv_rom_ack) begin
+				sd_a <= {11'h200, drv_rom_addr}; sd_we_r <= 0; owner <= 2'd2; sd_ce <= 1; st <= 1;
+			end
+			else if (rf_due) begin sd_refresh <= 1; rf_due <= 0; st <= 2; end
+			else if (romw_pend) begin
+				sd_a <= {11'h200, romw_addr}; sd_we_r <= 1; sd_d <= romw_data; owner <= 2'd3; sd_ce <= 1; st <= 1;
+			end
+			else if (xram_req && !xram_ack) begin
+				sd_a <= {2'd0, xram_addr}; sd_we_r <= xram_we; sd_d <= xram_din; owner <= 2'd1; sd_ce <= 1; st <= 1;
+			end
 		end
 		1: begin
 			cnt <= cnt + 1'd1;
-			if (cnt == 4) begin sd_ce <= 0; xram_dout <= sdram_dout; xram_ack <= 1; st <= 3; end
+			if (cnt == 4) begin
+				sd_ce <= 0; st <= 3;
+				case (owner)
+					2'd1: begin xram_dout <= sdram_dout; xram_ack <= 1; end
+					2'd2: begin drv_rom_q <= sdram_dout; drv_rom_ack <= 1; end
+					default: romw_pend <= 0;
+				endcase
+			end
 		end
 		2: begin
 			cnt <= cnt + 1'd1;
@@ -301,9 +351,55 @@ wire        drive_led;
 wire [4:0] joy_a = {joystick_0[4], joystick_0[0], joystick_0[1], joystick_0[2], joystick_0[3]};
 wire [4:0] joy_b = {joystick_1[4], joystick_1[0], joystick_1[1], joystick_1[2], joystick_1[3]};
 
-// the two drives share the controller's one transfer: same address, same data
+// the two F011 drives share the controller's one transfer: same address, same data
 assign sd_lba[1] = sd_lba[0];
 assign sd_buff_din[1] = sd_buff_din[0];
+assign sd_blk_cnt[0] = 6'd1;     // the F011 moves 512 byte sectors: two 256 byte blocks
+assign sd_blk_cnt[1] = 6'd1;
+
+// ------------------------------------------------------------------ 1541 on the IEC bus
+// Unit 10 (8 is the internal drive, 9 the 1565).  Held in reset until a 1541
+// ROM has been loaded (boot1.rom or OSD), which needs the SDRAM module.
+wire iec_atn, iec_clk, iec_data;          // the C65's side, 1 = released
+wire drv_iec_clk, drv_iec_data;
+wire drv_led;
+reg  drv_ce = 0;
+always @(posedge clk_sys) drv_ce <= ~drv_ce;
+
+c1541_sdrom drive1541
+(
+	.clk(clk_sys),
+	.reset(reset | ~drv_rom_ok | ~sdram_fitted),
+	.ce(drv_ce),
+
+	.img_mounted(img_mounted[2]),
+	.img_readonly(img_readonly),
+	.img_size(img_size[31:0]),
+
+	.drive_num(2'd2),
+	.led(drv_led),
+
+	.iec_atn_i(iec_atn),
+	.iec_data_i(iec_data),
+	.iec_clk_i(iec_clk),
+	.iec_data_o(drv_iec_data),
+	.iec_clk_o(drv_iec_clk),
+
+	.rom_req(drv_rom_req),
+	.rom_addr(drv_rom_addr),
+	.rom_ack(drv_rom_ack),
+	.rom_q(drv_rom_q),
+
+	.sd_lba(sd_lba[2]),
+	.sd_blk_cnt(sd_blk_cnt[2]),
+	.sd_rd(sd_rd[2]),
+	.sd_wr(sd_wr[2]),
+	.sd_ack(sd_ack[2]),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(sd_buff_din[2]),
+	.sd_buff_wr(sd_buff_wr)
+);
 
 c65_core core
 (
@@ -325,6 +421,8 @@ c65_core core
 	.ps2_mouse(ps2_mouse),
 	.mouse_port(status[16:15] == 2'd0 ? 2'd2 : status[16:15] == 2'd1 ? 2'd1 : 2'd0),
 	.m65_ext(status[17]),
+	.iec_atn_o(iec_atn), .iec_clk_o(iec_clk), .iec_data_o(iec_data),
+	.iec_clk_i(drv_iec_clk), .iec_data_i(drv_iec_data),
 	.uart_rxd(UART_RXD),
 	.uart_txd(UART_TXD),
 
@@ -335,13 +433,13 @@ c65_core core
 
 	.audio_l(audio_l), .audio_r(audio_r),
 
-	.img_mounted(img_mounted),
+	.img_mounted(img_mounted[1:0]),
 	.img_readonly(img_readonly),
 	.img_size(img_size[31:0]),
 	.sd_lba(sd_lba[0]),
-	.sd_rd(sd_rd),
-	.sd_wr(sd_wr),
-	.sd_ack(sd_ack),
+	.sd_rd(sd_rd[1:0]),
+	.sd_wr(sd_wr[1:0]),
+	.sd_ack(sd_ack[1:0]),
 	.sd_buff_addr(sd_buff_addr[8:0]),
 	.sd_buff_dout(sd_buff_dout),
 	.sd_buff_din(sd_buff_din[0]),
