@@ -226,13 +226,14 @@ end
 
 // ------------------------------------------------------------------ SDRAM module
 // The C65's expansion RAM (banks 6-15 and the 4 MB DMA region) lives in the
-// first 8 MB of the MiSTer SDRAM, the 1541's 16K DOS ROM at 8 MB.
+// first 8 MB of the MiSTer SDRAM, the MEGA65 attic RAM in the next 8 MB and the
+// 1541's 16K DOS ROM at 16 MB.
 // sdram.v runs one access (or refresh) per 8 clk64 cycle, started by a rising
 // edge on ce / refresh, so every operation here is given 5 clk_sys periods.
 // Priority: 1541 ROM reads (the drive needs its byte within 1 us), refresh,
 // the 1541 ROM download, then the C65.
 wire        xram_req, xram_we;
-wire [22:0] xram_addr;
+wire [23:0] xram_addr;
 wire  [7:0] xram_din, sdram_dout;
 reg   [7:0] xram_dout;
 reg         xram_ack;
@@ -307,14 +308,14 @@ always @(posedge clk_sys) begin
 		0: begin
 			cnt <= 0;
 			if (drv_rom_req && !drv_rom_ack) begin
-				sd_a <= {11'h200, drv_rom_addr}; sd_we_r <= 0; owner <= 2'd2; sd_ce <= 1; st <= 1;
+				sd_a <= {11'h400, drv_rom_addr}; sd_we_r <= 0; owner <= 2'd2; sd_ce <= 1; st <= 1;
 			end
 			else if (rf_due) begin sd_refresh <= 1; rf_due <= 0; st <= 2; end
 			else if (romw_pend) begin
-				sd_a <= {11'h200, romw_addr}; sd_we_r <= 1; sd_d <= romw_data; owner <= 2'd3; sd_ce <= 1; st <= 1;
+				sd_a <= {11'h400, romw_addr}; sd_we_r <= 1; sd_d <= romw_data; owner <= 2'd3; sd_ce <= 1; st <= 1;
 			end
 			else if (xram_req && !xram_ack) begin
-				sd_a <= {2'd0, xram_addr}; sd_we_r <= xram_we; sd_d <= xram_din; owner <= 2'd1; sd_ce <= 1; st <= 1;
+				sd_a <= {1'b0, xram_addr}; sd_we_r <= xram_we; sd_d <= xram_din; owner <= 2'd1; sd_ce <= 1; st <= 1;
 			end
 		end
 		1: begin
@@ -449,6 +450,7 @@ c65_core core
 	.rtc(RTC),
 
 	.xram_present(xram_present),
+	.attic_present(sdram_fitted),
 	.xram_req(xram_req),
 	.xram_we(xram_we),
 	.xram_addr(xram_addr),

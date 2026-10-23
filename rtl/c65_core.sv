@@ -69,10 +69,12 @@ module c65_core (
 	// expansion RAM (external memory, request / acknowledge):
 	//   $060000-$0FFFFF  banks 6-15, addressed as is (xram_addr[22] = 0)
 	//   $400000-$7FFFFF  4 MB reached through DMA (xram_addr[22] = 1)
+	//   MEGA65 attic RAM, 8 MB at $8000000 (xram_addr[23] = 1)
 	input  logic        xram_present,
+	input  logic        attic_present,
 	output logic        xram_req,         // held until xram_ack
 	output logic        xram_we,
-	output logic [22:0] xram_addr,
+	output logic [23:0] xram_addr,
 	output logic  [7:0] xram_din,
 	input  logic  [7:0] xram_dout,        // valid from xram_ack until the next request
 	input  logic        xram_ack,
@@ -146,7 +148,7 @@ assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2;
 // a DMA address with the I/O flag only means I/O inside $D000-$DFFF; elsewhere it is plain memory
 wire         dma_is_io = dma_io && (dma_addr[15:12] == 4'hD);
-logic [22:0] xaddr;
+logic [23:0] xaddr;
 logic [16:0] mem_addr;
 
 always_comb begin
@@ -160,7 +162,7 @@ always_comb begin
 	pa    = {3'd0, cpu_paddr};
 	fa    = dma_busy ? dma_addr : cpu_faddr;
 	flat  = dma_busy ? !dma_is_io : cpu_far;
-	xaddr = flat ? fa[22:0] : pa;
+	xaddr = flat ? {fa[27:23] == 5'b10000, fa[22:0]} : {1'b0, pa};
 
 	if (flat) begin
 		// flat 28-bit access: a 45GS02 far pointer, or the DMA controller
@@ -169,6 +171,7 @@ always_comb begin
 		else if (fa[27:17] == 11'd1)     sel_rom = !bus_we;          // $0020000 ROM
 		else if (fa[27:17] == 11'd2)     sel_ram2 = 1'b1;            // $0040000 extra chip RAM
 		else if (fa[27:22] == 6'd1)      sel_xram = xram_present;    // $0400000 expansion RAM
+		else if (fa[27:23] == 5'b10000)  sel_xram = attic_present;   // $8000000 MEGA65 attic RAM
 		else if (fa[27:20] == 8'd0)      sel_xram = xram_present;    // $0060000 banks 6-15
 		else if (fa[27:12] == 16'hFF7E)  sel_wom = 1'b1;             // $FF7E000 character set
 		else if (fa[27:11] == 17'h1FF00) begin sel_ram = 1'b1; mem_addr = {6'b111111, fa[10:0]}; end   // $FF80000 colour RAM

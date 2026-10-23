@@ -22,7 +22,7 @@ It does not turn the core into a MEGA65.
 ROMs, software, keyboards and controllers and report what works and what
 doesn't (see [Feedback and problems](#feedback-and-problems)). This is not a
 MEGA65, even with the MEGA65 Extensions option on: MEGA65 games and demos
-that use the SD card, digital audio, attic RAM or 40 MHz will not run, and
+that use the SD card, digital audio or 40 MHz will not run, and
 for C64 games the MiSTer C64 core is the better choice than `GO64`.
 
 ## Status
@@ -98,8 +98,9 @@ both settings (C65 software does not use it).
 | Other VIC-IV registers (character pointer, borders, scaling, sprite alpha / tiling) | not implemented |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
-| Hypervisor traps (`$D640`), SD card, attic RAM, a true 40 MHz | not implemented; traps are ignored |
-| Enhanced DMA jobs (`$D705`): megabyte options, list format option (S-BASIC `EDMA`) | done, confirmed on hardware: copy and fill. Skip rates and transparency options are ignored |
+| Hypervisor traps (`$D640`), SD card, a true 40 MHz | not implemented; traps are ignored |
+| Attic RAM: 8 MB at `$8000000`, through far pointers and DMA | done, confirmed on hardware (S-BASIC `EDMA` fill and copy back); kept in the SDRAM module, so it needs one (it does not depend on the *Expansion RAM* option) |
+| Enhanced DMA jobs (`$D705`): megabyte options, list format, transparency (`$06`/`$07`, `$86`), source / destination step rates in 1/256 steps (`$82`-`$85`) (S-BASIC `EDMA`) | done, confirmed on hardware (copy, fill, transparency, source and destination step rates). Other options (line drawing, spiral mode) are ignored |
 
 Verified with S-BASIC 65 V250507:
 

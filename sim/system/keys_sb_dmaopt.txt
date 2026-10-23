@@ -1,0 +1,13 @@
+110 10 for i=0 to 7:poke 6400+2*i,i+1:poke 6401+2*i,9:next:poke 6404,0\r
+200 20 for i=0 to 15:poke 6656+i,255:poke 6912+i,255:next\r
+270 30 for i=0 to 19:read b:poke 6144+i,b:next\r
+320 40 data 130,0,131,2,7,134,0,0,0,8,0,0,25,0,0,26,0,0,0,0\r
+400 50 poke 55042,0:poke 55041,24:poke 55045,0\r
+460 60 for i=0 to 7:print peek(6656+i);:next:print\r
+530 70 for i=0 to 14:read b:poke 6200+i,b:next\r
+580 80 data 133,2,0,0,4,0,0,25,0,0,27,0,0,0,0\r
+650 90 poke 55042,0:poke 55041,24:poke 55045,56\r
+710 100 for i=0 to 7:print peek(6912+i);:next:print\r
+780 110 edma 3,16,77,134217728:edma 3,8,88,134217736:edma 0,16,134217728,7168\r
+880 120 for i=0 to 15:print peek(7168+i);:next\r
+950 run\r

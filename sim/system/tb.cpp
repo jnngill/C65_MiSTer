@@ -190,7 +190,7 @@ static void xram_tick() {
 	top->xram_ack = 0;
 	if (!top->xram_req) { xram_cnt = 0; return; }
 	if (++xram_cnt == 4) {
-		unsigned a = top->xram_addr & 0x7FFFFF;
+		unsigned a = top->xram_addr & 0xFFFFFF;      // + MEGA65 attic RAM above 8 MB
 		if (top->xram_we) xram[a] = top->xram_din;
 		top->xram_dout = xram[a];
 		top->xram_ack = 1;
@@ -309,10 +309,10 @@ int main(int argc, char **argv) {
 	top->iec_clk_i = 1; top->iec_data_i = 1;     // no IEC device (drives are VHDL and not simulated)
 	top->img_mounted = 0; top->img_readonly = 0; top->img_size = 0;
 	top->sd_ack = 0; top->sd_buff_wr = 0;
-	top->xram_present = use_xram; top->xram_ack = 0; top->xram_dout = 0;
+	top->xram_present = use_xram; top->attic_present = 1; top->xram_ack = 0; top->xram_dout = 0;
 	// host clock: 2026-10-13 12:34:56 (BCD sec, min, hour, day, month, year, weekday)
 	top->rtc[0] = 0x13123456; top->rtc[1] = 0x00022610; top->rtc[2] = 0;
-	xram.assign(1 << 23, 0);
+	xram.assign(1 << 24, 0);
 
 	auto tick = [&]() { top->clk = 0; top->eval(); top->clk = 1; top->eval(); };
 	for (int i = 0; i < 4; i++) tick();
