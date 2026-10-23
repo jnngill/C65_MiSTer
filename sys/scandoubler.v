@@ -100,21 +100,33 @@ always @(posedge clk_vid) begin
 	end
 end
 
-Hq2x #(.LENGTH(LENGTH), .HALF_DEPTH(HALF_DEPTH)) Hq2x
-(
-	.clk(clk_vid),
-
-	.ce_in(ce_x4i),
-	.inputpixel({b_d,g_d,r_d}),
-	.disable_hq2x(~hq2x),
-	.reset_frame(vb_in),
-	.reset_line(req_line_reset),
-
-	.ce_out(ce_x4o),
-	.read_y(sd_line),
-	.hblank(hbo[0]&hbo[8]),
-	.outpixel({b_out,g_out,r_out})
-);
+// C65 core: HQ2x is not built (it needs ~58 memory blocks).  A plain line
+// doubler instead: each input line is written to one of two line buffers and
+// the previous line is read out twice, at double rate.
+localparam AW = $clog2(LENGTH);
+reg [DWIDTH*3+2:0] lbuf [0:(2<<AW)-1];
+reg [DWIDTH*3+2:0] lb_q;
+reg          lb_wl;          // line buffer being written
+reg          lb_rl;          // line buffer being read, chosen at the start of each output line
+reg [AW-1:0] lb_wx, lb_rx;
+always @(posedge clk_vid) begin
+	reg hb_d;
+	if (ce_x1i) begin
+		hb_d <= hb_in;
+		if (hb_in) lb_wx <= 0;
+		else begin
+			lbuf[{lb_wl, lb_wx}] <= {b_in, g_in, r_in};
+			if (~&lb_wx) lb_wx <= lb_wx + 1'd1;
+		end
+		if (hb_in & ~hb_d) lb_wl <= ~lb_wl;          // line complete
+	end
+	if (ce_x2o) begin
+		lb_q <= lbuf[{lb_rl, lb_rx}];
+		if (hbo[0]) begin lb_rx <= 0; lb_rl <= ~lb_wl; end
+		else if (~&lb_rx) lb_rx <= lb_rx + 1'd1;
+	end
+end
+assign {b_out, g_out, r_out} = lb_q;
 
 reg  [7:0] pix_out_cnt = 0;
 wire [7:0] pc_out = pix_out_cnt + 1'b1;
@@ -202,10 +214,10 @@ always @(posedge clk_vid) begin
 end
 
 assign vs_out = vso[3];
-assign ce_pix_out = hq2x ? ce_x4o : ce_x2o;
+assign ce_pix_out = ce_x2o;
 
-//Compensate picture shift after HQ2x
+//Compensate picture shift after the line doubler (one output pixel)
 assign vb_out = vbo[3];
-assign hb_out = hbo[6];
+assign hb_out = hbo[2];
 
 endmodule

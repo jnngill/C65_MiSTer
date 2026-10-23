@@ -32,7 +32,7 @@ for C64 games the MiSTer C64 core is the better choice than `GO64`.
 | CSG 4510 CPU (65CE02 + MAP) | done, fuzz-tested against a reference model (`sim/cpu_fuzz`) |
 | Memory map (128K RAM, 128K ROM, MAP, C64 banking, `$D030` ROM enables) | done |
 | VIC-III: text 40/80 col + attributes, VIC-II bitmap modes, bitplanes (up to 8, 320 or 640 wide, 200 or 400 lines), palette, sprites, raster IRQ | done (line based, not cycle exact). 400-line modes are sent as two alternating fields for the scaler to weave; no true interlaced sync on analogue output |
-| VIC-III 1280 pixel bitplane modes (`$D031` H1280) | done, confirmed on hardware over HDMI: 160 cells across, up to 6 bitplanes (the fetch has time for no more). The core then sends pixels at twice the normal rate; with the analogue scandoubler this is untested. The 911210 ROM's `SCREEN` command does not set these modes up (that part of BASIC 10 was never finished), so they are reached by programming the registers |
+| VIC-III 1280 pixel bitplane modes (`$D031` H1280) | done, confirmed on hardware over HDMI: 160 cells across, up to 6 bitplanes (the fetch has time for no more). The core then sends pixels at twice the normal rate; they do not fit the analogue scandoubler's line buffer (use HDMI, or analogue output without the scandoubler). The 911210 ROM's `SCREEN` command does not set these modes up (that part of BASIC 10 was never finished), so they are reached by programming the registers |
 | F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
 | F011 floppy controller, internal drive, `.D81` read/write | done (sector level). The write-track command blanks the track, which is what `HEADER` with an ID needs to format a disk |
 | External 1565 drive (second `.D81`, OSD *Mount Drive 9*) | done: both ROMs report it at start-up and use it as unit 9 (`DIR U9`, `DLOAD"X",U9`, S-BASIC `BACKUP U8 TO U9`). `D1` is not supported by either ROM |
@@ -41,7 +41,7 @@ for C64 games the MiSTer C64 core is the better choice than `GO64`.
 | 1351 mouse on either control port | done; pointer movement and left button confirmed on hardware |
 | Dual SID | done (MiSTer C64/C128 SID): `SOUND`, `PLAY`, the filter and stereo placement (`$D400` SID right, `$D420` SID left) confirmed on hardware |
 | RAM expansion: banks 6-15 (`$60000-$FFFFF`) and 4 MB at `$400000-$7FFFFF` (DMA banks `$40-$7F`) | done; needs a MiSTer SDRAM module |
-| IEC serial bus with an emulated 1541 (unit 10, `.D64` images) | done, confirmed on hardware with the stock ROM, in C64 mode and with S-BASIC 65: directory, load, save. Needs a 1541 DOS ROM (`boot1.rom`) and the SDRAM module, where the drive's ROM is kept. Built from the MiSTer C64 / C128 cores' 1541 (D64 only, no G64, no parallel cable). Printers and other IEC devices are not emulated |
+| IEC serial bus with an emulated 1541 (unit 10, `.D64` and `.G64` images) | done, confirmed on hardware with the stock ROM, in C64 mode and with S-BASIC 65: directory, load, save. Needs a 1541 DOS ROM (`boot1.rom`) and the SDRAM module, where the drive's ROM is kept. Built from the MiSTer C64 / C128 cores' 1541 (no parallel cable). G64 images (bit-exact tracks, used by copy-protected disks) are converted by the MiSTer as for the C64 core (confirmed on hardware: directory, save, load); copy protection that depends on exact C64 timing still fails. Printers and other IEC devices are not emulated |
 | MEGA65 extensions for S-BASIC 65 (OSD option, off by default) | see below |
 
 Verified with ROM **911210**:
@@ -93,7 +93,7 @@ both settings (C65 software does not use it).
 | Character set RAM at `$FF7E000` | done |
 | Multiplier / divider at `$D768-$D77F` | done |
 | VIC-IV: 16-bit sprite pointers (`$D06C-$D06E`), bitplane bank (`$D07C`) | done |
-| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done. 6K of colour RAM (`$FF80000-$FF817FF`; the C65 has 2K), enough for an 80x25 screen of 16-bit characters. S-BASIC's own `FCM ON` is always 40x25. Per-character flips untested; alpha, nibble-colour characters and in-row repositioning missing |
+| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done. 32K of colour RAM (`$FF80000-$FF87FFF`) as on the MEGA65 (the C65 has 2K), so 80 column and larger full-colour screens work (confirmed on hardware from the CPU / DMA side, the video side in simulation). S-BASIC's own `FCM ON` is always 40x25. Per-character flips untested; alpha, nibble-colour characters and in-row repositioning missing |
 | VIC-IV sprites: 16-colour (`$D06B`) with 16 palette entries per sprite, 64 pixels wide (`$D057`), programmable height (`$D055/56`) (S-BASIC `FCSPRITE` commands) | done; wide and tall sprites untested |
 | Other VIC-IV registers (character pointer, borders, scaling, sprite alpha / tiling) | not implemented |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
@@ -252,12 +252,13 @@ Relative (REL) files on a `.d64` are skipped.
 |--------|---------|-------|
 | Mount Drive 8 | a `.D81` file | the internal 3.5" drive |
 | Mount Drive 9 (1565) | a `.D81` file | the external 1565 drive, unit 9. It can be mounted at any time; the start-up message only reports it if it was mounted before the machine started |
-| Mount Drive 10 (1541) | a `.D64` file | the emulated 1541 on the IEC bus, unit 10 (needs a 1541 ROM and the SDRAM module) |
+| Mount Drive 10 (1541) | a `.D64` or `.G64` file | the emulated 1541 on the IEC bus, unit 10 (needs a 1541 ROM and the SDRAM module) |
 | Load System ROM | a `.rom` / `.bin` file | replaces the ROM loaded from `boot.rom` and resets |
 | Load Program | a `.prg` file | copies the program into memory, see [Loading .PRG and .D64 files](#loading-prg-and-d64-files) |
 | Load 1541 ROM | a `.rom` / `.bin` file | the 1541's DOS ROM, if it is not in `boot1.rom` |
 | Video Standard | PAL, NTSC | |
-| Aspect Ratio, Scandoubler Fx, Stereo Mix | | standard MiSTer settings |
+| Aspect Ratio, Stereo Mix | | standard MiSTer settings |
+| Scandoubler Fx | None, CRT 25%, CRT 50%, CRT 75% | scanlines for analogue output with the scandoubler. The HQ2x filter is not included: it took about 58 of the FPGA's memory blocks, which now hold the 32K colour RAM and the G64 track buffer |
 | Keyboard Layout | US, UK, DE, Positional | see below |
 | CPU Speed | 3.5 MHz, 8 MHz, 16 MHz | speed of the C65 FAST mode; 3.5 MHz is a real C65. MEGA65-style ROMs switch to 16 MHz by themselves when they ask for full speed (S-BASIC 65 does at start; `SLOW` / `FAST` change it) |
 | Expansion RAM | 4MB, Off | the C65 RAM expansion, kept in the MiSTer SDRAM module; without a module the machine reports no expansion |

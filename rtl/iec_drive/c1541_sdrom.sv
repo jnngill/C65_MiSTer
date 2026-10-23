@@ -1,7 +1,8 @@
 // One Commodore 1541 on the IEC bus, with its 16K DOS ROM kept outside the
 // FPGA (in SDRAM).  Based on c1541_multi by Alexey Melnikov (MiSTer C64 /
-// C128 cores), reduced to a single drive, no parallel cable, no RAM
-// expansion and no G64 (D64 images only).
+// C128 cores), reduced to a single drive, no parallel cable and no RAM
+// expansion.  D64 images, and G64 images with gcr_mode set (MiSTer's main
+// program converts G64 tracks when the drive asks for 32-block tracks).
 //
 // The drive CPU latches its data on ph2_f.  Straight after ph2_f the new
 // address is sent out as a ROM read (rom_req / rom_ack), and the byte is
@@ -16,6 +17,7 @@ module c1541_sdrom
 	input         reset,
 	input         ce,
 
+	input         gcr_mode,         // the mounted image is a G64
 	input         img_mounted,
 	input         img_readonly,
 	input  [31:0] img_size,
@@ -93,7 +95,7 @@ c1541_drv c1541_drv
 	.clk(clk),
 	.reset(reset_drv),
 
-	.gcr_mode(1'b0),
+	.gcr_mode(gcr_mode),
 
 	.ce(ce),
 	.ph2_r(ph2_r),

@@ -175,7 +175,7 @@ always_comb begin
 		else if (fa[27:20] == 8'd0)      sel_xram = xram_present;    // $0060000 banks 6-15
 		else if (fa[27:12] == 16'hFF7E)  sel_wom = 1'b1;             // $FF7E000 character set
 		else if (fa[27:11] == 17'h1FF00) begin sel_ram = 1'b1; mem_addr = {6'b111111, fa[10:0]}; end   // $FF80000 colour RAM
-		else if (fa[27:13] == 15'h7FC0 && fa[12:11] != 2'd3) begin sel_cram2 = 1'b1; mem_addr = {5'd0, fa[11:0] - 12'h800}; end   // $FF80800 more colour RAM
+		else if (fa[27:15] == 13'h1FF0)  begin sel_cram2 = 1'b1; mem_addr = {2'd0, fa[14:0] - 15'h0800}; end   // $FF80800-$FF87FFF more colour RAM
 		else if (fa[27:12] == 16'hFFD3)  sel_io = 1'b1;              // $FFD3000 I/O
 		else if (fa[27:4] == 24'hFFD711) sel_rtc = 1'b1;             // $FFD7110 real-time clock
 	end
@@ -382,12 +382,12 @@ dpram #(12, 8) wom (
 	.b_addr(vaddr[11:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vwom_q)
 );
 
-// $FF80800-$FF817FF: colour RAM beyond the C65's 2K (80 column full-colour
-// screens).  The video chip sees it at $60000.
-dpram #(12, 8) cram2 (
+// $FF80800-$FF87FFF: colour RAM beyond the C65's 2K, making the MEGA65's 32K
+// (80 column full-colour and larger screens).  The video chip sees it at $60000.
+dpram #(15, 8) cram2 (
 	.clk(clk),
-	.a_addr(mem_addr[11:0]), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_cram2), .a_q(cram2_q),
-	.b_addr(vaddr[11:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vcram2_q)
+	.a_addr(mem_addr[14:0]), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_cram2), .a_q(cram2_q),
+	.b_addr(vaddr[14:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vcram2_q)
 );
 
 always_ff @(posedge clk) vsel <= vaddr[18:17];

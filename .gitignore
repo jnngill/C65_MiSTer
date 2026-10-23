@@ -53,3 +53,6 @@ build_id.v
 *.qws
 c5_pin_model_dump.txt
 output_quartus.log
+sim/sd_test/obj/
+sim/sd_test/*.exe
+sim/sd_test/*.pdb

@@ -429,10 +429,10 @@ logic [11:0] row_ofs;        // bytes from the start of the screen to this text 
 wire  [7:0]  col_ofs  = chr16 ? {f_col[6:0], 1'b0} : f_col;
 wire [18:0]  scr_addr = scrnptr[18:0] + {7'd0, row_ofs} + {11'd0, col_ofs};
 wire [15:0]  col_ofs16 = colptr + {4'd0, row_ofs} + {8'd0, col_ofs};
-// colour RAM: the first 2K are chip RAM $1F800, the next 4K ($FF80800-$FF817FF,
-// needed by 80 column full-colour screens) are seen at video address $60000
+// colour RAM, 32K as on the MEGA65: the first 2K are chip RAM $1F800, the rest
+// ($FF80800-$FF87FFF) is seen at video address $60000
 function automatic [18:0] cram_vaddr(input logic [15:0] o);
-	cram_vaddr = (o < 16'h0800) ? 19'h1F800 + {8'd0, o[10:0]} : {3'b110, 4'd0, o[11:0] - 12'h800};
+	cram_vaddr = (o[14:0] < 15'h0800) ? 19'h1F800 + {8'd0, o[10:0]} : {3'b110, 1'b0, o[14:0] - 15'h0800};
 endfunction
 wire [18:0]  col_addr  = cram_vaddr(col_ofs16);
 wire [18:0]  col_addr1 = cram_vaddr(col_ofs16 + 16'd1);

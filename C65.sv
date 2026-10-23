@@ -46,14 +46,14 @@ localparam CONF_STR = {
 	"C65;UART38400:19200:9600:4800:2400:1200:300;",
 	"S0,D81,Mount Drive 8;",
 	"S1,D81,Mount Drive 9 (1565);",
-	"S2,D64,Mount Drive 10 (1541);",
+	"S2,D64G64,Mount Drive 10 (1541);",
 	"F1,ROMBIN,Load System ROM;",
 	"F2,PRG,Load Program;",
 	"F3,ROMBIN,Load 1541 ROM;",
 	"-;",
 	"O[2],Video Standard,PAL,NTSC;",
 	"O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"O[7:6],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
+	"O[7:6],Scandoubler Fx,None,CRT 25%,CRT 50%,CRT 75%;",
 	"O[9:8],Stereo Mix,None,25%,50%,100%;",
 	"O[11:10],Keyboard Layout,US,UK,DE,Positional;",
 	"O[13:12],CPU Speed,3.5 MHz,8 MHz,16 MHz;",
@@ -367,11 +367,16 @@ wire drv_led;
 reg  drv_ce = 0;
 always @(posedge clk_sys) drv_ce <= ~drv_ce;
 
+// at mount time ioctl_index[7:6] is the extension: 0 = .D64, 1 = .G64
+reg  drv_gcr = 0;
+always @(posedge clk_sys) if (img_mounted[2]) drv_gcr <= (ioctl_index[7:6] == 2'd1);
+
 c1541_sdrom drive1541
 (
 	.clk(clk_sys),
 	.reset(reset | ~drv_rom_ok | ~sdram_fitted),
 	.ce(drv_ce),
+	.gcr_mode(drv_gcr),
 
 	.img_mounted(img_mounted[2]),
 	.img_readonly(img_readonly),
@@ -490,7 +495,7 @@ end
 
 wire [1:0] scale = status[7:6];
 wire       scandoubler = (scale != 0) || forced_scandoubler;
-assign     VGA_SL = (scale > 1) ? scale - 1'd1 : 2'd0;
+assign     VGA_SL = scale;
 
 video_mixer #(.LINE_LENGTH(1056), .HALF_DEPTH(1), .GAMMA(1)) video_mixer
 (
@@ -499,7 +504,7 @@ video_mixer #(.LINE_LENGTH(1056), .HALF_DEPTH(1), .GAMMA(1)) video_mixer
 	.ce_pix(ce_pix64),
 
 	.scandoubler(scandoubler),
-	.hq2x(scale == 1),
+	.hq2x(1'b0),                    // HQ2x is not built (see sys/scandoubler.v)
 	.gamma_bus(gamma_bus),
 
 	.R(r64), .G(g64), .B(b64),
