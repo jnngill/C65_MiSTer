@@ -56,3 +56,6 @@ output_quartus.log
 sim/sd_test/obj/
 sim/sd_test/*.exe
 sim/sd_test/*.pdb
+sim/vic_test/obj/
+sim/vic_test/victest.exe
+sim/vic_test/victest.pdb

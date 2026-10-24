@@ -93,12 +93,19 @@ both settings (C65 software does not use it).
 | Character set RAM at `$FF7E000` | done |
 | Multiplier / divider at `$D768-$D77F` | done |
 | VIC-IV: 16-bit sprite pointers (`$D06C-$D06E`), bitplane bank (`$D07C`) | done |
-| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done. 32K of colour RAM (`$FF80000-$FF87FFF`) as on the MEGA65 (the C65 has 2K), so 80 column and larger full-colour screens work (confirmed on hardware from the CPU / DMA side, the video side in simulation). S-BASIC's own `FCM ON` is always 40x25. Per-character flips untested; alpha, nibble-colour characters and in-row repositioning missing |
+| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done. 32K of colour RAM (`$FF80000-$FF87FFF`) as on the MEGA65 (the C65 has 2K), so 80 column and larger full-colour screens work (confirmed on hardware from the CPU / DMA side, the video side in simulation). S-BASIC's own `FCM ON` is always 40x25. Per-character flips untested; alpha and nibble-colour (NCM) characters missing |
+| VIC-IV raster rewrite buffer: each 16-bit text line is drawn into a line buffer, CHRCOUNT cells per row (`$D05E`, `$D063`), GOTOX cells (colour byte 0 bit 4) with transparency and the vertical glyph offset | done, confirmed on hardware (Space Commander). GOTOX row mask, pixel trimming and alpha are ignored |
+| VIC-IV hot registers (`$D05D` bit 7) and the character set pointer (`$D068-$D06A`) | done |
+| V400 text: 80x50 and 40x50 screens (`$D031` bit 3 in text modes) | done, confirmed on hardware with the MEGA65 Open ROMs. S-BASIC 65 itself has no 50-line mode |
 | VIC-IV sprites: 16-colour (`$D06B`) with 16 palette entries per sprite, 64 pixels wide (`$D057`), programmable height (`$D055/56`) (S-BASIC `FCSPRITE` commands) | done; wide and tall sprites untested |
-| Other VIC-IV registers (character pointer, borders, scaling, sprite alpha / tiling) | not implemented |
+| Other VIC-IV registers (borders, scaling, text position, palette banks, sprite alpha / tiling) | stored and read back, no effect on the picture |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
-| Hypervisor traps (`$D640`), SD card, a true 40 MHz | not implemented; traps are ignored |
+| Hypervisor DOS traps (`$D640`): getversion, setname, findfile, openfile, readfile (512 bytes at a time into the SD sector buffer at `$FFD6E00`), closefile, chdir / cdrootdir | done for one file: the one mounted with *Mount Data File (MEGA65)* (any name finds it). Other traps fail with "not implemented"; there is no SD card file system |
+| Writable `$20000-$3FFFF` (far pointer and DMA writes, as on the MEGA65 where this is RAM) | done. A copy of the ROM is kept in the SDRAM module and put back at the next reset, so S-BASIC returns without reloading the core |
+| Keyboard matrix peek (`$D613` / `$D614`), cursor left / up (`$D60F`) | done. The ASCII key queue (`$D610`) is not implemented |
+| Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done (runs in simulation; not yet heard on hardware). Samples come from chip RAM only; no audio DMA interrupts or sine mode |
+| SD card, Ethernet, a true 40 MHz | not implemented. The CPU's top speed is 16 MHz |
 | Attic RAM: 8 MB at `$8000000`, through far pointers and DMA | done, confirmed on hardware (S-BASIC `EDMA` fill and copy back); kept in the SDRAM module, so it needs one (it does not depend on the *Expansion RAM* option) |
 | Enhanced DMA jobs (`$D705`): megabyte options, list format, transparency (`$06`/`$07`, `$86`), source / destination step rates in 1/256 steps (`$82`-`$85`) (S-BASIC `EDMA`) | done, confirmed on hardware (copy, fill, transparency, source and destination step rates). Other options (line drawing, spiral mode) are ignored |
 
@@ -246,6 +253,22 @@ directly (fast loaders, copy protection, most demos and multi-load games)
 needs a real 1541 and will not work; use the MiSTer C64 core for those.
 Relative (REL) files on a `.d64` are skipped.
 
+### MEGA65 programs
+
+With *MEGA65 Extensions* on and S-BASIC 65 as the ROM, some MEGA65 games run.
+Tested on hardware:
+
+- **Space Commander** (v1.3): mount `space-commander.d81` in *Mount Drive 8*
+  and `SPACE.SCP` with *Mount Data File (MEGA65)*, then
+  `LOAD"SPACE COMMANDER"` and `BANK 0:SYS 8205` (S-BASIC's `RUN` / `SYS`
+  run in a bank where `$2000` is ROM, so the game's `SYS 8205` stub needs
+  the `BANK 0`). The data file streams into attic RAM in about 30 seconds;
+  title screen and gameplay are correct.
+- **Titan Fall**: `LOAD"TITANFALL"` and `RUN`.
+
+The MEGA65 network programs (BBS, IRC, SSH ...) need the MEGA65 Ethernet
+controller, which the core does not have.
+
 ### OSD options
 
 | Option | Choices | Notes |
@@ -253,6 +276,7 @@ Relative (REL) files on a `.d64` are skipped.
 | Mount Drive 8 | a `.D81` file | the internal 3.5" drive |
 | Mount Drive 9 (1565) | a `.D81` file | the external 1565 drive, unit 9. It can be mounted at any time; the start-up message only reports it if it was mounted before the machine started |
 | Mount Drive 10 (1541) | a `.D64` or `.G64` file | the emulated 1541 on the IEC bus, unit 10 (needs a 1541 ROM and the SDRAM module) |
+| Mount Data File (MEGA65) | a `.SCP`, `.BIN` or `.DAT` file | the file that MEGA65 programs open through the hypervisor (e.g. Space Commander's `SPACE.SCP`); read only |
 | Load System ROM | a `.rom` / `.bin` file | replaces the ROM loaded from `boot.rom` and resets |
 | Load Program | a `.prg` file | copies the program into memory, see [Loading .PRG and .D64 files](#loading-prg-and-d64-files) |
 | Load 1541 ROM | a `.rom` / `.bin` file | the 1541's DOS ROM, if it is not in `boot1.rom` |

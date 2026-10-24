@@ -454,8 +454,10 @@ logic  [7:0] f_scr, f_col_byte, f_gfx;
 logic  [7:0] f_bp [8];
 logic [18:0] vaddr_gfx;
 
-wire [4:0] text_row  = dy[7:3];
-wire [2:0] text_rc   = dy[2:0];
+// V400 text (80x50 / 40x50): each field shows every other pixel row, so a
+// text row lasts 4 raster lines and the field supplies the low bit of the row
+wire       v400t     = v400 && !bpm && !bmm;
+wire [2:0] text_rc   = v400t ? {dy[1:0], field} : dy[2:0];
 wire [11:0] cell_idx = row_base + {4'd0, f_col};
 
 // screen and colour RAM addresses of the cell being fetched
@@ -528,7 +530,7 @@ always_ff @(posedge clk) begin
 					row_ofs  <= '0;
 				end
 				else if (in_rows) begin
-					if (text_rc == 3'd7) begin
+					if (v400t ? (dy[1:0] == 2'd3) : (text_rc == 3'd7)) begin
 						row_base <= row_base + {4'd0, n_cols_f};
 						row_ofs  <= row_ofs + {2'd0, linestep};
 					end
@@ -641,9 +643,9 @@ always_ff @(posedge clk) begin
 			w_act   <= 1'b0;
 			rr_pend <= rrb_mode && rr_inrows;
 			rr_bank <= rr_line[0];
-			rr_rc   <= rr_dy[2:0];
-			rr_scr  <= scrnptr[18:0] + {9'd0, linestep} * {14'd0, rr_dy[7:3]};
-			rr_col  <= {6'd0, linestep} * {11'd0, rr_dy[7:3]};
+			rr_rc   <= v400t ? {rr_dy[1:0], field} : rr_dy[2:0];
+			rr_scr  <= scrnptr[18:0] + {9'd0, linestep} * (v400t ? {13'd0, rr_dy[7:2]} : {14'd0, rr_dy[7:3]});
+			rr_col  <= {6'd0, linestep} * (v400t ? {10'd0, rr_dy[7:2]} : {11'd0, rr_dy[7:3]});
 		end
 		else if (rr_pend && !spr_bus) begin
 			rr_pend <= 1'b0; rr_run <= 1'b1; rr_cell <= '0; rr_t <= '0;
