@@ -71,6 +71,14 @@ logic  [7:0] sprhght;        // VIC-IV $D056: sprite height in rows
 logic  [9:0] linestep;       // VIC-IV $D058/59: bytes from one text row to the next
 logic [19:0] scrnptr;        // VIC-IV $D060-63: screen memory address
 logic [15:0] colptr;         // VIC-IV $D064/65: offset into colour RAM
+logic [19:0] charptr;        // VIC-IV $D068-6A: character set address
+logic        hotreg;         // VIC-IV $D05D.7: VIC-II/III writes recompute the pointers
+logic  [7:0] sdbdrwd;        // VIC-IV $D05C / $D05D.0-5: side border width (stored only)
+logic  [5:0] sdbdrwd_hi;
+logic  [3:0] scrnptr_mb;     // VIC-IV $D063.0-3 (stored only, screen RAM is below 1MB here)
+logic  [1:0] chrcount_hi;    // VIC-IV $D063.4-5: CHRCOUNT bits 9-8
+logic  [1:0] d063_hi;        // VIC-IV $D063.6-7 (stored only)
+logic  [7:0] dispregs [4];   // $D05E CHRCOUNT, $D07B DISPROWS, $D05B CHRYSCL, $D05A CHRXSCL (stored only)
 logic        hot_reload;     // a VIC-II/III register changed: recompute the pointers above
 logic  [1:0] vic_bank_d;
 
@@ -107,6 +115,9 @@ always_ff @(posedge clk) begin
 		sprptr_adr <= '0; sprptr16 <= 1'b0; bp_bank <= '0;
 		spr16 <= '0; sprx64 <= '0; sprhgten <= '0; sprhght <= 8'd21;
 		ctrl_c <= '0; linestep <= 10'd40; scrnptr <= '0; colptr <= '0; hot_reload <= 1'b1; vic_bank_d <= '0;
+		charptr <= 20'h01000; hotreg <= 1'b1; sdbdrwd <= '0; sdbdrwd_hi <= '0; scrnptr_mb <= '0;
+		chrcount_hi <= '0; d063_hi <= '0;
+		dispregs[0] <= 8'd40; dispregs[1] <= 8'd25; dispregs[2] <= 8'd1; dispregs[3] <= 8'd120;
 		for (int i = 0; i < 8; i++) begin
 			spr_x[i] <= '0; spr_y[i] <= '0; spr_col[i] <= '0; bp_addr[i] <= '0;
 		end
@@ -127,13 +138,17 @@ always_ff @(posedge clk) begin
 		// moves or resizes the screen reloads the extended pointers from it
 		hot_reload <= 1'b0;
 		vic_bank_d <= vic_bank;
-		if (vic_bank_d != vic_bank) hot_reload <= 1'b1;
+		if (vic_bank_d != vic_bank && hotreg) hot_reload <= 1'b1;
 		if (hot_reload) begin
 			scrnptr  <= {4'd0, scr_base};
 			linestep <= {3'd0, n_cols};
 			colptr   <= '0;
+			charptr  <= {4'd0, vic_bank, cb[3:1], 11'd0};
+			dispregs[0] <= {1'b0, n_cols};
+			chrcount_hi <= '0;
 		end
-		if (reg_we && (reg_addr == 7'h16 || reg_addr == 7'h18 || (vic3_mode && reg_addr == 7'h31)))
+		// with HOTREG cleared ($D05D.7 = 0) only the VIC-IV registers set the pointers
+		if (reg_we && hotreg && (reg_addr == 7'h11 || reg_addr == 7'h16 || reg_addr == 7'h18 || (vic3_mode && reg_addr == 7'h31)))
 			hot_reload <= 1'b1;
 
 		if (reg_re) begin
@@ -203,6 +218,16 @@ always_ff @(posedge clk) begin
 					7'h62: scrnptr[19:16] <= reg_din[3:0];
 					7'h64: colptr[7:0]  <= reg_din;
 					7'h65: colptr[15:8] <= reg_din;
+					7'h63: begin scrnptr_mb <= reg_din[3:0]; chrcount_hi <= reg_din[5:4]; d063_hi <= reg_din[7:6]; end
+					7'h68: charptr[7:0]   <= reg_din;
+					7'h69: charptr[15:8]  <= reg_din;
+					7'h6A: charptr[19:16] <= reg_din[3:0];
+					7'h5C: sdbdrwd <= reg_din;
+					7'h5D: begin hotreg <= reg_din[7]; sdbdrwd_hi <= reg_din[5:0]; end
+					7'h5E: dispregs[0] <= reg_din;
+					7'h7B: dispregs[1] <= reg_din;
+					7'h5B: dispregs[2] <= reg_din;
+					7'h5A: dispregs[3] <= reg_din;
 					default: ;
 				endcase
 			end
@@ -267,7 +292,16 @@ always_comb begin
 			7'h6B: reg_dout = spr16;
 			7'h58: reg_dout = linestep[7:0];
 			7'h59: reg_dout = {6'd0, linestep[9:8]};
-			7'h5E: reg_dout = {1'b0, n_cols};
+			7'h5E: reg_dout = dispregs[0];
+			7'h7B: reg_dout = dispregs[1];
+			7'h5B: reg_dout = dispregs[2];
+			7'h5A: reg_dout = dispregs[3];
+			7'h5C: reg_dout = sdbdrwd;
+			7'h5D: reg_dout = {hotreg, 1'b0, sdbdrwd_hi};
+			7'h63: reg_dout = {d063_hi, chrcount_hi, scrnptr_mb};
+			7'h68: reg_dout = charptr[7:0];
+			7'h69: reg_dout = charptr[15:8];
+			7'h6A: reg_dout = {4'd0, charptr[19:16]};
 			7'h60: reg_dout = scrnptr[7:0];
 			7'h61: reg_dout = scrnptr[15:8];
 			7'h62: reg_dout = {4'd0, scrnptr[19:16]};
@@ -446,11 +480,12 @@ function automatic [18:0] fcm_addr(input logic [2:0] k, input logic vflip, input
 	fcm_addr = {char_num, vflip ? ~text_rc : text_rc, hflip ? ~k : k};
 endfunction
 wire [7:0]  chr_code  = ecm ? {2'b00, f_scr[5:0]} : f_scr;
-wire [15:0] chr_addr  = {vic_bank, cb[3:1], chr_code, text_rc};
-wire [15:0] bmp_addr  = {vic_bank, cb[3], cell_idx[9:0], text_rc};
-wire [15:0] gfx_addr  = bmm ? bmp_addr : chr_addr;
+// glyphs come from CHARPTR (loaded from $D018 / the video bank while HOTREG is set)
+wire [18:0] chr_addr  = charptr[18:0] + (chr16 ? {3'd0, char_num, text_rc} : {8'd0, chr_code, text_rc});
+wire [18:0] bmp_addr  = {3'd0, vic_bank, cb[3], cell_idx[9:0], text_rc};
+wire [18:0] gfx_addr  = bmm ? bmp_addr : chr_addr;
 // character ROM shadows $1000-$1FFF of video banks 0 and 2 (text modes)
-wire        gfx_rom   = !bmm && (gfx_addr[14:12] == 3'b001);
+wire        gfx_rom   = !bmm && (gfx_addr[18:16] == 3'd0) && (gfx_addr[14:12] == 3'b001);
 wire [16:0] crom_addr = {crom9 ? 5'h09 : 5'h0D, gfx_addr[11:0]};   // $29000 / $2D000
 
 logic f_rom_sel;
@@ -509,36 +544,6 @@ always_ff @(posedge clk) begin
 			if (f_step < 4'd8) vaddr_gfx <= bp_byte_addr(int'(f_step[2:0]));
 			if (f_step >= 4'd2 && f_step < 4'd10) f_bp[f_step[2:0] - 3'd2] <= vram_q;
 		end
-		else if (chr16 && !bmm) begin
-			// two screen bytes, two colour bytes, then 8 pixel bytes (full
-			// colour) or one glyph byte
-			case (f_step)
-				4'd0: vaddr_gfx <= scr_addr;
-				4'd1: vaddr_gfx <= scr_addr + 19'd1;
-				4'd2: begin f_scr <= vram_q; vaddr_gfx <= col_addr; end
-				4'd3: begin f_scr_hi <= vram_q; vaddr_gfx <= col_addr1; end
-				4'd4: begin
-					f_col0 <= vram_q;
-					f_fcm  <= cell_fcm;
-					if (cell_fcm) vaddr_gfx <= fcm_addr(3'd0, vram_q[7], vram_q[6]);
-					else begin
-						vaddr_gfx <= gfx_rom ? {2'b00, crom_addr} : {3'b000, gfx_addr};
-						f_rom_sel <= gfx_rom;
-					end
-				end
-				4'd5: begin
-					f_col_byte <= vram_q;
-					if (f_fcm) vaddr_gfx <= fcm_addr(3'd1, f_col0[7], f_col0[6]);
-				end
-				default: begin
-					if (f_fcm) begin
-						if (f_step >= 4'd6 && f_step <= 4'd13) f_bp[f_step[2:0] - 3'd6] <= vram_q;
-						if (f_step >= 4'd6 && f_step <= 4'd11) vaddr_gfx <= fcm_addr(f_step[2:0] - 3'd4, f_col0[7], f_col0[6]);
-					end
-					else if (f_step == 4'd6) f_gfx <= f_rom_sel ? vrom_q : vram_q;
-				end
-			endcase
-		end
 		else begin
 			case (f_step)
 				4'd0: vaddr_gfx <= scr_addr;
@@ -546,13 +551,233 @@ always_ff @(posedge clk) begin
 				4'd2: begin f_scr <= vram_q; f_fcm <= 1'b0; end
 				4'd3: begin
 					f_col_byte <= vram_q;
-					vaddr_gfx  <= gfx_rom ? {2'b00, crom_addr} : {3'b000, gfx_addr};
+					vaddr_gfx  <= gfx_rom ? {2'b00, crom_addr} : gfx_addr;
 					f_rom_sel  <= gfx_rom;
 				end
 				4'd5: f_gfx <= f_rom_sel ? vrom_q : vram_q;
 				default: ;
 			endcase
 		end
+	end
+end
+
+
+// ------------------------------------------------------------------ VIC-IV text renderer (CHR16)
+// With 16-bit character numbers the VIC-IV draws each text line into a line
+// buffer ahead of time (the "raster rewrite buffer"): CHRCOUNT cells are taken
+// in order, each placed at the current X, so a GOTOX cell (colour byte 0 bit 4)
+// can move X back and draw characters over the ones already there.  GOTOX also
+// sets, for the cells after it, a vertical glyph offset (screen byte 1 bits
+// 7-5) and transparency (colour byte 0 bit 7: background pixels are skipped).
+//
+// Line L is drawn while line L-1 is shown, after the sprite fetch, into the
+// half of the buffer picked by L[0]; the display reads it back pixel by pixel
+// and clears each entry once it has been shown.  One cell costs 12 clk (full
+// colour), 10 clk (one glyph byte) or 5 clk (GOTOX, or off the right edge).
+// Cells that do not fit in the line time are not drawn.
+
+wire        rrb_mode  = chr16 && !bmm && !bpm;
+wire  [9:0] chrcount  = {chrcount_hi, dispregs[0]};
+wire [10:0] rr_width  = h640 ? 11'd640 : 11'd320;
+
+// the line being drawn: two lines ahead of vc at line_start (vc is still the old line)
+wire  [8:0] rr_line   = (vc + 9'd2 >= {1'b0, vtotal}) ? vc + 9'd2 - {1'b0, vtotal} : vc + 9'd2;
+wire  [8:0] rr_dy     = rr_line - y_first;
+wire        rr_inrows = (rr_line >= y_first) && (rr_dy < 9'd200);
+
+logic        rr_pend, rr_run, rr_bank;
+logic  [9:0] rr_cell;
+logic  [2:0] rr_rc;
+logic [18:0] rr_scr;          // screen address of the current cell
+logic [15:0] rr_col;          // colour RAM offset of the current cell
+logic  [3:0] rr_t;
+logic [10:0] rr_x;
+logic  [2:0] rr_yoff;
+logic        rr_trans;
+logic  [7:0] rr_slo, rr_shi, rr_c0, rr_c1;
+logic        rr_fcm, rr_rom, rr_skip;
+logic  [3:0] rr_len;
+logic [18:0] rr_vaddr;
+
+wire [12:0] rr_char    = {rr_shi[4:0], rr_slo};
+wire        rr_cfcm    = (rr_char[12:8] != 5'd0) ? fclrhi : fclrlo;
+wire [15:0] rr_colofs  = colptr + rr_col;
+wire [18:0] rr_caddr   = cram_vaddr(rr_colofs);
+wire [18:0] rr_caddr1  = cram_vaddr(rr_colofs + 16'd1);
+
+// glyph row of the current cell, after flipping and the GOTOX vertical offset
+function automatic [18:0] rr_fcm_addr(input logic [12:0] ch, input logic [2:0] rc, input logic [2:0] yo,
+                                      input logic [2:0] k, input logic vflip, input logic hflip);
+	rr_fcm_addr = {ch, vflip ? ~rc : rc, hflip ? ~k : k} - {13'd0, yo, 3'd0};
+endfunction
+wire [18:0] rr_gaddr   = charptr[18:0] + {3'd0, rr_char, rr_rc} - {16'd0, rr_yoff};
+wire        rr_grom    = (rr_gaddr[18:16] == 3'd0) && (rr_gaddr[14:12] == 3'b001);
+
+// Glyph rows pushed up by the GOTOX offset come from the character before;
+// for character $800 that is $1FFC0, which here is colour RAM.  The MEGA65's
+// video chip sees ordinary (empty) RAM there, so glyph bytes read from
+// $1F800-$1FFFF count as 0.  rr_zq lines up with vram_q.
+logic        rr_zq;
+always_ff @(posedge clk) rr_zq <= (rr_vaddr[18:11] == 8'h3F);
+
+// line buffer writer
+logic        w_act, w_fcm, w_rom, w_trans, w_bank;
+logic  [2:0] w_i;
+logic  [7:0] w_bits, w_col;
+logic [10:0] w_x;
+logic        lb_we;
+logic [10:0] lb_waddr;
+logic  [8:0] lb_wdata;
+
+always_ff @(posedge clk) begin
+	lb_we <= 1'b0;
+	if (reset) begin
+		rr_pend <= 1'b0; rr_run <= 1'b0; w_act <= 1'b0;
+	end
+	else begin
+		if (ce_pix && line_start) begin
+			// start the next line (whatever was not drawn of this one is dropped)
+			rr_run  <= 1'b0;
+			w_act   <= 1'b0;
+			rr_pend <= rrb_mode && rr_inrows;
+			rr_bank <= rr_line[0];
+			rr_rc   <= rr_dy[2:0];
+			rr_scr  <= scrnptr[18:0] + {9'd0, linestep} * {14'd0, rr_dy[7:3]};
+			rr_col  <= {6'd0, linestep} * {11'd0, rr_dy[7:3]};
+		end
+		else if (rr_pend && !spr_bus) begin
+			rr_pend <= 1'b0; rr_run <= 1'b1; rr_cell <= '0; rr_t <= '0;
+			rr_x <= '0; rr_yoff <= '0; rr_trans <= 1'b0;
+		end
+		else if (rr_run) begin
+			rr_t <= rr_t + 4'd1;
+			case (rr_t)
+				4'd0: rr_vaddr <= rr_scr;
+				4'd1: rr_vaddr <= rr_scr + 19'd1;
+				4'd2: begin rr_slo <= vram_q; rr_vaddr <= rr_caddr; end
+				4'd3: begin rr_shi <= vram_q; rr_vaddr <= rr_caddr1; end
+				4'd4: begin
+					rr_c0 <= vram_q;
+					rr_fcm <= rr_cfcm;
+					if (vram_q[4]) begin
+						// GOTOX
+						rr_x     <= {1'b0, rr_shi[1:0], rr_slo};
+						rr_yoff  <= rr_shi[7:5];
+						rr_trans <= vram_q[7];
+						rr_len   <= 4'd5;
+					end
+					else if (rr_x >= rr_width) begin
+						rr_x   <= rr_x + 11'd8;
+						rr_len <= 4'd5;
+					end
+					else if (rr_cfcm) begin
+						rr_vaddr <= rr_fcm_addr(rr_char, rr_rc, rr_yoff, 3'd0, vram_q[7], vram_q[6]);
+						rr_len   <= 4'd12;
+					end
+					else begin
+						rr_vaddr <= rr_grom ? {2'b00, crom9 ? 5'h09 : 5'h0D, rr_gaddr[11:0]} : rr_gaddr;
+						rr_rom   <= rr_grom;
+						rr_len   <= 4'd10;
+					end
+				end
+				default: begin
+					if (rr_t == 4'd5) rr_c1 <= vram_q;
+					if (rr_fcm && rr_t <= 4'd11)
+						rr_vaddr <= rr_fcm_addr(rr_char, rr_rc, rr_yoff, 3'(rr_t - 4'd4), rr_c0[7], rr_c0[6]);
+					// hand the cell to the writer: full colour pixel bytes arrive
+					// t6..t13, a one-byte glyph is in at t6
+					if (rr_t == 4'd5 && rr_fcm) begin
+						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b1; w_x <= rr_x; w_trans <= rr_trans;
+						w_bank <= rr_bank; w_col <= {4'h0, vram_q[3:0]};
+						rr_x <= rr_x + 11'd8;
+					end
+					if (rr_t == 4'd6 && !rr_fcm) begin
+						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b0; w_x <= rr_x; w_trans <= rr_trans;
+						w_bank <= rr_bank; w_col <= {4'h0, rr_c1[3:0]};
+						w_bits <= (rr_rom ? vrom_q : vram_q) ^ {8{attr && rr_c1[5]}};
+						rr_x <= rr_x + 11'd8;
+					end
+				end
+			endcase
+			// rr_len is set at t4, so at t4 itself a short cell (GOTOX, or off the
+			// right edge) has to end without it
+			if (rr_t == 4'd4 ? (vram_q[4] || rr_x >= rr_width) : (rr_t > 4'd4 && rr_t == rr_len - 4'd1)) begin
+				rr_t <= '0;
+				if (rr_cell == chrcount - 10'd1) rr_run <= 1'b0;
+				else begin
+					rr_cell <= rr_cell + 10'd1;
+					rr_scr  <= rr_scr + 19'd2;
+					rr_col  <= rr_col + 16'd2;
+				end
+			end
+		end
+
+		// writer: full colour cells take one pixel byte per clk from vram_q
+		// (bytes arrive t6..t13); one-byte glyphs write a bit per clk after t6
+		if (w_act) begin
+			logic px_on;
+			logic [7:0] px;
+			if (w_fcm) begin
+				px    = rr_zq ? 8'h00 : vram_q;
+				px_on = (px != 8'h00);
+				lb_wdata <= {px_on, (px == 8'hFF) ? w_col : px};
+			end
+			else begin
+				px_on = w_bits[3'd7 - w_i];
+				lb_wdata <= {px_on, w_col};
+			end
+			lb_waddr <= {w_bank, w_x[9:0] + {7'd0, w_i}};
+			lb_we    <= (px_on || !w_trans) && (w_x + {8'd0, w_i} < 11'd1024);
+			w_i <= w_i + 3'd1;
+			if (w_i == 3'd7) w_act <= 1'b0;
+		end
+	end
+end
+
+`ifdef RRB_DEBUG
+// trace one text line (the first raster of the text window) of every frame
+logic [8:0] dbg_line;
+logic [9:0] dbg_wcell, dbg_wcell_q;
+always_ff @(posedge clk) begin
+	if (rr_run && ((rr_t == 4'd5 && rr_fcm) || (rr_t == 4'd6 && !rr_fcm))) dbg_wcell_q <= rr_cell;
+	if (lb_we || w_act) dbg_wcell <= dbg_wcell_q;
+	if (ce_pix && line_start && rrb_mode && rr_inrows) dbg_line <= rr_line;
+	if (rr_run && rr_t == 4'd4 && dbg_line == y_first)
+		$display("RRB f%0d c%0d t4 x=%0d c0=%02x ch=%04x spr=%0d", frame, rr_cell, rr_x, vram_q, rr_char, spr_bus);
+	if (lb_we && dbg_line == y_first && lb_waddr[9:0] >= 10'd24 && lb_waddr[9:0] < 10'd40)
+		$display("RRB f%0d w %0d = %03x (cell %0d)", frame, lb_waddr[9:0], lb_wdata, dbg_wcell);
+	if (w_act && dbg_line == y_first && w_x < 11'd48 && w_x + 11'd8 > 11'd24)
+		$display("RRB f%0d   wr cell %0d x=%0d i=%0d fcm=%0d col=%02x trans=%0d q=%02x zq=%0d bits=%02x va=%05x",
+		         frame, dbg_wcell, w_x, w_i, w_fcm, w_col, w_trans, vram_q, rr_zq, w_bits, vaddr);
+	if (ce_pix && line_start && rr_run && dbg_line == y_first)
+		$display("RRB f%0d cut at cell %0d", frame, rr_cell);
+end
+`endif
+
+// display side: read one entry per pixel, clear it after its last use
+logic [10:0] lb_raddr;
+logic  [8:0] lb_q, rr_px;
+logic        rr_clr, rr_v;
+wire  [10:0] rr_nx    = hx - gfx_x0;
+wire         rr_valid = rrb_mode && in_rows && (rr_nx < 11'd640);
+wire  [10:0] lb_baddr = ce_pix ? {vc[0], h640 ? rr_nx[9:0] : {1'b0, rr_nx[9:1]}} : lb_raddr;
+
+dpram #(11, 9) linebuf (
+	.clk(clk),
+	.a_addr(lb_waddr), .a_din(lb_wdata), .a_we(lb_we), .a_q(),
+	.b_addr(lb_baddr), .b_din(9'd0), .b_we(!ce_pix && rr_clr), .b_q(lb_q)
+);
+
+always_ff @(posedge clk) begin
+	if (ce_pix) begin
+		lb_raddr <= lb_baddr;
+		rr_clr   <= rr_valid && (h640 || rr_nx[0]);
+		rr_v     <= rr_valid;
+	end
+	else begin
+		// the entry read on the ce_pix clk is out now
+		rr_clr <= 1'b0;
+		rr_px  <= rr_v ? lb_q : 9'h000;
 	end
 end
 
@@ -597,7 +822,11 @@ wire [1:0] px2     = mc_phase ? mc_bits : sh_gfx[7:6];
 always_comb begin
 	gfx_idx = col_bg0;
 	gfx_fg  = 1'b0;
-	if (!sh_on) begin
+	if (rrb_mode) begin
+		gfx_idx = rr_px[8] ? rr_px[7:0] : col_bg0;
+		gfx_fg  = rr_px[8];
+	end
+	else if (!sh_on) begin
 		gfx_idx = col_bg0;
 	end
 	else if (sh_fcm && !bpm) begin
@@ -853,7 +1082,7 @@ end
 // ------------------------------------------------------------------ output mux
 // vaddr is shared between the character/bitplane fetch and the sprite fetch;
 // the sprite fetch only runs in horizontal blanking.
-assign vaddr = spr_bus ? spr_vaddr : vaddr_gfx;
+assign vaddr = spr_bus ? spr_vaddr : (rrb_mode && rr_run) ? rr_vaddr : vaddr_gfx;
 
 // the graphics shifter shows a pixel one ce_pix after its X position, so the
 // border window is delayed to match

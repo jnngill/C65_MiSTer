@@ -47,6 +47,7 @@ localparam CONF_STR = {
 	"S0,D81,Mount Drive 8;",
 	"S1,D81,Mount Drive 9 (1565);",
 	"S2,D64G64,Mount Drive 10 (1541);",
+	"S3,SCPBINDAT,Mount Data File (MEGA65);",
 	"F1,ROMBIN,Load System ROM;",
 	"F2,PRG,Load Program;",
 	"F3,ROMBIN,Load 1541 ROM;",
@@ -149,18 +150,18 @@ wire  [15:0] sdram_sz;
 wire  [24:0] ps2_mouse;
 wire  [64:0] RTC;
 
-wire  [31:0] sd_lba[3];
-wire   [2:0] sd_rd, sd_wr, sd_ack;
-wire   [5:0] sd_blk_cnt[3];
+wire  [31:0] sd_lba[4];
+wire   [3:0] sd_rd, sd_wr, sd_ack;
+wire   [5:0] sd_blk_cnt[4];
 wire  [13:0] sd_buff_addr;
 wire   [7:0] sd_buff_dout;
-wire   [7:0] sd_buff_din[3];
+wire   [7:0] sd_buff_din[4];
 wire         sd_buff_wr;
-wire   [2:0] img_mounted;
+wire   [3:0] img_mounted;
 wire         img_readonly;
 wire  [63:0] img_size;
 
-hps_io #(.CONF_STR(CONF_STR), .VDNUM(3), .BLKSZ(1)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(4), .BLKSZ(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -226,12 +227,13 @@ end
 
 // ------------------------------------------------------------------ SDRAM module
 // The C65's expansion RAM (banks 6-15 and the 4 MB DMA region) lives in the
-// first 8 MB of the MiSTer SDRAM, the MEGA65 attic RAM in the next 8 MB and the
-// 1541's 16K DOS ROM at 16 MB.
+// first 8 MB of the MiSTer SDRAM, the MEGA65 attic RAM in the next 8 MB, the
+// 1541's 16K DOS ROM at 16 MB and a copy of the 128K C65 ROM at 17 MB (put
+// back after a MEGA65 program has used $20000-$3FFFF as RAM).
 // sdram.v runs one access (or refresh) per 8 clk64 cycle, started by a rising
 // edge on ce / refresh, so every operation here is given 5 clk_sys periods.
 // Priority: 1541 ROM reads (the drive needs its byte within 1 us), refresh,
-// the 1541 ROM download, then the C65.
+// the ROM downloads, the C65 ROM restore, then the C65.
 wire        xram_req, xram_we;
 wire [23:0] xram_addr;
 wire  [7:0] xram_din, sdram_dout;
@@ -278,31 +280,47 @@ wire [13:0] drv_rom_addr;
 reg         drv_rom_ack = 0;
 reg   [7:0] drv_rom_q;
 reg         romw_pend = 0;
-reg  [13:0] romw_addr;
+reg  [24:0] romw_addr;
 reg   [7:0] romw_data;
 reg         drv_rom_ok = 0;      // a 1541 ROM has been loaded
-assign      ioctl_wait = drv_download && romw_pend;
+reg         c65_rom_ok = 0;      // the SDRAM holds a copy of the C65 ROM
+assign      ioctl_wait = (drv_download || rom_download) && romw_pend;
+
+// C65 ROM restore reads
+wire        rrom_req;
+wire [16:0] rrom_addr;
+reg         rrom_ack = 0;
+reg   [7:0] rrom_q;
 
 always @(posedge clk_sys) begin
 	reg [1:0] st = 0;          // 0 idle, 1 access, 2 refresh, 3 recover
-	reg [1:0] owner;           // 1 C65, 2 1541 ROM read, 3 1541 ROM write
+	reg [1:0] owner;           // 0 C65 ROM restore read, 1 C65, 2 1541 ROM read, 3 ROM download write
 	reg [2:0] cnt;
 	reg [7:0] rf_timer = 0;    // refresh at least every ~8 us (64 ms / 8192 rows)
 	reg       rf_due = 0;
 	reg       drv_was = 0;
+	reg       rom_was = 0;
 
 	xram_ack    <= 0;
 	drv_rom_ack <= 0;
+	rrom_ack    <= 0;
 	rf_timer <= rf_timer + 1'd1;
 	if (&rf_timer) rf_due <= 1;
 
 	// 1541 ROM download: one SDRAM write per byte, the download waits meanwhile
 	drv_was <= drv_download;
 	if (drv_download && ioctl_wr) begin
-		romw_pend <= 1; romw_addr <= ioctl_addr[13:0]; romw_data <= ioctl_dout;
+		romw_pend <= 1; romw_addr <= {11'h400, ioctl_addr[13:0]}; romw_data <= ioctl_dout;
 		drv_rom_ok <= 0;
 	end
 	if (drv_was && !drv_download) drv_rom_ok <= 1;
+	// the C65 ROM goes to its block RAM (in the core) and to SDRAM
+	rom_was <= rom_download;
+	if (rom_download && ioctl_wr && ioctl_addr[26:17] == 0) begin
+		romw_pend <= 1; romw_addr <= {8'h88, ioctl_addr[16:0]}; romw_data <= ioctl_dout;
+		c65_rom_ok <= 0;
+	end
+	if (rom_was && !rom_download) c65_rom_ok <= sdram_fitted;
 
 	case (st)
 		0: begin
@@ -312,7 +330,10 @@ always @(posedge clk_sys) begin
 			end
 			else if (rf_due) begin sd_refresh <= 1; rf_due <= 0; st <= 2; end
 			else if (romw_pend) begin
-				sd_a <= {11'h400, romw_addr}; sd_we_r <= 1; sd_d <= romw_data; owner <= 2'd3; sd_ce <= 1; st <= 1;
+				sd_a <= romw_addr; sd_we_r <= 1; sd_d <= romw_data; owner <= 2'd3; sd_ce <= 1; st <= 1;
+			end
+			else if (rrom_req && !rrom_ack) begin
+				sd_a <= {8'h88, rrom_addr}; sd_we_r <= 0; owner <= 2'd0; sd_ce <= 1; st <= 1;
 			end
 			else if (xram_req && !xram_ack) begin
 				sd_a <= {1'b0, xram_addr}; sd_we_r <= xram_we; sd_d <= xram_din; owner <= 2'd1; sd_ce <= 1; st <= 1;
@@ -325,6 +346,7 @@ always @(posedge clk_sys) begin
 				case (owner)
 					2'd1: begin xram_dout <= sdram_dout; xram_ack <= 1; end
 					2'd2: begin drv_rom_q <= sdram_dout; drv_rom_ack <= 1; end
+					2'd0: begin rrom_q <= sdram_dout; rrom_ack <= 1; end
 					default: romw_pend <= 0;
 				endcase
 			end
@@ -357,6 +379,10 @@ assign sd_lba[1] = sd_lba[0];
 assign sd_buff_din[1] = sd_buff_din[0];
 assign sd_blk_cnt[0] = 6'd1;     // the F011 moves 512 byte sectors: two 256 byte blocks
 assign sd_blk_cnt[1] = 6'd1;
+// slot 3: the data file read by the MEGA65 hypervisor DOS stand-in, 512 bytes at a time
+assign sd_blk_cnt[3] = 6'd1;
+assign sd_wr[3] = 1'b0;
+assign sd_buff_din[3] = 8'hFF;
 
 // ------------------------------------------------------------------ 1541 on the IEC bus
 // Unit 10 (8 is the internal drive, 9 the 1565).  Held in reset until a 1541
@@ -410,7 +436,7 @@ c1541_sdrom drive1541
 c65_core core
 (
 	.clk(clk_sys),
-	.reset(reset),
+	.reset_in(reset),
 	.ntsc(ntsc),
 	.dma_f018b(~status[3]),
 	.turbo(status[13:12]),
@@ -418,6 +444,7 @@ c65_core core
 	.ld_addr(ioctl_addr[16:0]),
 	.ld_data(ioctl_dout),
 	.ld_wr(rom_download && ioctl_wr && (ioctl_addr[26:17] == 0)),
+	.rom_backup(c65_rom_ok), .rrom_req(rrom_req), .rrom_addr(rrom_addr), .rrom_q(rrom_q), .rrom_ack(rrom_ack),
 	.prg_dl(prg_download), .prg_wr(prg_download && ioctl_wr), .prg_ofs(ioctl_addr[15:0]), .prg_byte(ioctl_dout),
 
 	.ps2_key(ps2_key),
@@ -429,6 +456,7 @@ c65_core core
 	.m65_ext(status[17]),
 	.iec_atn_o(iec_atn), .iec_clk_o(iec_clk), .iec_data_o(iec_data),
 	.iec_clk_i(drv_iec_clk), .iec_data_i(drv_iec_data),
+	.dfile_mounted(img_mounted[3]), .dfile_lba(sd_lba[3]), .dfile_rd(sd_rd[3]), .dfile_ack(sd_ack[3]),
 	.uart_rxd(UART_RXD),
 	.uart_txd(UART_TXD),
 

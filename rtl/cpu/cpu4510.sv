@@ -28,6 +28,12 @@ module cpu4510 (
 	input  logic  [7:0] din,
 	output logic        sync,     // opcode fetch cycle
 
+	// MEGA65 hypervisor trap results: load A / X / Y and the carry flag.  Only
+	// pulsed while the bus is held between instructions (state S_FETCH).
+	input  logic        hyp_load,
+	input  logic  [7:0] hyp_a, hyp_x, hyp_y,
+	input  logic        hyp_c,
+
 	output logic [15:0] dbg_pc,
 	output logic  [7:0] dbg_a, dbg_x, dbg_y, dbg_z, dbg_b, dbg_p,
 	output logic [15:0] dbg_sp
@@ -387,6 +393,10 @@ always_ff @(posedge clk) begin
 		map_lo <= '0; map_hi <= '0; map_en <= '0;
 		map_inhibit <= 1'b0;
 		neg_cnt <= '0; far_pfx <= 1'b0; q_op <= 1'b0; far_op <= 1'b0; ea_far <= 1'b0; qi <= '0;
+	end
+	else if (hyp_load) begin
+		// hypervisor trap results (the core holds the bus, so no ce this clk)
+		A <= hyp_a; X <= hyp_x; Y <= hyp_y; fC <= hyp_c;
 	end
 	else if (ce) begin
 		case (state)

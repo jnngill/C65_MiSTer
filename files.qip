@@ -13,6 +13,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/f011.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_uart.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/m65_math.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/m65_rtc.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/m65_hyppo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/m65_audio.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE C65.sv

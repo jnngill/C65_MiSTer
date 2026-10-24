@@ -5,7 +5,7 @@
 
 module c65_core (
 	input  logic        clk,
-	input  logic        reset,
+	input  logic        reset_in,
 	input  logic        ntsc,
 	input  logic        dma_f018b,
 	input  logic  [1:0] turbo,            // CPU speed in FAST mode: 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
@@ -14,6 +14,16 @@ module c65_core (
 	input  logic [16:0] ld_addr,
 	input  logic  [7:0] ld_data,
 	input  logic        ld_wr,
+
+	// MEGA65 programs may use $20000-$3FFFF as RAM.  A copy of the ROM image is
+	// kept in external memory; after a reset that follows such writes the ROM
+	// is copied back (rrom_*: request / acknowledge, like xram) while the
+	// machine is held in reset.
+	input  logic        rom_backup,       // the copy is valid
+	output logic        rrom_req,
+	output logic [16:0] rrom_addr,
+	input  logic  [7:0] rrom_q,
+	input  logic        rrom_ack,
 
 	// program loader (OSD "Load Program", MiSTer ioctl style): prg_dl is high
 	// for the whole download, prg_wr strobes byte prg_ofs of the .PRG file
@@ -61,6 +71,12 @@ module c65_core (
 	input  logic  [7:0] sd_buff_dout,
 	output logic  [7:0] sd_buff_din,
 	input  logic        sd_buff_wr,
+
+	// data file for the MEGA65 hypervisor DOS stand-in (m65_hyppo)
+	input  logic        dfile_mounted,
+	output logic [31:0] dfile_lba,
+	output logic        dfile_rd,
+	input  logic        dfile_ack,
 	output logic        drive_led,
 
 	// wall-clock time from the host (MiSTer hps_io RTC word), for the MEGA65 clock registers
@@ -87,6 +103,32 @@ module c65_core (
 	output logic [15:0] dbg_sp
 );
 
+// ------------------------------------------------------------------ ROM restore
+logic        rom_dirty = 1'b0;     // $20000-$3FFFF was written (not cleared by reset)
+logic        rom_restoring = 1'b0;
+logic        rs_wr;
+logic  [7:0] rs_data;
+wire         rom_wr;               // a far / DMA write into $20000-$3FFFF
+wire         reset = reset_in || rom_restoring;
+
+always_ff @(posedge clk) begin
+	rs_wr <= 1'b0;
+	if (reset_in) begin
+		rrom_req <= 1'b0; rrom_addr <= '0;
+		if (rom_dirty && rom_backup) rom_restoring <= 1'b1;
+	end
+	else if (rom_restoring) begin
+		if (!rrom_req && !rs_wr) rrom_req <= 1'b1;
+		if (rrom_req && rrom_ack) begin rrom_req <= 1'b0; rs_wr <= 1'b1; rs_data <= rrom_q; end
+		if (rs_wr) begin
+			rrom_addr <= rrom_addr + 17'd1;
+			if (&rrom_addr) begin rom_restoring <= 1'b0; rom_dirty <= 1'b0; end
+		end
+	end
+	if (rom_wr) rom_dirty <= 1'b1;
+	if (ld_wr)  rom_dirty <= 1'b0;
+end
+
 // ------------------------------------------------------------------ clocks
 logic [4:0] ph;
 always_ff @(posedge clk) ph <= reset ? 5'd0 : ph + 5'd1;
@@ -105,6 +147,8 @@ logic [27:0] cpu_faddr;
 logic        gs_mode;              // MEGA65 (VIC-IV) I/O was unlocked: 45GS02 extensions on
 logic  [7:0] cpu_dout, bus_din;
 logic        irq_n, nmi_n;
+logic        hyp_busy, hyp_load, hyp_c;   // MEGA65 hypervisor trap stand-in
+logic  [7:0] hyp_a, hyp_x, hyp_y;
 
 cpu4510 cpu (
 	.clk(clk), .reset(reset), .ce(cpu_ce),
@@ -113,6 +157,7 @@ cpu4510 cpu (
 	.addr(cpu_addr), .paddr(cpu_paddr), .mapped(cpu_mapped),
 	.dout(cpu_dout), .we(cpu_we), .din(bus_din),
 	.sync(dbg_sync),
+	.hyp_load(hyp_load), .hyp_a(hyp_a), .hyp_x(hyp_x), .hyp_y(hyp_y), .hyp_c(hyp_c),
 	.dbg_pc(dbg_pc), .dbg_a(dbg_a), .dbg_x(dbg_x), .dbg_y(dbg_y), .dbg_z(dbg_z),
 	.dbg_b(dbg_b), .dbg_p(dbg_p), .dbg_sp(dbg_sp)
 );
@@ -145,7 +190,7 @@ logic        vic3_mode;
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
-logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2;
+logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2, sel_sdbuf, sel_romw;
 // a DMA address with the I/O flag only means I/O inside $D000-$DFFF; elsewhere it is plain memory
 wire         dma_is_io = dma_io && (dma_addr[15:12] == 4'hD);
 logic [23:0] xaddr;
@@ -155,8 +200,8 @@ always_comb begin
 	logic [22:0] pa;
 	logic [27:0] fa;       // flat 28-bit address: 45GS02 far pointer or DMA
 	logic        flat;
-	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_cram2 = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
-	sel_xram = 1'b0; sel_rtc = 1'b0;
+	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_cram2 = 1'b0; sel_sdbuf = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
+	sel_xram = 1'b0; sel_rtc = 1'b0; sel_romw = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
 	pa    = {3'd0, cpu_paddr};
@@ -168,7 +213,10 @@ always_comb begin
 		// flat 28-bit access: a 45GS02 far pointer, or the DMA controller
 		mem_addr = fa[16:0];
 		if (fa[27:17] == 11'd0)          sel_ram = 1'b1;             // $0000000 chip RAM
-		else if (fa[27:17] == 11'd1)     sel_rom = !bus_we;          // $0020000 ROM
+		else if (fa[27:17] == 11'd1) begin                          // $0020000 ROM (RAM to MEGA65 programs)
+			sel_rom = !bus_we;
+			sel_romw = bus_we && gs_mode;
+		end
 		else if (fa[27:17] == 11'd2)     sel_ram2 = 1'b1;            // $0040000 extra chip RAM
 		else if (fa[27:22] == 6'd1)      sel_xram = xram_present;    // $0400000 expansion RAM
 		else if (fa[27:23] == 5'b10000)  sel_xram = attic_present;   // $8000000 MEGA65 attic RAM
@@ -178,6 +226,7 @@ always_comb begin
 		else if (fa[27:15] == 13'h1FF0)  begin sel_cram2 = 1'b1; mem_addr = {2'd0, fa[14:0] - 15'h0800}; end   // $FF80800-$FF87FFF more colour RAM
 		else if (fa[27:12] == 16'hFFD3)  sel_io = 1'b1;              // $FFD3000 I/O
 		else if (fa[27:4] == 24'hFFD711) sel_rtc = 1'b1;             // $FFD7110 real-time clock
+		else if (fa[27:9] == 19'h7FEB7)  begin sel_sdbuf = 1'b1; mem_addr = {8'd0, fa[8:0]}; end   // $FFD6E00 SD sector buffer
 	end
 	else if (!dma_busy && cpu_mapped) begin
 		// 1MB address space reached through MAP
@@ -216,10 +265,10 @@ always_comb begin
 end
 
 // I/O area decode
-logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2, io_math, io_hyp, io_rec;
+logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2, io_math, io_hyp, io_rec, io_aud;
 always_comb begin
 	io_vic = 0; io_fdc = 0; io_pal = 0; io_sid = 0; io_uart = 0; io_dma = 0; io_cram = 0; io_cia1 = 0; io_cia2 = 0;
-	io_math = 0; io_hyp = 0; io_rec = 0;
+	io_math = 0; io_hyp = 0; io_rec = 0; io_aud = 0;
 	if (sel_io) begin
 		case (io_addr[11:8])
 			4'h0: begin
@@ -232,6 +281,7 @@ always_comb begin
 			4'h6: if (gs_mode && io_addr[7:6] == 2'b01) io_hyp = 1'b1; else io_uart = 1'b1;    // $D640-$D67F
 			4'h7: begin
 				if (gs_mode && (io_addr[7:0] == 8'h0F || io_addr[7:0] >= 8'h68)) io_math = 1'b1;
+				else if (gs_mode && io_addr[7:0] >= 8'h11 && io_addr[7:0] < 8'h60) io_aud = 1'b1;   // audio DMA
 				else io_dma = 1'b1;
 			end
 			4'h8, 4'h9, 4'hA, 4'hB: io_cram = 1'b1;
@@ -256,6 +306,12 @@ logic [15:0] prg_addr, prg_load, prg_end;
 logic  [7:0] prg_data;
 logic  [2:0] prg_ptr;       // end pointer bytes still to write
 
+// MEGA65 audio DMA sample fetches borrow single clocks between CPU / DMA accesses
+logic        aud_req;
+logic [23:0] aud_addr;
+logic  [1:0] aud_sel;
+wire         aud_gnt;
+
 typedef enum logic [1:0] { C_RUN, C_SYNC, C_SLOW, C_XRAM } cyc_t;
 cyc_t       cyc_state;
 logic [3:0] cyc;
@@ -271,7 +327,7 @@ always_ff @(posedge clk) begin
 		cyc_state <= C_RUN; cyc <= '0; slow_cs <= 1'b0;
 	end
 	else if (bus_ce) slow_cs <= 1'b0;
-	else if (dma_setup || prg_pause) cyc <= '0;   // DMA addresses not valid yet / program being loaded
+	else if (dma_setup || prg_pause || hyp_busy || aud_gnt) cyc <= '0;   // DMA addresses not valid yet / program being loaded / hypervisor trap
 	else begin
 		case (cyc_state)
 			C_RUN: begin
@@ -295,6 +351,9 @@ always_ff @(posedge clk) begin
 		endcase
 	end
 end
+
+assign aud_gnt = aud_req && cyc_state == C_RUN && !bus_ce && !prg_we && !ld_wr;
+always_ff @(posedge clk) aud_sel <= aud_addr[18:17];
 
 assign xram_req  = (cyc_state == C_XRAM);
 assign xram_we   = bus_we;
@@ -362,7 +421,26 @@ always_ff @(posedge clk) begin
 end
 
 // ------------------------------------------------------------------ memory
-logic  [7:0] ram_q, ram2_q, wom_q, rom_q, vram_q, vram1_q, vram2_q, vrom_q, vrom1_q, vwom_q, cram2_q, vcram2_q;
+logic  [7:0] ram_q, ram2_q, wom_q, rom_q, vram_q, vram1_q, vram2_q, vrom_q, vrom1_q, vwom_q, cram2_q, vcram2_q, sdbuf_q;
+
+// $FFD6E00-$FFD6FFF: the MEGA65 SD card sector buffer; the hypervisor DOS
+// stand-in reads the data file into it
+dpram #(9, 8) sdbuf (
+	.clk(clk),
+	.a_addr(mem_addr[8:0]), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_sdbuf), .a_q(sdbuf_q),
+	.b_addr(sd_buff_addr), .b_din(sd_buff_dout), .b_we(sd_buff_wr && dfile_ack), .b_q()
+);
+
+// STA $D640 in MEGA65 mode: a hypervisor DOS call
+m65_hyppo hyppo (
+	.clk(clk), .reset(reset),
+	.trap(io_wr && io_hyp && io_addr[5:0] == 6'd0), .fn(bus_dout),
+	.cpu_a(dbg_a), .cpu_x(dbg_x), .cpu_y(dbg_y),
+	.busy(hyp_busy), .load(hyp_load),
+	.res_a(hyp_a), .res_x(hyp_x), .res_y(hyp_y), .res_c(hyp_c),
+	.img_mounted(dfile_mounted), .img_size(img_size),
+	.sd_lba(dfile_lba), .sd_rd(dfile_rd), .sd_ack(dfile_ack), .buf_clear()
+);
 logic [18:0] vaddr;
 logic  [1:0] vsel;
 logic        wom_loaded;
@@ -370,7 +448,7 @@ logic        wom_loaded;
 // $40000-$5FFFF: the extra chip RAM MEGA65 ROMs expect (graphics, sprites)
 dpram #(17, 8) ram2 (
 	.clk(clk),
-	.a_addr(mem_addr), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
+	.a_addr(aud_gnt ? aud_addr[16:0] : mem_addr), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
 	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram2_q)
 );
 
@@ -390,8 +468,11 @@ dpram #(15, 8) cram2 (
 	.b_addr(vaddr[14:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vcram2_q)
 );
 
+assign rom_wr = bus_ce && bus_we && sel_romw;
+
 always_ff @(posedge clk) vsel <= vaddr[18:17];
-assign vram_q = (vsel == 2'd2) ? vram2_q : (vsel == 2'd3) ? vcram2_q : vram1_q;
+// $20000-$3FFFF is the ROM (RAM to MEGA65 programs, which keep graphics there)
+assign vram_q = (vsel == 2'd2) ? vram2_q : (vsel == 2'd3) ? vcram2_q : (vsel == 2'd1) ? vrom1_q : vram1_q;
 assign vrom_q = wom_loaded ? vwom_q : vrom1_q;
 
 // use the character set RAM once the ROM has filled it
@@ -402,14 +483,15 @@ end
 
 dpram #(17, 8) ram (
 	.clk(clk),
-	.a_addr(prg_we ? {1'b0, prg_addr} : ram_addr), .a_din(prg_we ? prg_data : bus_dout),
+	.a_addr(prg_we ? {1'b0, prg_addr} : aud_gnt ? aud_addr[16:0] : ram_addr), .a_din(prg_we ? prg_data : bus_dout),
 	.a_we(prg_we || (bus_ce && bus_we && ram_sel)), .a_q(ram_q),
 	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram1_q)
 );
 
 dpram #(17, 8) rom (
 	.clk(clk),
-	.a_addr(ld_wr ? ld_addr : mem_addr), .a_din(ld_data), .a_we(ld_wr), .a_q(rom_q),
+	.a_addr(ld_wr ? ld_addr : rs_wr ? rrom_addr : aud_gnt ? aud_addr[16:0] : mem_addr),
+	.a_din(ld_wr ? ld_data : rs_wr ? rs_data : bus_dout), .a_we(ld_wr || rs_wr || rom_wr), .a_q(rom_q),
 	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vrom1_q)
 );
 
@@ -538,9 +620,16 @@ wire        m65_reg = gs_mode && (io_addr[7:4] != 4'd0);    // $D610-$D63F in ME
 logic [7:0] uart_dout;
 wire  [7:0] porte = uart_regs[7] | ~uart_regs[8];
 
+// MEGA65 keyboard matrix peek: $D614 selects a column, $D613 reads it (0 = pressed)
+logic [71:0] kb_matrix;
+logic        kb_left, kb_up;
+logic  [3:0] kms;
+wire   [7:0] kmpeek = (kms < 4'd9) ? ~kb_matrix[{kms, 3'b000} +: 8] : 8'hFF;
+
 always_ff @(posedge clk) begin
-	if (reset) for (int i = 0; i < 16; i++) uart_regs[i] <= '0;
+	if (reset) begin for (int i = 0; i < 16; i++) uart_regs[i] <= '0; kms <= '0; end
 	else if (io_wr && io_uart && !m65_reg) uart_regs[io_addr[3:0]] <= bus_dout;
+	else if (io_wr && io_uart && io_addr[7:0] == 8'h14) kms <= bus_dout[3:0];
 end
 
 // $D600-$D606: the serial port
@@ -559,15 +648,23 @@ always_comb begin
 		4'd7:    uart_dout = porte;
 		default: uart_dout = (io_addr[3:0] < 4'd7) ? ser_dout : uart_regs[io_addr[3:0]];
 	endcase
+	// $D60F: cursor left / up held, "real hardware"
+	if (gs_mode && io_addr[7:0] == 8'h0F) uart_dout = {2'b00, 1'b1, 3'b000, kb_up, kb_left};
 	// $D629 is the MEGA65 hardware model: answer as a MEGA65 R3
-	if (m65_reg) uart_dout = (io_addr[7:0] == 8'h29) ? 8'h03 : 8'h00;
+	if (m65_reg) case (io_addr[7:0])
+		8'h29:   uart_dout = 8'h03;
+		8'h13:   uart_dout = kmpeek;
+		8'h14:   uart_dout = {4'd0, kms};
+		default: uart_dout = 8'h00;
+	endcase
 end
 
 c65_keyboard keyboard (
 	.clk(clk), .reset(reset), .layout(kbd_layout), .ps2_key(ps2_key),
 	.col_sel(cia1_pa_out), .col8_sel(porte[1]), .row_drive(cia1_pb_out),
 	.row_in(kb_rows), .col_in(kb_cols),
-	.restore_n(restore_n), .capslock_n(capslock_n)
+	.restore_n(restore_n), .capslock_n(capslock_n),
+	.matrix(kb_matrix), .crsr_left(kb_left), .crsr_up(kb_up)
 );
 
 // ------------------------------------------------------------------ F011 floppy controller
@@ -586,26 +683,45 @@ f011 fdc (
 
 // ------------------------------------------------------------------ SIDs
 logic [7:0] sid_dout;
+logic [17:0] sid_l, sid_r;
 
 `ifdef C65_NO_SID
 // simulation stub: only the POT registers ($19 / $1A) answer
 assign sid_dout = (io_addr[4:0] == 5'h19) ? pot_x : (io_addr[4:0] == 5'h1A) ? pot_y : 8'h00;
-assign audio_l  = '0;
-assign audio_r  = '0;
+assign sid_l = '0;
+assign sid_r = '0;
 `else
 sid_top #(.MULTI_FILTERS(1), .DUAL(1)) sid (
 	.reset(reset), .clk(clk), .ce_1m(phi2_n),
 	.cs({slow_cs && io_sid && io_addr[5], slow_cs && io_sid && !io_addr[5]}),
 	.we(bus_we), .addr(io_addr[4:0]), .data_in(bus_dout), .data_out(sid_dout),
-	.fc_offset_l(13'd0), .pot_x_l(pot_x), .pot_y_l(pot_y), .ext_in_l(18'd0), .audio_l(audio_r),
-	.fc_offset_r(13'd0), .pot_x_r(pot_x), .pot_y_r(pot_y), .ext_in_r(18'd0), .audio_r(audio_l),
+	.fc_offset_l(13'd0), .pot_x_l(pot_x), .pot_y_l(pot_y), .ext_in_l(18'd0), .audio_l(sid_r),
+	.fc_offset_r(13'd0), .pot_x_r(pot_x), .pot_y_r(pot_y), .ext_in_r(18'd0), .audio_r(sid_l),
 	.filter_en(2'b11), .mode(2'b11), .cfg(4'd0),
 	.ld_clk(clk), .ld_addr(12'd0), .ld_data(16'd0), .ld_wr(1'b0)
 );
 `endif
 
 // ------------------------------------------------------------------ MEGA65 extras
-logic [7:0] math_dout, rtc_dout;
+logic [7:0] math_dout, rtc_dout, aud_dout;
+logic signed [15:0] aud_l, aud_r;
+
+m65_audio audio_dma (
+	.clk(clk), .reset(reset),
+	.reg_addr(io_addr[6:0]), .reg_we(io_wr && io_aud), .reg_din(bus_dout), .reg_dout(aud_dout),
+	.fetch_req(aud_req), .fetch_addr(aud_addr), .fetch_gnt(aud_gnt),
+	.fetch_q((aud_sel == 2'd0) ? ram_q : (aud_sel == 2'd1) ? rom_q : ram2_q),
+	.out_l(aud_l), .out_r(aud_r)
+);
+
+// SIDs plus audio DMA, saturated
+function automatic [17:0] mix(input logic [17:0] a, input logic signed [15:0] b);
+	logic signed [18:0] t;
+	t = $signed({a[17], a}) + $signed({b[15], b, 2'b00});
+	mix = (t > 19'sh1FFFF) ? 18'h1FFFF : (t < -19'sh20000) ? 18'h20000 : t[17:0];
+endfunction
+assign audio_l = mix(sid_l, aud_l);
+assign audio_r = mix(sid_r, aud_r);
 wire  [3:0] fa_rtc = dma_busy ? dma_addr[3:0] : cpu_faddr[3:0];
 
 m65_rtc rtc_clock (
@@ -624,12 +740,14 @@ always @(posedge clk) begin
 	if (bus_ce && io_hyp)
 		$display("HYP  %s $D6%02x = %02x  PC=%04x A=%02x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc, dbg_a);
 	if (bus_ce && io_vic && vic_reg >= 7'h40)
-		$display("VIC4 %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
+		$display("VIC4 %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
+	if (bus_ce && io_aud)
+		$display("AUD  %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
 	if (bus_ce && io_dma && io_addr[7:0] > 8'h03)
-		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
+		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
 	if (bus_ce && io_uart && io_addr[7:0] > 8'h0F)
-		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc);
-	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_cram2 && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
+		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
+	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_cram2 && !sel_sdbuf && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
 		$display("FAR  %s %07x = %02x  PC=%04x", bus_we ? "wr" : "rd", cpu_faddr, bus_dout, dbg_pc);
 end
 `endif
@@ -645,6 +763,7 @@ always_comb begin
 	else if (io_uart) io_dout = uart_dout;
 	else if (io_dma)  io_dout = dma_reg_dout;
 	else if (io_math) io_dout = math_dout;
+	else if (io_aud)  io_dout = aud_dout;
 	else if (io_hyp)  io_dout = 8'h00;
 	else if (io_rec)  io_dout = (io_addr[7:0] == 8'hA0) ? {!xram_present, rec_reg} : 8'hFF;
 	else if (io_cia1) io_dout = cia1_dout;
@@ -655,6 +774,7 @@ always_comb begin
 	if (ram_sel)       bus_din = ram_q;
 	else if (sel_ram2) bus_din = ram2_q;
 	else if (sel_cram2) bus_din = cram2_q;
+	else if (sel_sdbuf) bus_din = sdbuf_q;
 	else if (sel_wom)  bus_din = wom_q;
 	else if (sel_xram) bus_din = xram_dout;
 	else if (sel_rtc)  bus_din = rtc_dout;

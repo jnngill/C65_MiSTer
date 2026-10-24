@@ -5,6 +5,7 @@
 //                    (text escapes: \r = RETURN, {NAME} = raw PS/2 make/break of a hex code)
 //   -d81 <file>      mount a disk image (internal drive)
 //   -d81b <file>     mount a disk image in the external 1565 drive (drive 1)
+//   -dfile <file>    the data file served by the MEGA65 hypervisor DOS stand-in
 //   -prg <file> <n>  load a .PRG through the OSD program loader at frame n
 //   -uartloop        connect the serial port output back to its input
 //   -mountat <n>     insert it at frame n (default 2; later avoids auto-booting from it)
@@ -33,13 +34,14 @@
 double sc_time_stamp() { return 0; }
 
 static Vc65_core *top;
-static std::vector<unsigned char> d81s[2];       // drive 0 (internal), drive 1 (external 1565)
-static bool d81_dirty[2] = {false, false};
+static std::vector<unsigned char> d81s[3];       // drive 0 (internal), drive 1 (external 1565), 2 = hypervisor data file
+static bool d81_dirty[3] = {false, false, false};
 static int sd_drv = 0;
 
 // ---- frame capture ---------------------------------------------------
 static const int MAXW = 1800, MAXH = 320;     // 1280 pixel modes: 1664 wide
 static std::vector<unsigned char> fb(MAXW * MAXH * 3);
+static std::vector<unsigned char> idxfb(MAXW * MAXH);   // palette index of each pixel (last frame)
 static std::vector<unsigned char> fields[2];     // last complete frame of each interlace field
 static int cap_x = 0, cap_y = 0, cap_w = 0, cap_h = 0;
 static bool prev_hbl = true, prev_vbl = true;
@@ -64,6 +66,7 @@ static void video_tick() {
 		if (cap_x < MAXW && cap_y < MAXH) {
 			unsigned char *p = &fb[(cap_y * MAXW + cap_x) * 3];
 			p[0] = top->r * 17; p[1] = top->g * 17; p[2] = top->b * 17;
+			idxfb[cap_y * MAXW + cap_x] = top->rootp->c65_core__DOT__vic__DOT__pix_idx;
 		}
 		cap_x++;
 	}
@@ -147,7 +150,11 @@ static void sd_tick() {
 	top->sd_buff_wr = 0;
 	switch (sd_state) {
 	case 0:
-		if (top->sd_rd || top->sd_wr) {
+		if (top->dfile_rd) {         // hypervisor data file (read only)
+			sd_drv = 2; sd_is_wr = false; sd_lba_l = top->dfile_lba; sd_state = 1; sd_cnt = -200; top->dfile_ack = 1;
+			if (sd_verbose) fprintf(stderr, "dfile RD lba %u frame %ld\n", sd_lba_l, frame_no);
+		}
+		else if (top->sd_rd || top->sd_wr) {
 			sd_drv = ((top->sd_rd | top->sd_wr) & 2) ? 1 : 0;
 			sd_is_wr = (top->sd_wr >> sd_drv) & 1; sd_lba_l = top->sd_lba; sd_state = 1; sd_cnt = -200; top->sd_ack = 1 << sd_drv;
 			if (sd_verbose) fprintf(stderr, "sd%d %s lba %u frame %ld\n", sd_drv, sd_is_wr ? "WR" : "RD", sd_lba_l, frame_no);
@@ -171,7 +178,7 @@ static void sd_tick() {
 		}
 		break;
 	case 2:
-		top->sd_ack = 0; sd_state = 0;
+		top->sd_ack = 0; top->dfile_ack = 0; sd_state = 0;
 		break;
 	}
 	if (sd_state == 1 && sd_is_wr && sd_cnt > 0 && (sd_cnt & 3) == 3) {
@@ -263,10 +270,10 @@ int main(int argc, char **argv) {
 			}
 			if (f) fclose(f);
 		}
-		else if ((a == "-d81" || a == "-d81b") && i + 1 < argc) {
-			auto &d81 = d81s[a == "-d81b" ? 1 : 0];
+		else if ((a == "-d81" || a == "-d81b" || a == "-dfile") && i + 1 < argc) {
+			auto &d81 = d81s[a == "-dfile" ? 2 : a == "-d81b" ? 1 : 0];
 			FILE *f = fopen(argv[++i], "rb");
-			if (f) { d81.resize(819200); size_t n = fread(d81.data(), 1, d81.size(), f); d81.resize(n); fclose(f); }
+			if (f) { d81.resize(16 << 20); size_t n = fread(d81.data(), 1, d81.size(), f); d81.resize(n); fclose(f); }
 		}
 		else if (a == "-shot" && i + 1 < argc) shot = atoi(argv[++i]);
 		else if (a == "-trace" && i + 1 < argc) ntrace = atoi(argv[++i]);
@@ -301,7 +308,7 @@ int main(int argc, char **argv) {
 
 	top = new Vc65_core;
 	top->ntsc = ntsc; top->dma_f018b = f018b; top->turbo = turbo;
-	top->reset = 1; top->ld_wr = 0; top->ps2_key = 0;
+	top->reset_in = 1; top->ld_wr = 0; top->ps2_key = 0; top->rom_backup = 1; top->rrom_ack = 0;
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
 	top->ps2_mouse = 0; top->mouse_port = mouse_port; top->m65_ext = m65_ext;
 	top->prg_dl = 0; top->prg_wr = 0; top->prg_ofs = 0; top->prg_byte = 0;
@@ -321,12 +328,12 @@ int main(int argc, char **argv) {
 	}
 	top->ld_wr = 0;
 	for (int i = 0; i < 64; i++) tick();
-	top->reset = 0;
+	top->reset_in = 0;
 	top->rtc[2] = 1;      // bit 64 toggles: "time delivered"
 
 	std::deque<std::string> trace;
 	std::vector<unsigned> pchist(65536, 0);
-	long mount_at = (d81s[0].empty() && d81s[1].empty()) ? -1 : mount_frame;
+	long mount_at = (d81s[0].empty() && d81s[1].empty() && d81s[2].empty()) ? -1 : mount_frame;
 	int mount_next = 0;      // the two drives are mounted on consecutive frames
 	unsigned long long clks = 0, instrs = 0;
 
@@ -343,6 +350,13 @@ int main(int argc, char **argv) {
 			else { top->prg_dl = 0; prg_busy = false; printf("prg loaded: %zu bytes, frame %ld\n", prg.size(), frame_no); }
 		}
 		xram_tick();
+		// ROM backup copy (restored after a reset once $20000-$3FFFF was written)
+		{
+			static int rr = 0;
+			top->rrom_ack = 0;
+			if (!top->rrom_req) rr = 0;
+			else if (++rr == 4) { top->rrom_q = rom[top->rrom_addr]; top->rrom_ack = 1; rr = 0; }
+		}
 		if (top->dbg_sync && top->rootp->c65_core__DOT__cpu_ce) {
 			instrs++;
 			if ((int)top->dbg_pc == after_pc) after_pc = -1;
@@ -366,7 +380,7 @@ int main(int argc, char **argv) {
 				if ((int)trace.size() > ntrace) trace.pop_front();
 			}
 		}
-		top->img_mounted = 0;
+		top->img_mounted = 0; top->dfile_mounted = 0;
 		if (frame_done) {
 			frame_done = false;
 			key_frame();
@@ -376,9 +390,12 @@ int main(int argc, char **argv) {
 			else if (frame_no == mouse_to)
 				top->ps2_mouse = ((top->ps2_mouse ^ 0x1000000) & 0x1000000) | 0x08;
 			// mount drive 0 at mount_at and drive 1 on the next frame (one image per pulse)
-			if (mount_at >= 0 && frame_no >= mount_at && mount_next < 2) {
+			if (mount_at >= 0 && frame_no >= mount_at && mount_next < 3) {
 				int d = mount_next++;
-				if (!d81s[d].empty()) { top->img_size = (unsigned)d81s[d].size(); top->img_readonly = 0; top->img_mounted = 1 << d; }
+				if (!d81s[d].empty()) {
+					top->img_size = (unsigned)d81s[d].size(); top->img_readonly = 0;
+					if (d == 2) top->dfile_mounted = 1; else top->img_mounted = 1 << d;
+				}
 			}
 			if (frame_no == prg_at && !prg.empty()) { top->prg_dl = 1; prg_busy = true; prg_pos = 0; prg_div = 0; }
 			if (shot && frame_no % shot == 0) {
@@ -388,6 +405,23 @@ int main(int argc, char **argv) {
 		}
 	}
 	write_ppm(outdir + "/final.ppm");
+	{	// palette indices of the last frame, and the VIC state, for comparing with sim/vic_test
+		FILE *xf = fopen((outdir + "/final_idx.ppm").c_str(), "wb");
+		fprintf(xf, "P6\n%d %d\n255\n", cap_w, cap_h);
+		for (int j = 0; j < cap_h; j++)
+			for (int i = 0; i < cap_w; i++) { unsigned char g = idxfb[j * MAXW + i]; fputc(g, xf); fputc(g, xf); fputc(g, xf); }
+		fclose(xf);
+		auto *R = top->rootp;
+		printf("VIC: ctrl_c=%02x linestep=%d scrnptr=%05x colptr=%04x charptr=%05x hotreg=%d chrcount=%d/%d bg0=%02x "
+		       "mcm=%d ecm=%d bmm=%d den=%d rsel=%d csel=%d xscroll=%d yscroll=%d vm=%x cb=%x\n",
+		       R->c65_core__DOT__vic__DOT__ctrl_c, R->c65_core__DOT__vic__DOT__linestep, R->c65_core__DOT__vic__DOT__scrnptr,
+		       R->c65_core__DOT__vic__DOT__colptr, R->c65_core__DOT__vic__DOT__charptr, R->c65_core__DOT__vic__DOT__hotreg,
+		       R->c65_core__DOT__vic__DOT__dispregs[0], R->c65_core__DOT__vic__DOT__chrcount_hi, R->c65_core__DOT__vic__DOT__col_bg0,
+		       R->c65_core__DOT__vic__DOT__mcm, R->c65_core__DOT__vic__DOT__ecm, R->c65_core__DOT__vic__DOT__bmm,
+		       R->c65_core__DOT__vic__DOT__den, R->c65_core__DOT__vic__DOT__rsel, R->c65_core__DOT__vic__DOT__csel,
+		       R->c65_core__DOT__vic__DOT__xscroll, R->c65_core__DOT__vic__DOT__yscroll, R->c65_core__DOT__vic__DOT__vm,
+		       R->c65_core__DOT__vic__DOT__cb);
+	}
 	{	// chip RAM $00000-$1FFFF, for post-mortem inspection
 		FILE *rf = fopen((outdir + "/ram.bin").c_str(), "wb");
 		auto &m = top->rootp->c65_core__DOT__ram__DOT__mem;
@@ -396,6 +430,14 @@ int main(int argc, char **argv) {
 		rf = fopen((outdir + "/ram2.bin").c_str(), "wb");
 		auto &m2 = top->rootp->c65_core__DOT__ram2__DOT__mem;
 		for (int i = 0; i < 0x20000; i++) fputc(m2[i], rf);
+		fclose(rf);
+		rf = fopen((outdir + "/rom.bin").c_str(), "wb");
+		auto &m4 = top->rootp->c65_core__DOT__rom__DOT__mem;
+		for (int i = 0; i < 0x20000; i++) fputc(m4[i], rf);
+		fclose(rf);
+		rf = fopen((outdir + "/cram2.bin").c_str(), "wb");
+		auto &m3 = top->rootp->c65_core__DOT__cram2__DOT__mem;
+		for (int i = 0; i < 0x8000; i++) fputc(m3[i], rf);
 		fclose(rf);
 		rf = fopen((outdir + "/xram.bin").c_str(), "wb");
 		fwrite(xram.data(), 1, xram.size(), rf);

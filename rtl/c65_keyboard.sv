@@ -24,7 +24,10 @@ module c65_keyboard (
 	output logic  [7:0] row_in,      // to CIA1 PB
 	output logic  [7:0] col_in,      // to CIA1 PA (keys read "backwards")
 	output logic        restore_n,
-	output logic        capslock_n
+	output logic        capslock_n,
+	output logic [71:0] matrix,      // MEGA65 $D613/$D614: the keys as the matrix sees them, 1 = pressed
+	output logic        crsr_left,   // MEGA65 $D60F.0 / .1: cursor left / up held (they reach the
+	output logic        crsr_up      // matrix as SHIFT + cursor right / down)
 );
 
 localparam logic [6:0] K_NONE   = 7'd127;
@@ -856,7 +859,7 @@ wire [8:0] m_s1  = keymap(layout, 1'b1, ps2_key[8:0]);
 always_ff @(posedge clk) begin
 	ps2_stb <= ps2_key[10];
 	if (reset) begin
-		keys <= '0; f_on <= '0; f_off <= '0; restore_n <= 1'b1; caps <= 1'b0;
+		keys <= '0; f_on <= '0; f_off <= '0; restore_n <= 1'b1; caps <= 1'b0; crsr_left <= 1'b0; crsr_up <= 1'b0;
 		hold <= '0; lin_off <= 1'b0; lin_on <= 1'b0; hold_cnt <= '0; lin_cnt <= '0;
 	end
 	else begin
@@ -883,6 +886,8 @@ always_ff @(posedge clk) begin
 		end
 		if (ps2_key[8:0] == 9'h078) restore_n <= ~ps2_key[9];        // F11
 		if (ps2_key[8:0] == 9'h058 && ps2_key[9]) caps <= ~caps;     // Caps Lock
+		if (ps2_key[8:0] == 9'h16B) crsr_left <= ps2_key[9];
+		if (ps2_key[8:0] == 9'h175) crsr_up   <= ps2_key[9];
 		end
 	end
 end
@@ -893,6 +898,7 @@ always_comb begin
 	k = keys & ~hold;
 	if (|f_off || lin_off) begin k[K_LSHIFT] = 1'b0; k[K_RSHIFT] = 1'b0; end
 	else if (|f_on || lin_on) k[K_RSHIFT] = 1'b1;
+	matrix = k;
 	row_in = 8'hFF;
 	col_in = 8'hFF;
 	for (int c = 0; c < 9; c++) begin
