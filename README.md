@@ -262,8 +262,10 @@ Tested on hardware:
   and `SPACE.SCP` with *Mount Data File (MEGA65)*, then
   `LOAD"SPACE COMMANDER"` and `BANK 0:SYS 8205` (S-BASIC's `RUN` / `SYS`
   run in a bank where `$2000` is ROM, so the game's `SYS 8205` stub needs
-  the `BANK 0`). The data file streams into attic RAM in about 30 seconds;
-  title screen and gameplay are correct.
+  the `BANK 0`; typing `BANK 0` first and then `RUN` does not work, the
+  game stays on a blank screen). The data file streams into attic RAM in
+  about 30 seconds; title screen, gameplay, music and sound effects are
+  correct.
 - **Titan Fall**: `LOAD"TITANFALL"` and `RUN`.
 
 The MEGA65 network programs (BBS, IRC, SSH ...) need the MEGA65 Ethernet
