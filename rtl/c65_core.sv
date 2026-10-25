@@ -190,7 +190,7 @@ logic        vic3_mode;
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
-logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2, sel_sdbuf, sel_romw;
+logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2, sel_sdbuf, sel_romw, sel_fdcbuf;
 // a DMA address with the I/O flag only means I/O inside $D000-$DFFF; elsewhere it is plain memory
 wire         dma_is_io = dma_io && (dma_addr[15:12] == 4'hD);
 logic [23:0] xaddr;
@@ -200,7 +200,7 @@ always_comb begin
 	logic [22:0] pa;
 	logic [27:0] fa;       // flat 28-bit address: 45GS02 far pointer or DMA
 	logic        flat;
-	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_cram2 = 1'b0; sel_sdbuf = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
+	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_cram2 = 1'b0; sel_sdbuf = 1'b0; sel_fdcbuf = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
 	sel_xram = 1'b0; sel_rtc = 1'b0; sel_romw = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
@@ -227,6 +227,7 @@ always_comb begin
 		else if (fa[27:12] == 16'hFFD3)  sel_io = 1'b1;              // $FFD3000 I/O
 		else if (fa[27:4] == 24'hFFD711) sel_rtc = 1'b1;             // $FFD7110 real-time clock
 		else if (fa[27:9] == 19'h7FEB7)  begin sel_sdbuf = 1'b1; mem_addr = {8'd0, fa[8:0]}; end   // $FFD6E00 SD sector buffer
+		else if (fa[27:9] == 19'h7FEB6)  begin sel_fdcbuf = 1'b1; mem_addr = {8'd0, fa[8:0]}; end  // $FFD6C00 F011 sector buffer
 	end
 	else if (!dma_busy && cpu_mapped) begin
 		// 1MB address space reached through MAP
@@ -825,13 +826,14 @@ c65_keyboard keyboard (
 );
 
 // ------------------------------------------------------------------ F011 floppy controller
-logic [7:0] fdc_dout;
+logic [7:0] fdc_dout, fdcbuf_q;
 logic       fdc_irq_n;
 
 f011 fdc (
 	.clk(clk), .reset(reset),
 	.reg_addr(io_addr[4:0]), .reg_we(io_wr && io_fdc), .reg_re(io_rd && io_fdc),
 	.reg_din(bus_dout), .reg_dout(fdc_dout), .irq_n(fdc_irq_n),
+	.dir_sel(sel_fdcbuf), .dir_addr(mem_addr[8:0]), .dir_we(bus_ce && bus_we && sel_fdcbuf), .dir_q(fdcbuf_q),
 	.img_mounted(img_mounted), .img_readonly(img_readonly), .img_size(img_size),
 	.sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr), .sd_buff_dout(sd_buff_dout), .sd_buff_din(sd_buff_din),
@@ -898,13 +900,15 @@ always @(posedge clk) begin
 		$display("HYP  %s $D6%02x = %02x  PC=%04x A=%02x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc, dbg_a);
 	if (bus_ce && io_vic && vic_reg >= 7'h40)
 		$display("VIC4 %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
+	if (bus_ce && io_fdc)
+		$display("FDC  %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
 	if (bus_ce && io_aud)
 		$display("AUD  %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
 	if (bus_ce && io_dma && io_addr[7:0] > 8'h03)
 		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
 	if (bus_ce && io_uart && io_addr[7:0] > 8'h0F)
 		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
-	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_cram2 && !sel_sdbuf && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
+	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_cram2 && !sel_sdbuf && !sel_fdcbuf && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
 		$display("FAR  %s %07x = %02x  PC=%04x", bus_we ? "wr" : "rd", cpu_faddr, bus_dout, dbg_pc);
 end
 `endif
@@ -932,6 +936,7 @@ always_comb begin
 	else if (sel_ram2) bus_din = ram2_q;
 	else if (sel_cram2) bus_din = cram2_q;
 	else if (sel_sdbuf) bus_din = sdbuf_q;
+	else if (sel_fdcbuf) bus_din = fdcbuf_q;
 	else if (sel_wom)  bus_din = wom_q;
 	else if (sel_xram) bus_din = xram_dout;
 	else if (sel_rtc)  bus_din = rtc_dout;

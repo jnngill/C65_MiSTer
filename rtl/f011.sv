@@ -15,6 +15,9 @@
 // external 1565 on the C65's drive port, each with its own image and head.
 // Drive 1 only exists while an image is mounted for it; an absent drive
 // (and selects 2-7) never leaves "track 0", which is how the ROM tells.
+//
+// The MEGA65 also maps the sector buffer flat at $FFD6C00-$FFD6DFF (the dir_*
+// port); the BASIC 65 DOS reads and writes sectors there instead of $D087.
 
 module f011 (
 	input  logic        clk,
@@ -26,6 +29,12 @@ module f011 (
 	input  logic  [7:0] reg_din,
 	output logic  [7:0] reg_dout,
 	output logic        irq_n,
+
+	// MEGA65 flat window onto the sector buffer ($FFD6C00-$FFD6DFF)
+	input  logic        dir_sel,
+	input  logic  [8:0] dir_addr,
+	input  logic        dir_we,
+	output logic  [7:0] dir_q,
 
 	input  logic  [1:0] img_mounted,     // one bit per drive
 	input  logic        img_readonly,
@@ -74,6 +83,7 @@ wire        data_wr = reg_we && reg_addr == 5'd7;
 wire        data_rd = reg_re && reg_addr == 5'd7;
 
 assign sd_buff_din = (state == ST_FMT) ? 8'h00 : buf_disk_q;
+assign dir_q       = buf_q;
 
 // ------------------------------------------------------------------ command execution
 typedef enum logic [2:0] { ST_IDLE, ST_DELAY, ST_READ, ST_WRITE, ST_FAIL, ST_FMT } state_t;
@@ -83,7 +93,7 @@ logic [3:0] fmt_n;
 
 dpram #(9, 8) sector_buf (
 	.clk(clk),
-	.a_addr({cpu_ptr[8] ^ swap, cpu_ptr[7:0]}), .a_din(reg_din), .a_we(data_wr), .a_q(buf_q),
+	.a_addr(dir_sel ? dir_addr : {cpu_ptr[8] ^ swap, cpu_ptr[7:0]}), .a_din(reg_din), .a_we(data_wr || dir_we), .a_q(buf_q),
 	.b_addr(base_ptr + sd_buff_addr), .b_din(sd_buff_dout), .b_we(sd_buff_wr && ack && state == ST_READ),
 	.b_q(buf_disk_q)
 );

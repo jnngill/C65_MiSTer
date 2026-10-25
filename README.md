@@ -102,6 +102,7 @@ both settings (C65 software does not use it).
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
 | Hypervisor DOS traps (`$D640`): getversion, setname, findfile, openfile, readfile (512 bytes at a time into the SD sector buffer at `$FFD6E00`), closefile, chdir / cdrootdir | done for one file: the one mounted with *Mount Data File (MEGA65)* (any name finds it). Other traps fail with "not implemented"; there is no SD card file system |
+| F011 sector buffer mapped flat at `$FFD6C00-$FFD6DFF` (the BASIC 65 DOS reads and writes sectors there) | done, confirmed on hardware with BASIC 65 920422 (`DIR`, `SAVE`, `LOAD`) |
 | Writable `$20000-$3FFFF` (far pointer and DMA writes, as on the MEGA65 where this is RAM) | done. A copy of the ROM is kept in the SDRAM module and put back at the next reset, so S-BASIC returns without reloading the core |
 | Keyboard: matrix peek (`$D613` / `$D614`), modifier keys (`$D611`), cursor left / up (`$D60F`), and the typing queue: oldest key as ASCII (`$D610`) and PETSCII (`$D619`), its modifiers (`$D60A`), 8 keys with repeat | done, confirmed on hardware (the Open ROMs read `$D611` for SHIFT; BASIC 65 920422 types through `$D619`) |
 | Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects). Samples come from chip RAM only; no audio DMA interrupts or sine mode |
@@ -265,14 +266,15 @@ Tested on hardware:
   the `BANK 0`; typing `BANK 0` first and then `RUN` does not work, the
   game stays on a blank screen). The data file streams into attic RAM in
   about 30 seconds; title screen, gameplay, music and sound effects are
-  correct.
+  correct. With BASIC 65 920422 as the ROM, plain `LOAD"SPACE COMMANDER"`
+  and `RUN` work.
 - **Titan Fall**: `LOAD"TITANFALL"` and `RUN`.
 
 The MEGA65's own ROM (**BASIC 65**, e.g. V920422, built from the C65 ROM
 910828 with the patch the MEGA65 team publishes) boots, shows the clock and
-takes typing, but its DOS cannot read disks on this core yet (`LOAD` gives
-`66,ILLEGAL TRACK OR SECTOR`): it uses MEGA65 extensions of the floppy
-controller that are not implemented.
+takes typing. Its DOS reads and writes `.D81` disks (`DIR`, `LOAD`, `SAVE`,
+confirmed on hardware) through the MEGA65's flat view of the floppy
+controller's sector buffer at `$FFD6C00`.
 
 The MEGA65 network programs (BBS, IRC, SSH ...) need the MEGA65 Ethernet
 controller, which the core does not have.
