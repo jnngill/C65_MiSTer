@@ -96,14 +96,14 @@ both settings (C65 software does not use it).
 | VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done. 32K of colour RAM (`$FF80000-$FF87FFF`) as on the MEGA65 (the C65 has 2K), so 80 column and larger full-colour screens work (confirmed on hardware from the CPU / DMA side, the video side in simulation). S-BASIC's own `FCM ON` is always 40x25. Per-character flips untested; alpha and nibble-colour (NCM) characters missing |
 | VIC-IV raster rewrite buffer: each 16-bit text line is drawn into a line buffer, CHRCOUNT cells per row (`$D05E`, `$D063`), GOTOX cells (colour byte 0 bit 4) with transparency and the vertical glyph offset | done, confirmed on hardware (Space Commander). GOTOX row mask, pixel trimming and alpha are ignored |
 | VIC-IV hot registers (`$D05D` bit 7) and the character set pointer (`$D068-$D06A`) | done |
-| V400 text: 80x50 and 40x50 screens (`$D031` bit 3 in text modes) | done, confirmed on hardware with the MEGA65 Open ROMs. S-BASIC 65 itself has no 50-line mode |
+| V400 text: 80x50 and 40x50 screens (`$D031` bit 3 in text modes) | done, confirmed on hardware with the MEGA65 Open ROMs. As on the VIC-IV, the text rows follow V400 only when it is set with hot registers on (`$D05D` bit 7); Space Commander sets V400 with them off and keeps 25 rows. S-BASIC 65 itself has no 50-line mode |
 | VIC-IV sprites: 16-colour (`$D06B`) with 16 palette entries per sprite, 64 pixels wide (`$D057`), programmable height (`$D055/56`) (S-BASIC `FCSPRITE` commands) | done; wide and tall sprites untested |
 | Other VIC-IV registers (borders, scaling, text position, palette banks, sprite alpha / tiling) | stored and read back, no effect on the picture |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
 | Hypervisor DOS traps (`$D640`): getversion, setname, findfile, openfile, readfile (512 bytes at a time into the SD sector buffer at `$FFD6E00`), closefile, chdir / cdrootdir | done for one file: the one mounted with *Mount Data File (MEGA65)* (any name finds it). Other traps fail with "not implemented"; there is no SD card file system |
 | Writable `$20000-$3FFFF` (far pointer and DMA writes, as on the MEGA65 where this is RAM) | done. A copy of the ROM is kept in the SDRAM module and put back at the next reset, so S-BASIC returns without reloading the core |
-| Keyboard matrix peek (`$D613` / `$D614`), cursor left / up (`$D60F`) | done. The ASCII key queue (`$D610`) is not implemented |
+| Keyboard: matrix peek (`$D613` / `$D614`), modifier keys (`$D611`), cursor left / up (`$D60F`), and the typing queue: oldest key as ASCII (`$D610`) and PETSCII (`$D619`), its modifiers (`$D60A`), 8 keys with repeat | done, confirmed on hardware (the Open ROMs read `$D611` for SHIFT; BASIC 65 920422 types through `$D619`) |
 | Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects). Samples come from chip RAM only; no audio DMA interrupts or sine mode |
 | SD card, Ethernet, a true 40 MHz | not implemented. The CPU's top speed is 16 MHz |
 | Attic RAM: 8 MB at `$8000000`, through far pointers and DMA | done, confirmed on hardware (S-BASIC `EDMA` fill and copy back); kept in the SDRAM module, so it needs one (it does not depend on the *Expansion RAM* option) |
@@ -267,6 +267,12 @@ Tested on hardware:
   about 30 seconds; title screen, gameplay, music and sound effects are
   correct.
 - **Titan Fall**: `LOAD"TITANFALL"` and `RUN`.
+
+The MEGA65's own ROM (**BASIC 65**, e.g. V920422, built from the C65 ROM
+910828 with the patch the MEGA65 team publishes) boots, shows the clock and
+takes typing, but its DOS cannot read disks on this core yet (`LOAD` gives
+`66,ILLEGAL TRACK OR SECTOR`): it uses MEGA65 extensions of the floppy
+controller that are not implemented.
 
 The MEGA65 network programs (BBS, IRC, SSH ...) need the MEGA65 Ethernet
 controller, which the core does not have.

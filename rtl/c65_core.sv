@@ -620,11 +620,160 @@ wire        m65_reg = gs_mode && (io_addr[7:4] != 4'd0);    // $D610-$D63F in ME
 logic [7:0] uart_dout;
 wire  [7:0] porte = uart_regs[7] | ~uart_regs[8];
 
-// MEGA65 keyboard matrix peek: $D614 selects a column, $D613 reads it (0 = pressed)
+// MEGA65 keyboard matrix peek: $D614 selects a column, $D613 reads it (0 = pressed);
+// $D611 holds the modifier keys (1 = pressed)
 logic [71:0] kb_matrix;
 logic        kb_left, kb_up;
 logic  [3:0] kms;
 wire   [7:0] kmpeek = (kms < 4'd9) ? ~kb_matrix[{kms, 3'b000} +: 8] : 8'hFF;
+
+// MEGA65 typing queue ($D610): the MEGA65 keyboard turns key presses into
+// codes (ASCII letters and symbols, C64 codes for RETURN, DEL, the cursor
+// keys, HOME, RUN/STOP and F1-F14) in a queue that BASIC 65 reads:
+//   $D610  the oldest key as ASCII (0 = none); writing drops it
+//   $D619  the same key as PETSCII ($FF = none); writing drops it
+//   $D60A  SHIFT / CTRL / MEGA at that key, bit 7 = queue not empty;
+//          writing 0 to bit 7 empties the queue
+// A held key repeats after half a second, about 16 times a second.
+function automatic [7:0] m65_key_code(input logic [6:0] idx, input logic shift);
+	m65_key_code = 8'h00;
+	case (idx)
+		7'd0: m65_key_code = shift ? 8'h94 : 8'h14;   // DEL
+		7'd1: m65_key_code = shift ? 8'h0D : 8'h0D;   // RETURN
+		7'd2: m65_key_code = shift ? 8'h9D : 8'h1D;   // RIGHT
+		7'd3: m65_key_code = shift ? 8'hF8 : 8'hF7;   // F7
+		7'd4: m65_key_code = shift ? 8'hF2 : 8'hF1;   // F1
+		7'd5: m65_key_code = shift ? 8'hF4 : 8'hF3;   // F3
+		7'd6: m65_key_code = shift ? 8'hF6 : 8'hF5;   // F5
+		7'd7: m65_key_code = shift ? 8'h91 : 8'h11;   // DOWN
+		7'd8: m65_key_code = shift ? 8'h23 : 8'h33;   // 3
+		7'd9: m65_key_code = shift ? 8'h57 : 8'h77;   // W
+		7'd10: m65_key_code = shift ? 8'h41 : 8'h61;   // A
+		7'd11: m65_key_code = shift ? 8'h24 : 8'h34;   // 4
+		7'd12: m65_key_code = shift ? 8'h5A : 8'h7A;   // Z
+		7'd13: m65_key_code = shift ? 8'h53 : 8'h73;   // S
+		7'd14: m65_key_code = shift ? 8'h45 : 8'h65;   // E
+		7'd16: m65_key_code = shift ? 8'h25 : 8'h35;   // 5
+		7'd17: m65_key_code = shift ? 8'h52 : 8'h72;   // R
+		7'd18: m65_key_code = shift ? 8'h44 : 8'h64;   // D
+		7'd19: m65_key_code = shift ? 8'h26 : 8'h36;   // 6
+		7'd20: m65_key_code = shift ? 8'h43 : 8'h63;   // C
+		7'd21: m65_key_code = shift ? 8'h46 : 8'h66;   // F
+		7'd22: m65_key_code = shift ? 8'h54 : 8'h74;   // T
+		7'd23: m65_key_code = shift ? 8'h58 : 8'h78;   // X
+		7'd24: m65_key_code = shift ? 8'h27 : 8'h37;   // 7
+		7'd25: m65_key_code = shift ? 8'h59 : 8'h79;   // Y
+		7'd26: m65_key_code = shift ? 8'h47 : 8'h67;   // G
+		7'd27: m65_key_code = shift ? 8'h28 : 8'h38;   // 8
+		7'd28: m65_key_code = shift ? 8'h42 : 8'h62;   // B
+		7'd29: m65_key_code = shift ? 8'h48 : 8'h68;   // H
+		7'd30: m65_key_code = shift ? 8'h55 : 8'h75;   // U
+		7'd31: m65_key_code = shift ? 8'h56 : 8'h76;   // V
+		7'd32: m65_key_code = shift ? 8'h29 : 8'h39;   // 9
+		7'd33: m65_key_code = shift ? 8'h49 : 8'h69;   // I
+		7'd34: m65_key_code = shift ? 8'h4A : 8'h6A;   // J
+		7'd35: m65_key_code = shift ? 8'h30 : 8'h30;   // 0
+		7'd36: m65_key_code = shift ? 8'h4D : 8'h6D;   // M
+		7'd37: m65_key_code = shift ? 8'h4B : 8'h6B;   // K
+		7'd38: m65_key_code = shift ? 8'h4F : 8'h6F;   // O
+		7'd39: m65_key_code = shift ? 8'h4E : 8'h6E;   // N
+		7'd40: m65_key_code = shift ? 8'h2B : 8'h2B;   // PLUS
+		7'd41: m65_key_code = shift ? 8'h50 : 8'h70;   // P
+		7'd42: m65_key_code = shift ? 8'h4C : 8'h6C;   // L
+		7'd43: m65_key_code = shift ? 8'h2D : 8'h2D;   // MINUS
+		7'd44: m65_key_code = shift ? 8'h3E : 8'h2E;   // DOT
+		7'd45: m65_key_code = shift ? 8'h5B : 8'h3A;   // COLON
+		7'd46: m65_key_code = shift ? 8'h40 : 8'h40;   // AT
+		7'd47: m65_key_code = shift ? 8'h3C : 8'h2C;   // COMMA
+		7'd48: m65_key_code = shift ? 8'h5C : 8'h5C;   // POUND
+		7'd49: m65_key_code = shift ? 8'h2A : 8'h2A;   // STAR
+		7'd50: m65_key_code = shift ? 8'h5D : 8'h3B;   // SEMI
+		7'd51: m65_key_code = shift ? 8'h93 : 8'h13;   // HOME
+		7'd53: m65_key_code = shift ? 8'h3D : 8'h3D;   // EQUAL
+		7'd54: m65_key_code = shift ? 8'h5E : 8'h5E;   // UPARROW
+		7'd55: m65_key_code = shift ? 8'h3F : 8'h2F;   // SLASH
+		7'd56: m65_key_code = shift ? 8'h21 : 8'h31;   // 1
+		7'd57: m65_key_code = shift ? 8'h5F : 8'h5F;   // LEFTARROW
+		7'd59: m65_key_code = shift ? 8'h22 : 8'h32;   // 2
+		7'd60: m65_key_code = shift ? 8'hA0 : 8'h20;   // SPACE
+		7'd62: m65_key_code = shift ? 8'h51 : 8'h71;   // Q
+		7'd63: m65_key_code = shift ? 8'h03 : 8'h03;   // STOP
+		7'd65: m65_key_code = shift ? 8'h09 : 8'h09;   // TAB
+		7'd67: m65_key_code = shift ? 8'h1F : 8'h1F;   // HELP
+		7'd68: m65_key_code = shift ? 8'hFA : 8'hF9;   // F9
+		7'd69: m65_key_code = shift ? 8'hFC : 8'hFB;   // F11
+		7'd70: m65_key_code = shift ? 8'hFE : 8'hFD;   // F13
+		7'd71: m65_key_code = shift ? 8'h1B : 8'h1B;   // ESC
+		default: ;
+	endcase
+endfunction
+
+logic        kb_event, kb_shift, kb_ctrl, kb_mega;
+logic  [6:0] kb_index;
+logic  [7:0] kq [8];
+logic  [2:0] kq_mod [8];   // {MEGA, CTRL, SHIFT} when the key went down
+logic  [2:0] kq_head, kq_tail;
+logic  [3:0] kq_n;
+logic  [6:0] rep_idx;
+logic        rep_shift, rep_ctrl, rep_on;
+logic [24:0] rep_cnt;
+localparam logic [24:0] REP_DELAY = 25'd15_700_000;   // ~0.5 s
+localparam logic [24:0] REP_RATE  = 25'd1_970_000;    // ~16 per second
+
+function automatic [7:0] kq_code(input logic [6:0] idx, input logic shift, input logic ctrl);
+	logic [7:0] c;
+	c = m65_key_code(idx, shift);
+	if (ctrl && ((c >= 8'h41 && c <= 8'h5A) || (c >= 8'h61 && c <= 8'h7A))) c = c & 8'h1F;
+	kq_code = c;
+endfunction
+
+// ASCII to PETSCII as the MEGA65 gives it at $D619
+function automatic [7:0] kq_petscii(input logic [7:0] a);
+	if (a >= 8'h61 && a <= 8'h7A) kq_petscii = a - 8'h20;          // a-z: unshifted letters
+	else if (a >= 8'h41 && a <= 8'h5A) kq_petscii = a + 8'h80;     // A-Z: shifted letters
+	else case (a)
+		8'hF1: kq_petscii = 8'd133; 8'hF3: kq_petscii = 8'd134; 8'hF5: kq_petscii = 8'd135; 8'hF7: kq_petscii = 8'd136;
+		8'hF2: kq_petscii = 8'd137; 8'hF4: kq_petscii = 8'd138; 8'hF6: kq_petscii = 8'd139; 8'hF8: kq_petscii = 8'd140;
+		8'hF9: kq_petscii = 8'd16;  8'hFA: kq_petscii = 8'd21;  8'hFB: kq_petscii = 8'd22;  8'hFC: kq_petscii = 8'd23;
+		8'hFD: kq_petscii = 8'd24;  8'hFE: kq_petscii = 8'd25;  8'h1F: kq_petscii = 8'd132;      // HELP
+		default: kq_petscii = a;
+	endcase
+endfunction
+
+wire kq_pop   = io_wr && gs_mode && ((io_uart && io_addr[7:0] == 8'h10) || (io_uart && io_addr[7:0] == 8'h19));
+wire kq_flush = io_wr && gs_mode && io_uart && io_addr[7:0] == 8'h0A && !bus_dout[7];
+
+always_ff @(posedge clk) begin
+	logic [7:0] c;
+	logic       push;
+	if (reset) begin kq_head <= '0; kq_tail <= '0; kq_n <= '0; rep_on <= 1'b0; end
+	else begin
+		push = 1'b0; c = 8'h00;
+		if (kb_event) begin
+			c = kq_code(kb_index, kb_shift, kb_ctrl);
+			push = (c != 8'h00);
+			rep_idx <= kb_index; rep_shift <= kb_shift; rep_ctrl <= kb_ctrl;
+			rep_on <= (c != 8'h00); rep_cnt <= '0;
+		end
+		else if (rep_on) begin
+			if (!kb_matrix[rep_idx]) rep_on <= 1'b0;
+			else if (rep_cnt == REP_DELAY) begin
+				c = kq_code(rep_idx, rep_shift, rep_ctrl);
+				push = 1'b1;
+				rep_cnt <= REP_DELAY - REP_RATE;
+			end
+			else rep_cnt <= rep_cnt + 25'd1;
+		end
+		if (push && kq_n != 4'd8) begin
+			kq[kq_tail] <= c;
+			kq_mod[kq_tail] <= kb_event ? {kb_mega, kb_ctrl, kb_shift} : {1'b0, rep_ctrl, rep_shift};
+			kq_tail <= kq_tail + 3'd1;
+		end
+		if (kq_pop && kq_n != 4'd0) kq_head <= kq_head + 3'd1;
+		kq_n <= kq_n + ((push && kq_n != 4'd8) ? 4'd1 : 4'd0) - ((kq_pop && kq_n != 4'd0) ? 4'd1 : 4'd0);
+		if (kq_flush) begin kq_head <= '0; kq_tail <= '0; kq_n <= '0; end
+	end
+end
 
 always_ff @(posedge clk) begin
 	if (reset) begin for (int i = 0; i < 16; i++) uart_regs[i] <= '0; kms <= '0; end
@@ -650,10 +799,17 @@ always_comb begin
 	endcase
 	// $D60F: cursor left / up held, "real hardware"
 	if (gs_mode && io_addr[7:0] == 8'h0F) uart_dout = {2'b00, 1'b1, 3'b000, kb_up, kb_left};
+	// $D60A: the typing queue's modifiers and "not empty"
+	if (gs_mode && io_addr[7:0] == 8'h0A)
+		uart_dout = {kq_n != 4'd0, 3'b000, kq_mod[kq_head][2], kq_mod[kq_head][1], 1'b0, kq_mod[kq_head][0]};
 	// $D629 is the MEGA65 hardware model: answer as a MEGA65 R3
 	if (m65_reg) case (io_addr[7:0])
 		8'h29:   uart_dout = 8'h03;
 		8'h13:   uart_dout = kmpeek;
+		8'h10:   uart_dout = (kq_n != 4'd0) ? kq[kq_head] : 8'h00;
+		8'h19:   uart_dout = (kq_n != 4'd0) ? kq_petscii(kq[kq_head]) : 8'hFF;
+		// modifier keys: L/R shift, CTRL, MEGA (C=), ALT, NO SCROLL, CAPS LOCK
+		8'h11:   uart_dout = {1'b0, ~capslock_n, kb_matrix[64], kb_matrix[66], kb_matrix[61], kb_matrix[58], kb_matrix[52], kb_matrix[15]};
 		8'h14:   uart_dout = {4'd0, kms};
 		default: uart_dout = 8'h00;
 	endcase
@@ -664,7 +820,8 @@ c65_keyboard keyboard (
 	.col_sel(cia1_pa_out), .col8_sel(porte[1]), .row_drive(cia1_pb_out),
 	.row_in(kb_rows), .col_in(kb_cols),
 	.restore_n(restore_n), .capslock_n(capslock_n),
-	.matrix(kb_matrix), .crsr_left(kb_left), .crsr_up(kb_up)
+	.matrix(kb_matrix), .crsr_left(kb_left), .crsr_up(kb_up),
+	.key_event(kb_event), .key_index(kb_index), .key_shift(kb_shift), .key_ctrl(kb_ctrl), .key_mega(kb_mega)
 );
 
 // ------------------------------------------------------------------ F011 floppy controller

@@ -73,6 +73,7 @@ logic [19:0] scrnptr;        // VIC-IV $D060-63: screen memory address
 logic [15:0] colptr;         // VIC-IV $D064/65: offset into colour RAM
 logic [19:0] charptr;        // VIC-IV $D068-6A: character set address
 logic        hotreg;         // VIC-IV $D05D.7: VIC-II/III writes recompute the pointers
+logic        text400;        // V400 text (50 rows), taken at the last recalculation
 logic  [7:0] sdbdrwd;        // VIC-IV $D05C / $D05D.0-5: side border width (stored only)
 logic  [5:0] sdbdrwd_hi;
 logic  [3:0] scrnptr_mb;     // VIC-IV $D063.0-3 (stored only, screen RAM is below 1MB here)
@@ -115,6 +116,7 @@ always_ff @(posedge clk) begin
 		sprptr_adr <= '0; sprptr16 <= 1'b0; bp_bank <= '0;
 		spr16 <= '0; sprx64 <= '0; sprhgten <= '0; sprhght <= 8'd21;
 		ctrl_c <= '0; linestep <= 10'd40; scrnptr <= '0; colptr <= '0; hot_reload <= 1'b1; vic_bank_d <= '0;
+		text400 <= 1'b0;
 		charptr <= 20'h01000; hotreg <= 1'b1; sdbdrwd <= '0; sdbdrwd_hi <= '0; scrnptr_mb <= '0;
 		chrcount_hi <= '0; d063_hi <= '0;
 		dispregs[0] <= 8'd40; dispregs[1] <= 8'd25; dispregs[2] <= 8'd1; dispregs[3] <= 8'd120;
@@ -145,6 +147,7 @@ always_ff @(posedge clk) begin
 			colptr   <= '0;
 			charptr  <= {4'd0, vic_bank, cb[3:1], 11'd0};
 			dispregs[0] <= {1'b0, n_cols};
+			text400     <= v400;
 			chrcount_hi <= '0;
 		end
 		// with HOTREG cleared ($D05D.7 = 0) only the VIC-IV registers set the pointers
@@ -456,7 +459,11 @@ logic [18:0] vaddr_gfx;
 
 // V400 text (80x50 / 40x50): each field shows every other pixel row, so a
 // text row lasts 4 raster lines and the field supplies the low bit of the row
-wire       v400t     = v400 && !bpm && !bmm;
+// text400 is V400 as seen by the last hot register recalculation: on the
+// VIC-IV, writing $D031 with HOTREG off ($D05D.7 = 0) leaves the text rows
+// alone (Space Commander does that), with HOTREG on it gives 50 rows (the
+// MEGA65 Open ROMs' 80x50).  A plain C65 always recalculates.
+wire       v400t     = v400 && text400 && !bpm && !bmm;
 wire [2:0] text_rc   = v400t ? {dy[1:0], field} : dy[2:0];
 wire [11:0] cell_idx = row_base + {4'd0, f_col};
 

@@ -144,7 +144,12 @@ module c65_keyboard (
 	output logic        capslock_n,
 	output logic [71:0] matrix,      // MEGA65 $D613/$D614: the keys as the matrix sees them, 1 = pressed
 	output logic        crsr_left,   // MEGA65 $D60F.0 / .1: cursor left / up held (they reach the
-	output logic        crsr_up      // matrix as SHIFT + cursor right / down)
+	output logic        crsr_up,     // matrix as SHIFT + cursor right / down)
+	output logic        key_event,   // MEGA65 $D610 queue: a key went down (one clk) ...
+	output logic  [6:0] key_index,   // ... which matrix key (col * 8 + row)
+	output logic        key_shift,   // ... and the C65 SHIFT / CTRL / MEGA state with it
+	output logic        key_ctrl,
+	output logic        key_mega
 );
 
 localparam logic [6:0] K_NONE   = 7'd127;
@@ -185,6 +190,7 @@ wire [8:0] m_s1  = keymap(layout, 1'b1, ps2_key[8:0]);
 
 always_ff @(posedge clk) begin
 	ps2_stb <= ps2_key[10];
+	key_event <= 1'b0;
 	if (reset) begin
 		keys <= '0; f_on <= '0; f_off <= '0; restore_n <= 1'b1; caps <= 1'b0; crsr_left <= 1'b0; crsr_up <= 1'b0;
 		hold <= '0; lin_off <= 1'b0; lin_on <= 1'b0; hold_cnt <= '0; lin_cnt <= '0;
@@ -196,6 +202,11 @@ always_ff @(posedge clk) begin
 		if (ps2_key[9]) begin
 			if (m_now[6:0] != K_NONE) begin
 				keys[m_now[6:0]]  <= 1'b1;
+				key_event <= 1'b1;
+				key_index <= m_now[6:0];
+				key_shift <= (m_now[8:7] == 2'd2) || (m_now[8:7] == 2'd0 && host_shift);
+				key_ctrl  <= keys[58];
+				key_mega  <= keys[61];
 				f_off[m_now[6:0]] <= (m_now[8:7] == 2'd1);
 				f_on[m_now[6:0]]  <= (m_now[8:7] == 2'd2);
 				if (m_now[8:7] != 2'd0) begin hold[m_now[6:0]] <= 1'b1; hold_cnt <= 17'd65535; end
