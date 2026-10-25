@@ -269,6 +269,39 @@ Tested on hardware:
 The MEGA65 network programs (BBS, IRC, SSH ...) need the MEGA65 Ethernet
 controller, which the core does not have.
 
+### C65TERM: a telnet BBS terminal
+
+`c65term.d81` (in the release, source in `term/`) holds C65TERM, a terminal
+for telnet BBSes through the MiSTer's emulated modem. It runs under the stock
+911210 ROM and S-BASIC 65 and needs the OSD option **MEGA65 Extensions** on
+(it uses the 45GS02's 32-bit pointers; without them it says so and stops):
+mount the disk, `LOAD"C65TERM"` (or `DLOAD`) and `RUN`.
+
+- Set the MiSTer's *UART mode* to the modem and its baud rate to 9600 (the
+  default; **B** in C65TERM switches both sides to 2400 / 9600 / 19200).
+- Emulations: **ANSI-BBS** (80x25, CP437 font, 16 colours with a background
+  per character), **VT100** and **PETSCII** (40x25, C64 colours and fonts).
+  The screen is a 16 colour bitplane picture; the fonts are built at start-up
+  from the ROM's character sets.
+- A dialling directory (up to 8 sites, saved as `C65TERM.CFG`), quick dial
+  (`host:port`) and a direct line to the modem for AT commands.
+- Telnet negotiation (terminal type, window size, binary) when the server
+  asks for it; raw TCP BBSes (such as C64 BBSes behind a WiFi modem) are
+  detected and left untouched.
+- File transfers to the disk in drive 8: **ZMODEM** (downloads start by
+  themselves) and **XMODEM** (checksum, CRC, 1K), both ways. Downloads are
+  saved as SEQ files; a full disk or other drive error is shown and the
+  transfer cancelled.
+- In a session **F1** opens a menu: hang up, download, upload, change the
+  emulation. While C65TERM runs, F1-F8 send the C64 codes 133-140. **X** on
+  the main menu quits by restarting the machine (a program in BASIC memory is
+  lost; the disk is not touched).
+
+Tested on hardware with Synchronet (ANSI, a 720 KB ZMODEM download, a disk
+full stop) and Particles BBS (PETSCII, XMODEM). Not yet tried on hardware:
+uploads and VT100. Building it needs [cc65](https://cc65.github.io)
+(`term/build.sh`).
+
 ### OSD options
 
 | Option | Choices | Notes |

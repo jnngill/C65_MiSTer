@@ -8,6 +8,11 @@
 //   -dfile <file>    the data file served by the MEGA65 hypervisor DOS stand-in
 //   -prg <file> <n>  load a .PRG through the OSD program loader at frame n
 //   -uartloop        connect the serial port output back to its input
+//   -modem <file>    a modem on the serial port (9600 baud): OK to AT commands,
+//                    CONNECT on ATDT, then the file as the remote end; what the
+//                    C65 sends goes to uart_tx.txt
+//   -zsend <name>    after CONNECT, send the -modem file by ZMODEM as <name>
+//   -xsend           after CONNECT, send the -modem file by XMODEM when asked
 //   -mountat <n>     insert it at frame n (default 2; later avoids auto-booting from it)
 //   -shot <n>        write a frame image every n frames (default: last frame only)
 //   -trace <n>       dump the last n instruction PCs at exit
@@ -30,6 +35,7 @@
 #include <deque>
 #include <map>
 #include <algorithm>
+#include <cctype>
 
 double sc_time_stamp() { return 0; }
 
@@ -146,6 +152,173 @@ static int sd_state = 0, sd_cnt = 0;
 static unsigned sd_lba_l = 0;
 static bool sd_is_wr = false, sd_verbose = false;
 static unsigned char sd_wbuf[512];
+// ---- scripted modem on the serial port (-modem <file>) -------------------
+// Decodes what the C65 sends (8N1 at modem_baud), answers AT commands with
+// OK, and on ATDT answers CONNECT and then plays the file as the remote end.
+static bool modem_on = false;
+static double modem_bit = 0;                  // clocks per bit
+static std::vector<unsigned char> modem_file;
+static size_t modem_pos = 0;
+static std::deque<unsigned char> modem_out;   // bytes queued for the C65
+static bool modem_online = false;
+static std::string modem_line;
+static FILE *modem_log = nullptr;
+// receiver (C65 -> modem)
+static int mrx_state = 0; static double mrx_t = 0; static int mrx_bits = 0, mrx_n = 0;
+// transmitter (modem -> C65)
+static int mtx_state = 0; static double mtx_t = 0; static int mtx_byte = 0, mtx_n = 0;
+static unsigned long long mclk = 0;
+static long modem_hold = 0;                   // clocks to wait before the next file byte
+
+static void modem_send(const char *s) { while (*s) modem_out.push_back((unsigned char)*s++); }
+
+// ---- ZMODEM sender for -zsend (the remote end of a download) ------------
+static bool zs_on = false;
+static std::string zs_name;
+static std::vector<unsigned char> zs_data;
+static int zs_state = 0;          // 0 wait ZRINIT, 1 wait ZRPOS, 2 sending / wait ZACK, 3 wait ZRINIT after ZEOF, 4 wait ZFIN, 5 done
+static size_t zs_pos = 0;
+static std::string zs_hdr;        // hex header being collected from the C65
+static int zs_scan = 0;
+static unsigned int zs_crc;
+static void zs_crcb(unsigned char b) {
+	zs_crc ^= (unsigned)b << 8;
+	for (int i = 0; i < 8; i++) zs_crc = (zs_crc & 0x8000) ? ((zs_crc << 1) ^ 0x1021) & 0xFFFF : (zs_crc << 1) & 0xFFFF;
+}
+static void zs_put(unsigned char c) {           // ZDLE-escaped
+	switch (c) {
+	case 0x18: case 0x10: case 0x11: case 0x13: case 0x90: case 0x91: case 0x93:
+		modem_out.push_back(0x18); c ^= 0x40; break;
+	}
+	modem_out.push_back(c);        // a raw TCP link: no telnet IAC doubling
+}
+static void zs_hexhdr(int type, unsigned long p) {
+	unsigned char h[5] = { (unsigned char)type, (unsigned char)p, (unsigned char)(p >> 8), (unsigned char)(p >> 16), (unsigned char)(p >> 24) };
+	char buf[40]; zs_crc = 0;
+	for (int i = 0; i < 5; i++) zs_crcb(h[i]);
+
+	snprintf(buf, sizeof buf, "**\x18" "B%02x%02x%02x%02x%02x%04x\r\n\x11", h[0], h[1], h[2], h[3], h[4], zs_crc);
+	modem_send(buf);
+}
+static void zs_binhdr(int type, unsigned long p) {
+	unsigned char h[5] = { (unsigned char)type, (unsigned char)p, (unsigned char)(p >> 8), (unsigned char)(p >> 16), (unsigned char)(p >> 24) };
+	modem_out.push_back('*'); modem_out.push_back(0x18); modem_out.push_back('A');
+	zs_crc = 0;
+	for (int i = 0; i < 5; i++) { zs_put(h[i]); zs_crcb(h[i]); }
+
+	zs_put((unsigned char)(zs_crc >> 8)); zs_put((unsigned char)zs_crc);
+}
+static void zs_sub(const unsigned char *d, size_t n, char end) {
+	zs_crc = 0;
+	for (size_t i = 0; i < n; i++) { zs_put(d[i]); zs_crcb(d[i]); }
+	modem_out.push_back(0x18); modem_out.push_back((unsigned char)end); zs_crcb((unsigned char)end);
+
+	zs_put((unsigned char)(zs_crc >> 8)); zs_put((unsigned char)zs_crc);
+}
+static void zs_send_block() {                    // one 1K window, ends with ZCRCW (or ZCRCE + ZEOF)
+	size_t n = zs_data.size() - zs_pos; if (n > 1024) n = 1024;
+	bool last = (zs_pos + n >= zs_data.size());
+	zs_sub(&zs_data[zs_pos], n, last ? 'h' : 'k');
+	zs_pos += n;
+	if (last) { zs_binhdr(11, zs_pos); zs_state = 3; }
+}
+static void zs_header(int type, unsigned long p) {   // a header from the C65
+	fprintf(stderr, "zsend: got header %d pos %lu (state %d)\n", type, p, zs_state);
+	if (zs_state == 0 && type == 1) {
+		zs_binhdr(4, 0);
+		std::string info = zs_name; info.push_back(0); info += std::to_string(zs_data.size()); info.push_back(0);
+		zs_sub((const unsigned char *)info.data(), info.size(), 'k');
+		zs_state = 1;
+	}
+	else if (zs_state == 1 && type == 9) { zs_pos = p; zs_binhdr(10, zs_pos); zs_state = 2; zs_send_block(); }
+	else if (zs_state == 2 && type == 3) { zs_binhdr(10, zs_pos); zs_send_block(); }   // ZCRCW ended the frame
+	else if (zs_state == 2 && type == 9) { zs_pos = p; zs_binhdr(10, zs_pos); zs_send_block(); }
+	else if (zs_state == 3 && type == 1) { zs_hexhdr(8, 0); zs_state = 4; }
+	else if (zs_state == 4 && type == 8) { modem_send("OO"); zs_state = 5; fprintf(stderr, "zsend: done\n"); }
+}
+// ---- XMODEM sender for -xsend (128 byte blocks, CRC or checksum) -------
+static bool xs_on = false;
+static size_t xs_blk = 0;          // next block to send (0-based)
+static int xs_state = 0;           // 0 wait C/NAK, 1 wait ACK, 2 EOT sent, 3 done
+static bool xs_crc = true;
+static void xs_send_block() {
+	size_t off = xs_blk * 128;
+	if (off >= zs_data.size()) { modem_out.push_back(4); xs_state = 2; return; }
+	unsigned char b = (unsigned char)(xs_blk + 1);
+	modem_out.push_back(1); modem_out.push_back(b); modem_out.push_back((unsigned char)~b);
+	zs_crc = 0; unsigned sum = 0;
+	for (int i = 0; i < 128; i++) {
+		unsigned char c = (off + i < zs_data.size()) ? zs_data[off + i] : 26;
+		modem_out.push_back(c); zs_crcb(c); sum += c;
+	}
+	if (xs_crc) { modem_out.push_back((unsigned char)(zs_crc >> 8)); modem_out.push_back((unsigned char)zs_crc); }
+	else modem_out.push_back((unsigned char)sum);
+	xs_state = 1;
+}
+static void xs_rx(unsigned char c) {
+	if (xs_state == 0 && (c == 'C' || c == 21)) { xs_crc = (c == 'C'); fprintf(stderr, "xsend: start (%s)\n", xs_crc ? "CRC" : "checksum"); xs_send_block(); }
+	else if (xs_state == 1 && c == 6) { xs_blk++; xs_send_block(); }
+	else if (xs_state == 1 && c == 21) { fprintf(stderr, "xsend: NAK block %zu\n", xs_blk + 1); xs_send_block(); }
+	else if (xs_state == 2 && c == 6) { xs_state = 3; fprintf(stderr, "xsend: done, %zu blocks\n", xs_blk); }
+}
+
+static void zs_rx(unsigned char c) {             // scan the C65's output for hex headers
+	if (zs_scan < 4) {
+		static const char want[4] = { '*', '*', 0x18, 'B' };
+		if (c == want[zs_scan]) zs_scan++; else zs_scan = (c == '*') ? 1 : 0;
+		if (zs_scan == 4) zs_hdr.clear();
+		return;
+	}
+	zs_hdr.push_back((char)c);
+	if (zs_hdr.size() == 14) {
+		unsigned v[7];
+		for (int i = 0; i < 7; i++) v[i] = std::stoul(zs_hdr.substr(i * 2, 2), nullptr, 16);
+		zs_header(v[0], v[1] | (v[2] << 8) | (v[3] << 16) | ((unsigned long)v[4] << 24));
+		zs_scan = 0;
+	}
+}
+
+static void modem_got(unsigned char c) {
+	if (modem_log) fputc(c, modem_log);
+	if (modem_online) { if (zs_on) zs_rx(c); if (xs_on) xs_rx(c); return; }
+	if (c == 13) {
+		std::string l = modem_line; modem_line.clear();
+		for (auto &ch : l) ch = toupper(ch);
+		if (l.rfind("ATDT", 0) == 0) {
+			modem_send("\r\nCONNECT 9600\r\n"); modem_online = true; modem_hold = 3000000;
+			if (zs_on) { modem_send("starting a download\r\n"); zs_hexhdr(0, 0); }
+		}
+		else if (l.rfind("AT", 0) == 0) modem_send("\r\nOK\r\n");
+	}
+	else if (c >= 32) modem_line += (char)c;
+}
+
+static int modem_tick(int txd) {
+	mclk++;
+	// receive: falling edge starts a frame, sample in the middle of each bit
+	if (mrx_state == 0) { if (!txd) { mrx_state = 1; mrx_t = mclk + modem_bit * 1.5; mrx_bits = 0; mrx_n = 0; } }
+	else if (mclk >= mrx_t) {
+		if (mrx_n < 8) { mrx_bits |= (txd & 1) << mrx_n; mrx_n++; mrx_t += modem_bit; }
+		else { modem_got((unsigned char)mrx_bits); mrx_state = 0; }
+	}
+	// transmit
+	if (modem_online && modem_out.empty() && modem_pos < modem_file.size()) {
+		if (modem_hold > 0) modem_hold--;
+		else modem_out.push_back(modem_file[modem_pos++]);
+	}
+	static int line = 1;
+	if (mtx_state == 0) {
+		if (!modem_out.empty()) { mtx_byte = modem_out.front(); modem_out.pop_front(); mtx_state = 1; mtx_n = 0; mtx_t = mclk + modem_bit; line = 0; }
+	}
+	else if (mclk >= mtx_t) {
+		mtx_t += modem_bit;
+		if (mtx_n < 8) { line = (mtx_byte >> mtx_n) & 1; mtx_n++; }
+		else if (mtx_n == 8) { line = 1; mtx_n++; }
+		else { mtx_state = 0; line = 1; }
+	}
+	return line;
+}
+
 static void sd_tick() {
 	top->sd_buff_wr = 0;
 	switch (sd_state) {
@@ -252,7 +425,7 @@ int main(int argc, char **argv) {
 	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, layout = 3, turbo = 0;
 	bool ntsc = false, f018b = true, use_xram = false, stop_brk = false;
 	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
-	int m65_ext = 1; bool uart_loop = false;
+	int m65_ext = 1; bool uart_loop = false; std::string modem_path;
 	std::vector<unsigned char> prg; long prg_at = -1; size_t prg_pos = 0; int prg_div = 0; bool prg_busy = false;
 	int watch_addr = -1, watch_len = 0; unsigned char watch_old[64] = {0}; bool watch_init = false;
 	long mount_frame = 2;
@@ -289,6 +462,9 @@ int main(int argc, char **argv) {
 		else if (a == "-mountat" && i + 1 < argc) mount_frame = atol(argv[++i]);
 		else if (a == "-strict") m65_ext = 0;
 		else if (a == "-uartloop") uart_loop = true;
+		else if (a == "-modem" && i + 1 < argc) modem_path = argv[++i];
+		else if (a == "-zsend" && i + 1 < argc) { zs_on = true; zs_name = argv[++i]; }
+		else if (a == "-xsend") xs_on = true;
 		else if (a == "-prg" && i + 2 < argc) {
 			FILE *f = fopen(argv[++i], "rb");
 			if (f) { prg.resize(65536); prg.resize(fread(prg.data(), 1, prg.size(), f)); fclose(f); }
@@ -320,6 +496,17 @@ int main(int argc, char **argv) {
 	// host clock: 2026-10-13 12:34:56 (BCD sec, min, hour, day, month, year, weekday)
 	top->rtc[0] = 0x13123456; top->rtc[1] = 0x00022610; top->rtc[2] = 0;
 	xram.assign(1 << 24, 0);
+	if (!modem_path.empty()) {
+		FILE *mf = fopen(modem_path.c_str(), "rb");
+		if (!mf) { perror(modem_path.c_str()); return 3; }
+		int ch; while ((ch = fgetc(mf)) != EOF) modem_file.push_back((unsigned char)ch);
+		fclose(mf);
+		modem_on = true;
+		// the core's divisor 45 gives 7.09 MHz / 16 / 46 = 9634 baud
+		modem_bit = (ntsc ? 32727272.0 : 31527750.0) / (ntsc ? 9724.0 : 9634.0);
+		modem_log = fopen((outdir + "/uart_tx.txt").c_str(), "wb");
+		if (zs_on || xs_on) { zs_data = modem_file; modem_file.clear(); }
+	}
 
 	auto tick = [&]() { top->clk = 0; top->eval(); top->clk = 1; top->eval(); };
 	for (int i = 0; i < 4; i++) tick();
@@ -342,6 +529,7 @@ int main(int argc, char **argv) {
 		video_tick();
 		sd_tick();
 		if (uart_loop) top->uart_rxd = top->uart_txd;     // serial loopback plug
+		if (modem_on) top->uart_rxd = modem_tick(top->uart_txd);
 		// OSD program download: one byte every 8 clocks, like hps_io
 		top->prg_wr = 0;
 		if (prg_busy && ++prg_div == 8) {

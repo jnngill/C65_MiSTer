@@ -59,3 +59,5 @@ sim/sd_test/*.pdb
 sim/vic_test/obj/
 sim/vic_test/victest.exe
 sim/vic_test/victest.pdb
+term/*.o
+term/*.map

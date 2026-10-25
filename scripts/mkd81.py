@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create a formatted 1581 disk image (.D81), optionally containing PRG files.
 
-usage: mkd81.py out.d81 [-n "DISK NAME"] [-i ID] [file.prg ...]
+usage: mkd81.py out.d81 [-n "DISK NAME"] [-i ID] [-s file.seq NAME ...] [file.prg ...]
 """
 import sys, os
 
@@ -34,7 +34,7 @@ class D81:
                     return t, s
         raise RuntimeError("disk full")
 
-    def add_prg(self, fname, data):
+    def add_prg(self, fname, data, ftype=0x82):
         blocks = [data[i:i + 254] for i in range(0, len(data), 254)] or [b""]
         locs = [self.alloc() for _ in blocks]
         for i, (blk, (t, s)) in enumerate(zip(blocks, locs)):
@@ -44,7 +44,7 @@ class D81:
             else:
                 self.d[o], self.d[o + 1] = 0, len(blk) + 1
             self.d[o + 2:o + 2 + len(blk)] = blk
-        self.dir.append((fname, locs[0], len(blocks)))
+        self.dir.append((fname, locs[0], len(blocks), ftype))
 
     def image(self):
         d = self.d
@@ -72,9 +72,9 @@ class D81:
             self.free[40][s] = False
             o = self.off(40, s)
             d[o:o + 2] = bytes([40, s + 1]) if n + 1 < nsec else bytes([0, 255])
-            for i, (fname, (t, sec), nblk) in enumerate(self.dir[n * 8:n * 8 + 8]):
+            for i, (fname, (t, sec), nblk, ftype) in enumerate(self.dir[n * 8:n * 8 + 8]):
                 e = o + i * 32
-                d[e + 2] = 0x82
+                d[e + 2] = ftype
                 d[e + 3], d[e + 4] = t, sec
                 d[e + 5:e + 21] = petscii(fname, 16)
                 d[e + 30], d[e + 31] = nblk & 255, nblk >> 8
@@ -97,13 +97,15 @@ class D81:
 
 
 def main(argv):
-    out, name, did, files = None, "C65 DISK", "65", []
+    out, name, did, files, seqs = None, "C65 DISK", "65", [], []
     i = 1
     while i < len(argv):
         if argv[i] == "-n":
             name = argv[i + 1]; i += 2
         elif argv[i] == "-i":
             did = argv[i + 1]; i += 2
+        elif argv[i] == "-s":
+            seqs.append((argv[i + 1], argv[i + 2])); i += 3
         elif out is None:
             out = argv[i]; i += 1
         else:
@@ -113,6 +115,8 @@ def main(argv):
     img = D81(name, did)
     for f in files:
         img.add_prg(os.path.splitext(os.path.basename(f))[0], open(f, "rb").read())
+    for f, n in seqs:
+        img.add_prg(n, open(f, "rb").read(), 0x81)
     open(out, "wb").write(img.image())
     return 0
 

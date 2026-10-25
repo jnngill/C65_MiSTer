@@ -5,13 +5,13 @@ Runs ON the MiSTer (nothing is installed there):
 
     ssh root@MiSTer.local python3 - F12 DOWN DOWN ENTER F12 < scripts/mister_osd.py
 
-Key names: F12 DOWN UP LEFT RIGHT ENTER ESC.  In the OSD, Enter changes an
+Key names: F1-F8 F12 DOWN UP LEFT RIGHT ENTER ESC.  In the OSD, Enter changes an
 option; separator lines are skipped and the cursor starts at the top.
 """
 import fcntl, os, struct, sys, time
 
 UI_SET_EVBIT, UI_SET_KEYBIT, UI_DEV_CREATE, UI_DEV_DESTROY = 0x40045564, 0x40045565, 0x5501, 0x5502
-KEYS = {"F12": 88, "DOWN": 108, "UP": 103, "LEFT": 105, "RIGHT": 106, "ENTER": 28, "ESC": 1}
+KEYS = {"F1": 59, "F2": 60, "F3": 61, "F4": 62, "F5": 63, "F6": 64, "F7": 65, "F8": 66, "F12": 88, "DOWN": 108, "UP": 103, "LEFT": 105, "RIGHT": 106, "ENTER": 28, "ESC": 1}
 
 
 def main():
