@@ -159,6 +159,25 @@ far_ok: ldz #0
 ; two ROMs set up differently; a restart is the dependable way back.
 _sysexit:
         sei
+        ; wait until no key is held (else the restarted KERNAL types the X
+        ; still held down): all columns selected, 16 clean readings in a row
+        lda #$00
+        sta $dc02
+        lda #$ff
+        sta $dc02               ; port A all outputs
+        lda #$00
+        sta $dc00               ; every column selected
+@kw0:   ldy #16
+@kw:    lda $dc01
+        cmp #$ff
+        bne @kw0
+        ldx #0
+@kd:    dex                     ; a short pause between readings
+        bne @kd
+        dey
+        bne @kw
+        lda #$ff
+        sta $dc00
         ldx #0
 @kr:    lda savekeys,x
         sta $1000,x
