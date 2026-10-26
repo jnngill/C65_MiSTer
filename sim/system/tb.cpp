@@ -5,7 +5,7 @@
 //                    (text escapes: \r = RETURN, {NAME} = raw PS/2 make/break of a hex code)
 //   -d81 <file>      mount a disk image (internal drive)
 //   -d81b <file>     mount a disk image in the external 1565 drive (drive 1)
-//   -dfile <file>    the data file served by the MEGA65 hypervisor DOS stand-in
+//   -dfile <file>    the MEGA65 SD card: a FAT32 image or a single data file (slot 3)
 //   -prg <file> <n>  load a .PRG through the OSD program loader at frame n
 //   -uartloop        connect the serial port output back to its input
 //   -modem <file>    a modem on the serial port (9600 baud): OK to AT commands,
@@ -319,17 +319,19 @@ static int modem_tick(int txd) {
 	return line;
 }
 
+static int sd_lat = 200;       // the same for the floppy slots (-fdlat)
+static int sd3_lat = 200;      // clocks before the SD card slot answers (-sdlat; the MiSTer takes milliseconds)
 static void sd_tick() {
 	top->sd_buff_wr = 0;
 	switch (sd_state) {
 	case 0:
-		if (top->dfile_rd) {         // hypervisor data file (read only)
-			sd_drv = 2; sd_is_wr = false; sd_lba_l = top->dfile_lba; sd_state = 1; sd_cnt = -200; top->dfile_ack = 1;
-			if (sd_verbose) fprintf(stderr, "dfile RD lba %u frame %ld\n", sd_lba_l, frame_no);
+		if (top->sd3_rd || top->sd3_wr) {   // MEGA65 SD card (slot 3)
+			sd_drv = 2; sd_is_wr = top->sd3_wr; sd_lba_l = top->sd3_lba; sd_state = 1; sd_cnt = -sd3_lat; top->sd3_ack = 1;
+			if (sd_verbose) fprintf(stderr, "sd3 %s lba %u frame %ld\n", sd_is_wr ? "WR" : "RD", sd_lba_l, frame_no);
 		}
 		else if (top->sd_rd || top->sd_wr) {
 			sd_drv = ((top->sd_rd | top->sd_wr) & 2) ? 1 : 0;
-			sd_is_wr = (top->sd_wr >> sd_drv) & 1; sd_lba_l = top->sd_lba; sd_state = 1; sd_cnt = -200; top->sd_ack = 1 << sd_drv;
+			sd_is_wr = (top->sd_wr >> sd_drv) & 1; sd_lba_l = top->sd_lba; sd_state = 1; sd_cnt = -sd_lat; top->sd_ack = 1 << sd_drv;
 			if (sd_verbose) fprintf(stderr, "sd%d %s lba %u frame %ld\n", sd_drv, sd_is_wr ? "WR" : "RD", sd_lba_l, frame_no);
 		}
 		break;
@@ -351,14 +353,14 @@ static void sd_tick() {
 		}
 		break;
 	case 2:
-		top->sd_ack = 0; top->dfile_ack = 0; sd_state = 0;
+		top->sd_ack = 0; top->sd3_ack = 0; sd_state = 0;
 		break;
 	}
 	if (sd_state == 1 && sd_is_wr && sd_cnt > 0 && (sd_cnt & 3) == 3) {
 		int i = sd_cnt >> 2;
 		if (i < 512) {
 			size_t off = (size_t)sd_lba_l * 256 + i;      // 256 byte blocks, two per F011 sector
-			if (off < d81s[sd_drv].size()) { d81s[sd_drv][off] = top->sd_buff_din; d81_dirty[sd_drv] = true; }
+			if (off < d81s[sd_drv].size()) { d81s[sd_drv][off] = sd_drv == 2 ? top->sd3_buff_din : top->sd_buff_din; d81_dirty[sd_drv] = true; }
 		}
 	}
 }
@@ -446,7 +448,7 @@ int main(int argc, char **argv) {
 		else if ((a == "-d81" || a == "-d81b" || a == "-dfile") && i + 1 < argc) {
 			auto &d81 = d81s[a == "-dfile" ? 2 : a == "-d81b" ? 1 : 0];
 			FILE *f = fopen(argv[++i], "rb");
-			if (f) { d81.resize(16 << 20); size_t n = fread(d81.data(), 1, d81.size(), f); d81.resize(n); fclose(f); }
+			if (f) { d81.resize(256 << 20); size_t n = fread(d81.data(), 1, d81.size(), f); d81.resize(n); fclose(f); }
 		}
 		else if (a == "-shot" && i + 1 < argc) shot = atoi(argv[++i]);
 		else if (a == "-trace" && i + 1 < argc) ntrace = atoi(argv[++i]);
@@ -461,6 +463,8 @@ int main(int argc, char **argv) {
 		else if (a == "-after" && i + 1 < argc) after_pc = (int)strtol(argv[++i], nullptr, 16);
 		else if (a == "-mountat" && i + 1 < argc) mount_frame = atol(argv[++i]);
 		else if (a == "-strict") m65_ext = 0;
+		else if (a == "-sdlat" && i + 1 < argc) sd3_lat = atoi(argv[++i]);
+		else if (a == "-fdlat" && i + 1 < argc) sd_lat = atoi(argv[++i]);
 		else if (a == "-uartloop") uart_loop = true;
 		else if (a == "-modem" && i + 1 < argc) modem_path = argv[++i];
 		else if (a == "-zsend" && i + 1 < argc) { zs_on = true; zs_name = argv[++i]; }
@@ -568,7 +572,7 @@ int main(int argc, char **argv) {
 				if ((int)trace.size() > ntrace) trace.pop_front();
 			}
 		}
-		top->img_mounted = 0; top->dfile_mounted = 0;
+		top->img_mounted = 0; top->sd3_mounted = 0;
 		if (frame_done) {
 			frame_done = false;
 			key_frame();
@@ -582,7 +586,7 @@ int main(int argc, char **argv) {
 				int d = mount_next++;
 				if (!d81s[d].empty()) {
 					top->img_size = (unsigned)d81s[d].size(); top->img_readonly = 0;
-					if (d == 2) top->dfile_mounted = 1; else top->img_mounted = 1 << d;
+					if (d == 2) top->sd3_mounted = 1; else top->img_mounted = 1 << d;
 				}
 			}
 			if (frame_no == prg_at && !prg.empty()) { top->prg_dl = 1; prg_busy = true; prg_pos = 0; prg_div = 0; }
@@ -656,9 +660,9 @@ int main(int argc, char **argv) {
 		for (size_t i = 0; i < hot.size() && i < 16; i++) printf(" %04X:%u", hot[i].second, hot[i].first);
 		printf("\n");
 	}
-	for (int d = 0; d < 2; d++) {
+	for (int d = 0; d < 3; d++) {
 		if (!d81_dirty[d]) continue;
-		FILE *o = fopen((outdir + (d ? "/disk_out_b.d81" : "/disk_out.d81")).c_str(), "wb");
+		FILE *o = fopen((outdir + (d == 2 ? "/sd_out.img" : d ? "/disk_out_b.d81" : "/disk_out.d81")).c_str(), "wb");
 		fwrite(d81s[d].data(), 1, d81s[d].size(), o); fclose(o);
 	}
 	delete top;

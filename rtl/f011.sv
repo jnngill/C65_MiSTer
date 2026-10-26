@@ -18,6 +18,11 @@
 //
 // The MEGA65 also maps the sector buffer flat at $FFD6C00-$FFD6DFF (the dir_*
 // port); the BASIC 65 DOS reads and writes sectors there instead of $D087.
+//
+// When the MEGA65 hypervisor attaches a .D81 from the SD card ($D68B bit 0 /
+// bit 3: img0_sd / img1_sd), that drive uses the image instead: its sectors
+// are read and written through the SD card slot (sd3_*), starting at SD
+// sector img0_start / img1_start.
 
 module f011 (
 	input  logic        clk,
@@ -43,6 +48,19 @@ module f011 (
 	output logic  [1:0] sd_rd,
 	output logic  [1:0] sd_wr,
 	input  logic  [1:0] sd_ack,
+
+	input  logic        img0_sd,         // drive 0 is a .D81 on the SD card ...
+	input  logic        img0_ok,         // ... media present
+	input  logic        img0_wen,        // ... write enabled
+	input  logic [31:0] img0_start,      // ... first 512 byte sector of the image
+	input  logic        img1_sd,         // the same for drive 1
+	input  logic        img1_ok,
+	input  logic        img1_wen,
+	input  logic [31:0] img1_start,
+	output logic [31:0] sd3_lba,
+	output logic        sd3_rd,
+	output logic        sd3_wr,
+	input  logic        sd3_ack,
 	input  logic  [8:0] sd_buff_addr,
 	input  logic  [7:0] sd_buff_dout,
 	output logic  [7:0] sd_buff_din,
@@ -57,18 +75,28 @@ logic [1:0] dskchg;
 logic [1:0] present = 2'b00, readonly = 2'b00;
 logic [6:0] heads [2];
 logic       xdrv;              // drive of the transfer in progress
+logic [1:0] xport;             // its block port: 0 / 1 the drive's own slot, 2 / 3 the SD card (drive 0 / 1)
+logic [3:0] rq_rd, rq_wr;      // block requests per port
+logic       img0_sd_d, img1_sd_d;
 logic [8:0] cpu_ptr, base_ptr;
 logic [24:0] index_cnt;
 logic [15:0] delay;
 
 wire       drv     = control[0];
-wire       exists  = (control[2:0] == 3'd0) || (control[2:0] == 3'd1 && present[1]);
+wire       exists  = (control[2:0] == 3'd0) || (control[2:0] == 3'd1 && (present[1] || img1_sd));
 wire [6:0] head    = heads[drv];
 wire       swap    = control[4];
 wire       motor   = control[5];
-wire       disk_ok = exists && present[drv];
-wire       ro      = readonly[drv];
-wire       ack     = |sd_ack;
+wire [1:0] port    = (drv == 1'b0 && img0_sd) ? 2'd2 : (drv == 1'b1 && img1_sd) ? 2'd3 : {1'b0, drv};
+wire       disk_ok = exists && ((port == 2'd2) ? img0_ok : (port == 2'd3) ? img1_ok : present[drv]);
+wire       ro      = (port == 2'd2) ? !img0_wen : (port == 2'd3) ? !img1_wen : readonly[drv];
+wire       ack     = |sd_ack || sd3_ack;
+
+assign sd_rd   = rq_rd[1:0];
+assign sd_wr   = rq_wr[1:0];
+assign sd3_rd  = rq_rd[2] | rq_rd[3];
+assign sd3_wr  = rq_wr[2] | rq_wr[3];
+assign sd3_lba = {(xport == 2'd3 ? img1_start[30:0] : img0_start[30:0]), 1'b0} + sd_lba;
 wire       index   = motor && disk_ok && (index_cnt[24:19] == 6'd0);
 
 wire [7:0] stat_a = {busy, !eq && rdreq, eq, rnf, crc, lost, disk_ok && ro, !exists || head == 7'd0};
@@ -107,6 +135,12 @@ always_ff @(posedge clk) begin
 	index_cnt <= index_cnt + 25'd1;
 	if (index_cnt == 25'd6299999) index_cnt <= '0;          // ~200 ms per revolution
 
+	// attaching or detaching an SD card image changes drive 0's disk
+	img0_sd_d <= img0_sd;
+	img1_sd_d <= img1_sd;
+	if (img0_sd != img0_sd_d) dskchg[0] <= 1'b1;
+	if (img1_sd != img1_sd_d) dskchg[1] <= 1'b1;
+
 	for (int d = 0; d < 2; d++) begin
 		if (img_mounted[d]) begin
 			present[d]  <= (img_size != 32'd0);
@@ -119,7 +153,7 @@ always_ff @(posedge clk) begin
 		control <= '0; command <= '0; track <= '0; sector <= '0; side <= '0; clock <= 8'hFF; step <= 8'h80;
 		busy <= 1'b0; rnf <= 1'b0; crc <= 1'b0; lost <= 1'b0; eq <= 1'b1; rdreq <= 1'b0; wtreq <= 1'b0;
 		irq_flag <= 1'b0; dskchg <= 2'b11; heads[0] <= 7'd0; heads[1] <= 7'd0; cpu_ptr <= '0; base_ptr <= '0;
-		state <= ST_IDLE; sd_rd <= '0; sd_wr <= '0; ack_seen <= 1'b0; delay <= '0; xdrv <= 1'b0;
+		state <= ST_IDLE; rq_rd <= '0; rq_wr <= '0; ack_seen <= 1'b0; delay <= '0; xdrv <= 1'b0; xport <= '0;
 	end
 	else begin
 		// CPU side of the sector buffer
@@ -156,14 +190,14 @@ always_ff @(posedge clk) begin
 						// write track
 						busy <= 1'b1; fmt_n <= '0;
 						if (disk_ok && head < 7'd80 && !ro) begin
-							sd_lba <= {20'd0, {4'd0, head} * 11'd20 + (control[3] ? 11'd0 : 11'd10), 1'b0}; sd_wr[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_FMT;
+							sd_lba <= {20'd0, {4'd0, head} * 11'd20 + (control[3] ? 11'd0 : 11'd10), 1'b0}; rq_wr[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_FMT;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
 					end
 					else if (reg_din[7]) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid && !ro) begin
-							sd_lba <= {20'd0, block, 1'b0}; sd_wr[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_WRITE;
+							sd_lba <= {20'd0, block, 1'b0}; rq_wr[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_WRITE;
 							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
@@ -171,7 +205,7 @@ always_ff @(posedge clk) begin
 					else if (reg_din[6]) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid) begin
-							sd_lba <= {20'd0, block, 1'b0}; sd_rd[drv] <= 1'b1; xdrv <= drv; ack_seen <= 1'b0; state <= ST_READ;
+							sd_lba <= {20'd0, block, 1'b0}; rq_rd[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_READ;
 							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
@@ -182,7 +216,7 @@ always_ff @(posedge clk) begin
 					end
 					else if (reg_din[7:1] == 7'd0) begin
 						// cancel / reset pointers
-						busy <= 1'b0; state <= ST_IDLE; sd_rd <= '0; sd_wr <= '0;
+						busy <= 1'b0; state <= ST_IDLE; rq_rd <= '0; rq_wr <= '0;
 					end
 				end
 				5'd4: track  <= reg_din;
@@ -204,7 +238,7 @@ always_ff @(posedge clk) begin
 				end
 			end
 			ST_READ, ST_WRITE: begin
-				if (ack) begin sd_rd <= '0; sd_wr <= '0; ack_seen <= 1'b1; end
+				if (ack) begin rq_rd <= '0; rq_wr <= '0; ack_seen <= 1'b1; end
 				else if (ack_seen) begin
 					busy <= 1'b0; irq_flag <= 1'b1;
 					if (state == ST_READ) begin rdreq <= 1'b1; eq <= 1'b0; end
@@ -213,14 +247,14 @@ always_ff @(posedge clk) begin
 				end
 			end
 			ST_FMT: begin
-				if (ack) begin sd_wr <= '0; ack_seen <= 1'b1; end
+				if (ack) begin rq_wr <= '0; ack_seen <= 1'b1; end
 				else if (ack_seen) begin
 					ack_seen <= 1'b0;
 					if (fmt_n == 4'd9) begin busy <= 1'b0; irq_flag <= 1'b1; state <= ST_IDLE; end
 					else begin
 						fmt_n  <= fmt_n + 4'd1;
 						sd_lba <= {20'd0, fmt_block + 11'd1, 1'b0};
-						sd_wr[xdrv] <= 1'b1;
+						rq_wr[xport] <= 1'b1;
 					end
 				end
 			end

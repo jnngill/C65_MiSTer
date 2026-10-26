@@ -72,11 +72,14 @@ module c65_core (
 	output logic  [7:0] sd_buff_din,
 	input  logic        sd_buff_wr,
 
-	// data file for the MEGA65 hypervisor DOS stand-in (m65_hyppo)
-	input  logic        dfile_mounted,
-	output logic [31:0] dfile_lba,
-	output logic        dfile_rd,
-	input  logic        dfile_ack,
+	// MEGA65 SD card: the image (or plain data file) in slot 3, same block bus
+	input  logic        sd3_mounted,
+	output logic [31:0] sd3_lba,
+	output logic        sd3_rd,
+	output logic        sd3_wr,
+	input  logic        sd3_ack,
+	output logic  [7:0] sd3_buff_din,
+	input  logic        sd3_big,          // the SD card image is 4 GB or larger
 	output logic        drive_led,
 
 	// wall-clock time from the host (MiSTer hps_io RTC word), for the MEGA65 clock registers
@@ -147,10 +150,11 @@ logic [27:0] cpu_faddr;
 logic        gs_mode;              // MEGA65 (VIC-IV) I/O was unlocked: 45GS02 extensions on
 logic  [7:0] cpu_dout, bus_din;
 logic        irq_n, nmi_n;
-logic        hyp_busy, hyp_load, hyp_c;   // MEGA65 hypervisor trap stand-in
+logic        hyp, hyp_busy, hyp_load;   // MEGA65 hypervisor mode (m65_hyp)
+logic  [7:0] hyp_a, hyp_x, hyp_y, hyp_z, hyp_b, hyp_p;
+logic [15:0] hyp_sp, hyp_pc;
 logic        dma_resume;                 // inline DMA done: CPU continues at dma_resume_pc
 logic [15:0] dma_resume_pc;
-logic  [7:0] hyp_a, hyp_x, hyp_y;
 
 cpu4510 cpu (
 	.clk(clk), .reset(reset), .ce(cpu_ce),
@@ -159,8 +163,10 @@ cpu4510 cpu (
 	.addr(cpu_addr), .paddr(cpu_paddr), .mapped(cpu_mapped),
 	.dout(cpu_dout), .we(cpu_we), .din(bus_din),
 	.sync(dbg_sync),
-	.hyp_load(hyp_load), .hyp_a(hyp_a), .hyp_x(hyp_x), .hyp_y(hyp_y), .hyp_c(hyp_c),
+	.hyp_load(1'b0), .hyp_a(8'h00), .hyp_x(8'h00), .hyp_y(8'h00), .hyp_c(1'b0),
 	.pc_load(dma_resume), .pc_val(dma_resume_pc),
+	.reg_load(hyp_load), .reg_a(hyp_a), .reg_x(hyp_x), .reg_y(hyp_y), .reg_z(hyp_z), .reg_b(hyp_b),
+	.reg_p(hyp_p), .reg_sp(hyp_sp), .reg_pc(hyp_pc), .int_hold(hyp),
 	.dbg_pc(dbg_pc), .dbg_a(dbg_a), .dbg_x(dbg_x), .dbg_y(dbg_y), .dbg_z(dbg_z),
 	.dbg_b(dbg_b), .dbg_p(dbg_p), .dbg_sp(dbg_sp)
 );
@@ -194,7 +200,7 @@ logic        vic3_mode;
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
-logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2, sel_sdbuf, sel_romw, sel_fdcbuf;
+logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2, sel_sdbuf, sel_romw, sel_fdcbuf, sel_hram;
 // a DMA address with the I/O flag only means I/O inside $D000-$DFFF; elsewhere it is plain memory
 wire         dma_is_io = dma_io && (dma_addr[15:12] == 4'hD);
 logic [23:0] xaddr;
@@ -204,7 +210,7 @@ always_comb begin
 	logic [22:0] pa;
 	logic [27:0] fa;       // flat 28-bit address: 45GS02 far pointer or DMA
 	logic        flat;
-	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_cram2 = 1'b0; sel_sdbuf = 1'b0; sel_fdcbuf = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
+	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_cram2 = 1'b0; sel_sdbuf = 1'b0; sel_fdcbuf = 1'b0; sel_hram = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
 	sel_xram = 1'b0; sel_rtc = 1'b0; sel_romw = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
@@ -232,7 +238,13 @@ always_comb begin
 		else if (fa[27:4] == 24'hFFD711) sel_rtc = 1'b1;             // $FFD7110 real-time clock
 		else if (fa[27:9] == 19'h7FEB7)  begin sel_sdbuf = 1'b1; mem_addr = {8'd0, fa[8:0]}; end   // $FFD6E00 SD sector buffer
 		else if (fa[27:9] == 19'h7FEB6)  begin sel_fdcbuf = 1'b1; mem_addr = {8'd0, fa[8:0]}; end  // $FFD6C00 F011 sector buffer
+		else if (fa[27:14] == 14'h3FFE)  begin sel_hram = 1'b1; mem_addr = {3'd0, fa[13:0]}; end   // $FFF8000 hypervisor RAM
 	end
+	else if (hyp && !dma_busy && cpu_addr[15:14] == 2'b10) begin
+		// hypervisor mode: $8000-$BFFF is the hypervisor's RAM ...
+		sel_hram = 1'b1; mem_addr = {3'd0, cpu_addr[13:0]};
+	end
+	else if (hyp && !dma_busy && cpu_addr[15:12] == 4'hD) sel_io = 1'b1;   // ... and $D000 is I/O
 	else if (!dma_busy && cpu_mapped) begin
 		// 1MB address space reached through MAP
 		mem_addr = pa[16:0];
@@ -270,10 +282,10 @@ always_comb begin
 end
 
 // I/O area decode
-logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2, io_math, io_hyp, io_rec, io_aud;
+logic io_vic, io_fdc, io_pal, io_sid, io_uart, io_dma, io_cram, io_cia1, io_cia2, io_math, io_hyp, io_rec, io_aud, io_sdb, io_fdb;
 always_comb begin
 	io_vic = 0; io_fdc = 0; io_pal = 0; io_sid = 0; io_uart = 0; io_dma = 0; io_cram = 0; io_cia1 = 0; io_cia2 = 0;
-	io_math = 0; io_hyp = 0; io_rec = 0; io_aud = 0;
+	io_math = 0; io_hyp = 0; io_rec = 0; io_aud = 0; io_sdb = 0; io_fdb = 0;
 	if (sel_io) begin
 		case (io_addr[11:8])
 			4'h0: begin
@@ -294,6 +306,8 @@ always_comb begin
 			4'hD: if (ctrl_a[0]) io_cram = 1'b1; else io_cia2 = 1'b1;
 			default: if (ctrl_a[0]) io_cram = 1'b1;
 		endcase
+		// the mapped sector buffer covers $DE00-$DFFF (in place of colour RAM or expansion I/O)
+		if (sdc_mapped && io_addr[11:9] == 3'b111) begin io_cram = 1'b0; io_sdb = d689_7; io_fdb = !d689_7; end
 	end
 end
 
@@ -332,7 +346,9 @@ always_ff @(posedge clk) begin
 		cyc_state <= C_RUN; cyc <= '0; slow_cs <= 1'b0;
 	end
 	else if (bus_ce) slow_cs <= 1'b0;
-	else if (dma_setup || prg_pause || hyp_busy || aud_gnt) cyc <= '0;   // DMA addresses not valid yet / program being loaded / hypervisor trap
+	// DMA addresses not valid yet / program being loaded / hypervisor entry or
+	// exit / inline DMA handing back (a new PC: its first fetch must start afresh)
+	else if (dma_setup || prg_pause || hyp_busy || dma_resume || aud_gnt) cyc <= '0;
 	else begin
 		case (cyc_state)
 			C_RUN: begin
@@ -428,24 +444,72 @@ end
 // ------------------------------------------------------------------ memory
 logic  [7:0] ram_q, ram2_q, wom_q, rom_q, vram_q, vram1_q, vram2_q, vrom_q, vrom1_q, vwom_q, cram2_q, vcram2_q, sdbuf_q;
 
-// $FFD6E00-$FFD6FFF: the MEGA65 SD card sector buffer; the hypervisor DOS
-// stand-in reads the data file into it
+// $FFD6E00-$FFD6FFF: the MEGA65 SD card sector buffer, also at $DE00-$DFFF
+// while mapped ($D680 = $81, with $D689 bit 7 set)
+logic [7:0] sdbuf_b_q;
 dpram #(9, 8) sdbuf (
 	.clk(clk),
-	.a_addr(mem_addr[8:0]), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_sdbuf), .a_q(sdbuf_q),
-	.b_addr(sd_buff_addr), .b_din(sd_buff_dout), .b_we(sd_buff_wr && dfile_ack), .b_q()
+	.a_addr(sel_sdbuf ? mem_addr[8:0] : io_addr[8:0]), .a_din(bus_dout), .a_we(bus_ce && bus_we && (sel_sdbuf || io_sdb)), .a_q(sdbuf_q),
+	.b_addr(sd_buff_addr), .b_din(sd_buff_dout), .b_we(sd_buff_wr && sd3_ack && !sd3_f011), .b_q(sdbuf_b_q)
 );
 
-// STA $D640 in MEGA65 mode: a hypervisor DOS call
-m65_hyppo hyppo (
-	.clk(clk), .reset(reset),
-	.trap(io_wr && io_hyp && io_addr[5:0] == 6'd0), .fn(bus_dout),
-	.cpu_a(dbg_a), .cpu_x(dbg_x), .cpu_y(dbg_y),
-	.busy(hyp_busy), .load(hyp_load),
-	.res_a(hyp_a), .res_x(hyp_x), .res_y(hyp_y), .res_c(hyp_c),
-	.img_mounted(dfile_mounted), .img_size(img_size),
-	.sd_lba(dfile_lba), .sd_rd(dfile_rd), .sd_ack(dfile_ack), .buf_clear()
+// $8000-$BFFF in hypervisor mode (and $FFF8000 flat): the hypervisor's RAM,
+// loaded with the hypervisor program (rtl/hyppo) when the FPGA is configured
+logic [7:0] hram_q;
+hyp_ram hram (
+	.clk(clk), .addr(mem_addr[13:0]), .din(bus_dout), .we(bus_ce && bus_we && sel_hram), .q(hram_q)
 );
+
+// writing $D640-$D67F in MEGA65 mode: a hypervisor trap (or, in the
+// hypervisor, its register save area)
+logic [7:0] hyp_dout;
+m65_hyp hypm (
+	.clk(clk), .reset(reset),
+	.reg_we(io_wr && io_hyp), .reg_addr(io_addr[5:0]), .reg_din(bus_dout), .reg_dout(hyp_dout),
+	.cpu_a(dbg_a), .cpu_x(dbg_x), .cpu_y(dbg_y), .cpu_z(dbg_z), .cpu_b(dbg_b), .cpu_p(dbg_p),
+	.cpu_sp(dbg_sp), .cpu_pc(dbg_pc),
+	.hyp(hyp), .busy(hyp_busy), .load(hyp_load),
+	.ld_a(hyp_a), .ld_x(hyp_x), .ld_y(hyp_y), .ld_z(hyp_z), .ld_b(hyp_b), .ld_p(hyp_p), .ld_sp(hyp_sp), .ld_pc(hyp_pc),
+	.img_size(sdc_size), .img_present(sdc_present), .img_ro(sdc_ro), .img_mounted(sd3_mounted)
+);
+
+// $D680-$D693: SD card controller and the F011 disk image registers
+logic [7:0]  sdc_dout;
+logic        sdc_sel, sdc_mapped, sdc_present, sdc_ro;
+logic        d0_img, d0_ok, d0_wen, d1_img, d1_ok, d1_wen;
+logic [31:0] d0_start, d1_start, sdc_size, sdc_lba, f3_lba;
+logic        sdc_rd, sdc_wr, f3_rd, f3_wr;
+logic        d689_7;            // $D689 bit 7: $DE00 shows the SD (1) or F011 (0) buffer
+logic        sd3_f011, sd3_busy;
+m65_sdc sdc (
+	.clk(clk), .reset(reset),
+	.reg_addr(io_addr[7:0]), .reg_we(io_wr && io_uart && gs_mode && sdc_sel), .reg_din(bus_dout),
+	.reg_dout(sdc_dout), .reg_sel(sdc_sel), .mapped(sdc_mapped),
+	.d0_img(d0_img), .d0_ok(d0_ok), .d0_wen(d0_wen), .d0_start(d0_start),
+	.d1_img(d1_img), .d1_ok(d1_ok), .d1_wen(d1_wen), .d1_start(d1_start), .osd_mounted(img_mounted),
+	.img_mounted(sd3_mounted), .img_readonly(img_readonly), .img_size(img_size), .img_big(sd3_big),
+	.present(sdc_present), .ro(sdc_ro), .size(sdc_size),
+	.sd_lba(sdc_lba), .sd_rd(sdc_rd), .sd_wr(sdc_wr), .sd_ack(sd3_ack && !sd3_f011)
+);
+always_ff @(posedge clk) begin
+	if (reset) d689_7 <= 1'b0;
+	else if (io_wr && io_uart && gs_mode && io_addr[7:0] == 8'h89) d689_7 <= bus_dout[7];
+end
+
+// slot 3 is shared by the SD card controller and F011 drive 0 (an attached
+// .D81 image): whoever asks first keeps it until its transfer is over
+always_ff @(posedge clk) begin
+	if (reset) begin sd3_busy <= 1'b0; sd3_f011 <= 1'b0; end
+	else if (!sd3_busy) begin
+		if (f3_rd || f3_wr)        begin sd3_busy <= 1'b1; sd3_f011 <= 1'b1; end
+		else if (sdc_rd || sdc_wr) begin sd3_busy <= 1'b1; sd3_f011 <= 1'b0; end
+	end
+	else if (sd3_f011 ? !(f3_rd || f3_wr || sd3_ack) : !(sdc_rd || sdc_wr || sd3_ack)) sd3_busy <= 1'b0;
+end
+assign sd3_lba      = sd3_f011 ? f3_lba : sdc_lba;
+assign sd3_rd       = sd3_busy && (sd3_f011 ? f3_rd : sdc_rd);
+assign sd3_wr       = sd3_busy && (sd3_f011 ? f3_wr : sdc_wr);
+assign sd3_buff_din = sd3_f011 ? sd_buff_din : sdbuf_b_q;
 logic [18:0] vaddr;
 logic  [1:0] vsel;
 logic        wom_loaded;
@@ -816,7 +880,8 @@ always_comb begin
 		// modifier keys: L/R shift, CTRL, MEGA (C=), ALT, NO SCROLL, CAPS LOCK
 		8'h11:   uart_dout = {1'b0, ~capslock_n, kb_matrix[64], kb_matrix[66], kb_matrix[61], kb_matrix[58], kb_matrix[52], kb_matrix[15]};
 		8'h14:   uart_dout = {4'd0, kms};
-		default: uart_dout = 8'h00;
+		8'h89:   uart_dout = {d689_7, 7'd0};
+		default: uart_dout = sdc_sel ? sdc_dout : 8'h00;
 	endcase
 end
 
@@ -837,7 +902,11 @@ f011 fdc (
 	.clk(clk), .reset(reset),
 	.reg_addr(io_addr[4:0]), .reg_we(io_wr && io_fdc), .reg_re(io_rd && io_fdc),
 	.reg_din(bus_dout), .reg_dout(fdc_dout), .irq_n(fdc_irq_n),
-	.dir_sel(sel_fdcbuf), .dir_addr(mem_addr[8:0]), .dir_we(bus_ce && bus_we && sel_fdcbuf), .dir_q(fdcbuf_q),
+	.dir_sel(sel_fdcbuf || io_fdb), .dir_addr(sel_fdcbuf ? mem_addr[8:0] : io_addr[8:0]),
+	.dir_we(bus_ce && bus_we && (sel_fdcbuf || io_fdb)), .dir_q(fdcbuf_q),
+	.img0_sd(d0_img), .img0_ok(d0_ok), .img0_wen(d0_wen), .img0_start(d0_start),
+	.img1_sd(d1_img), .img1_ok(d1_ok), .img1_wen(d1_wen), .img1_start(d1_start),
+	.sd3_lba(f3_lba), .sd3_rd(f3_rd), .sd3_wr(f3_wr), .sd3_ack(sd3_ack && sd3_f011),
 	.img_mounted(img_mounted), .img_readonly(img_readonly), .img_size(img_size),
 	.sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr), .sd_buff_dout(sd_buff_dout), .sd_buff_din(sd_buff_din),
@@ -912,7 +981,7 @@ always @(posedge clk) begin
 		$display("DMA+ %s $D7%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
 	if (bus_ce && io_uart && io_addr[7:0] > 8'h0F)
 		$display("M65  %s $D6%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
-	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_cram2 && !sel_sdbuf && !sel_fdcbuf && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
+	if (bus_ce && cpu_far && !dma_busy && !sel_ram && !sel_ram2 && !sel_cram2 && !sel_sdbuf && !sel_fdcbuf && !sel_hram && !sel_wom && !sel_rom && !sel_io && !sel_xram && !sel_rtc)
 		$display("FAR  %s %07x = %02x  PC=%04x", bus_we ? "wr" : "rd", cpu_faddr, bus_dout, dbg_pc);
 end
 `endif
@@ -929,7 +998,9 @@ always_comb begin
 	else if (io_dma)  io_dout = dma_reg_dout;
 	else if (io_math) io_dout = math_dout;
 	else if (io_aud)  io_dout = aud_dout;
-	else if (io_hyp)  io_dout = 8'h00;
+	else if (io_hyp)  io_dout = hyp_dout;
+	else if (io_sdb)  io_dout = sdbuf_q;
+	else if (io_fdb)  io_dout = fdcbuf_q;
 	else if (io_rec)  io_dout = (io_addr[7:0] == 8'hA0) ? {!xram_present, rec_reg} : 8'hFF;
 	else if (io_cia1) io_dout = cia1_dout;
 	else if (io_cia2) io_dout = cia2_dout;
@@ -941,6 +1012,7 @@ always_comb begin
 	else if (sel_cram2) bus_din = cram2_q;
 	else if (sel_sdbuf) bus_din = sdbuf_q;
 	else if (sel_fdcbuf) bus_din = fdcbuf_q;
+	else if (sel_hram) bus_din = hram_q;
 	else if (sel_wom)  bus_din = wom_q;
 	else if (sel_xram) bus_din = xram_dout;
 	else if (sel_rtc)  bus_din = rtc_dout;

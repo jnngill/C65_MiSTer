@@ -47,7 +47,7 @@ localparam CONF_STR = {
 	"S0,D81,Mount Drive 8;",
 	"S1,D81,Mount Drive 9 (1565);",
 	"S2,D64G64,Mount Drive 10 (1541);",
-	"S3,SCPBINDAT,Mount Data File (MEGA65);",
+	"S3,IMGSCPBINDAT,Mount SD Card / Data File (MEGA65);",
 	"F1,ROMBIN,Load System ROM;",
 	"F2,PRG,Load Program;",
 	"F3,ROMBIN,Load 1541 ROM;",
@@ -379,10 +379,8 @@ assign sd_lba[1] = sd_lba[0];
 assign sd_buff_din[1] = sd_buff_din[0];
 assign sd_blk_cnt[0] = 6'd1;     // the F011 moves 512 byte sectors: two 256 byte blocks
 assign sd_blk_cnt[1] = 6'd1;
-// slot 3: the data file read by the MEGA65 hypervisor DOS stand-in, 512 bytes at a time
+// slot 3: the MEGA65 SD card (a FAT32 image, or a single data file), 512 bytes at a time
 assign sd_blk_cnt[3] = 6'd1;
-assign sd_wr[3] = 1'b0;
-assign sd_buff_din[3] = 8'hFF;
 
 // ------------------------------------------------------------------ 1541 on the IEC bus
 // Unit 10 (8 is the internal drive, 9 the 1565).  Held in reset until a 1541
@@ -456,7 +454,8 @@ c65_core core
 	.m65_ext(status[17]),
 	.iec_atn_o(iec_atn), .iec_clk_o(iec_clk), .iec_data_o(iec_data),
 	.iec_clk_i(drv_iec_clk), .iec_data_i(drv_iec_data),
-	.dfile_mounted(img_mounted[3]), .dfile_lba(sd_lba[3]), .dfile_rd(sd_rd[3]), .dfile_ack(sd_ack[3]),
+	.sd3_mounted(img_mounted[3]), .sd3_lba(sd_lba[3]), .sd3_rd(sd_rd[3]), .sd3_wr(sd_wr[3]), .sd3_ack(sd_ack[3]),
+	.sd3_buff_din(sd_buff_din[3]), .sd3_big(|img_size[63:32]),
 	.uart_rxd(UART_RXD),
 	.uart_txd(UART_TXD),
 

@@ -101,12 +101,15 @@ both settings (C65 software does not use it).
 | Other VIC-IV registers (borders, scaling, text position, palette banks, sprite alpha / tiling) | stored and read back, no effect on the picture |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
-| Hypervisor DOS traps (`$D640`): getversion, setname, findfile, openfile, readfile (512 bytes at a time into the SD sector buffer at `$FFD6E00`), closefile, chdir / cdrootdir | done for one file: the one mounted with *Mount Data File (MEGA65)* (any name finds it). Other traps fail with "not implemented"; there is no SD card file system |
+| Hypervisor mode (`$D640-$D67F` traps and register save area, 16K hypervisor RAM at `$8000-$BFFF`) running the core's own hypervisor DOS (`rtl/hyppo`, see *MEGA65 SD card* below) | done. Only the DOS trap (`$D640`) is implemented; the others fail with "not implemented" |
+| SD card controller (`$D680-$D684`, sector buffer at `$FFD6E00` and mapped at `$DE00`), backed by a FAT32 image in *Mount SD Card / Data File (MEGA65)* | done |
+| Hypervisor DOS calls: version, drives, setname, findfile / findfirst / findnext (`*` and `?`, long file names), opendir / readdir / closedir, chdir / cdrootdir, openfile / readfile / closefile / closeall, loadfile (and into attic RAM), mkfile / writefile / rmfile, geterrorcode, D81 attach / detach / write enable (drives 0 and 1) | done in simulation (every call), the FAT32 result checked with Linux `fsck.vfat`; `MOUNT`, `DIR`, `LOAD`, Space Commander's 2.7 MB data file and writing files (mkfile, writefile, rmfile; checked with `fsck.vfat`) confirmed on hardware. As in the MEGA65's own DOS, mkfile makes a file of a fixed size (8.3 name) and writefile fills it, files do not grow; there are no folder creation or rename calls |
+| F011 disk images on the SD card (`$D68B-$D693`): drive 0 / 1 reads and writes an attached `.D81` straight from the card | done, confirmed on hardware (drive 0). `.D64`, `.D65` and `.D71` images are not supported |
 | F011 sector buffer mapped flat at `$FFD6C00-$FFD6DFF` (the BASIC 65 DOS reads and writes sectors there) | done, confirmed on hardware with BASIC 65 920422 (`DIR`, `SAVE`, `LOAD`) |
 | Writable `$20000-$3FFFF` (far pointer and DMA writes, as on the MEGA65 where this is RAM) | done. A copy of the ROM is kept in the SDRAM module and put back at the next reset, so S-BASIC returns without reloading the core |
 | Keyboard: matrix peek (`$D613` / `$D614`), modifier keys (`$D611`), cursor left / up (`$D60F`), and the typing queue: oldest key as ASCII (`$D610`) and PETSCII (`$D619`), its modifiers (`$D60A`), 8 keys with repeat | done, confirmed on hardware (the Open ROMs read `$D611` for SHIFT; BASIC 65 920422 types through `$D619`) |
 | Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects, Little Mega People's samples). A sample can be started from the current address (`$D72A-$D72C`) as well as the base address. Samples come from chip RAM only; no audio DMA interrupts or sine mode |
-| SD card, Ethernet, a true 40 MHz | not implemented. The CPU's top speed is 16 MHz |
+| Ethernet, a true 40 MHz | not implemented. The CPU's top speed is 16 MHz |
 | Attic RAM: 8 MB at `$8000000`, through far pointers and DMA | done, confirmed on hardware (S-BASIC `EDMA` fill and copy back); kept in the SDRAM module, so it needs one (it does not depend on the *Expansion RAM* option) |
 | Enhanced DMA jobs (`$D705`): megabyte options, list format, transparency (`$06`/`$07`, `$86`), source / destination step rates in 1/256 steps (`$82`-`$85`) (S-BASIC `EDMA`) | done, confirmed on hardware (copy, fill, transparency, source and destination step rates). Other options (line drawing, spiral mode) are ignored |
 | Inline DMA jobs (`$D707`): the enhanced job list follows the `STA $D707` instruction and the CPU carries on after it | done, confirmed on hardware (Little Mega People). The list is read from bank 0 at the CPU's address, so the code must not be in a `MAP`ped block |
@@ -181,6 +184,7 @@ newest dated `.rbf` is the one to use) and on the
 | your C65 system ROM, renamed `boot.rom` | `/media/fat/games/C65/` |
 | `blank.d81` (release, or `disks/blank.d81`) | `/media/fat/games/C65/` |
 | `c65_prg_disk.sh` (optional, for `.prg` / `.d64` files; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
+| `c65_sd_image.sh` (optional, builds the MEGA65 SD card image; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
 
 1. Create the folder `/media/fat/games/C65/`.
 2. Copy the `.rbf` to `/media/fat/_Computer/`.
@@ -261,20 +265,23 @@ With *MEGA65 Extensions* on and S-BASIC 65 as the ROM, some MEGA65 games run.
 Tested on hardware:
 
 - **Space Commander** (v1.3): mount `space-commander.d81` in *Mount Drive 8*
-  and `SPACE.SCP` with *Mount Data File (MEGA65)*, then
+  and `SPACE.SCP` with *Mount SD Card / Data File (MEGA65)* (or put both
+  on the SD card image and `MOUNT"SPACE-COMMANDER"`: confirmed on hardware,
+  the game streams SPACE.SCP from the card), then
   `LOAD"SPACE COMMANDER"` and `BANK 0:SYS 8205` (S-BASIC's `RUN` / `SYS`
   run in a bank where `$2000` is ROM, so the game's `SYS 8205` stub needs
   the `BANK 0`; typing `BANK 0` first and then `RUN` does not work, the
   game stays on a blank screen). The data file streams into attic RAM in
   about 30 seconds; title screen, gameplay, music and sound effects are
-  correct. With BASIC 65 920422 as the ROM, plain `LOAD"SPACE COMMANDER"`
-  and `RUN` work.
+  correct. With BASIC 65 920422 as the ROM, `RUN"SPACE COMMANDER"` loads and
+  starts it.
 - **Titan Fall**: `LOAD"TITANFALL"` and `RUN`.
 - **Little Mega People** (with BASIC 65 920422): mount `littlemegapeople.d81`,
   `LOAD"LITTLEMEGAPEOPLE"` and `RUN`. It loads its graphics and sounds from
   the disk ("MOVING IN..."); the guestbook, the house, gameplay, SID sound
   and the sampled voices and effects are correct.
-- **Pascal65** (with BASIC 65 920422): `LOAD"PASCAL65"` and `RUN`; compiling
+- **Pascal65** (with BASIC 65 920422): `DLOAD"PASCAL65"` and `RUN` (after a
+  plain `LOAD` it cannot load its ASM.LIB and stops at a BRK); compiling
   and running the BUBBLES demo works. Its messages are mixed case, so if
   capitals show as graphics characters press SHIFT + C= (MEGA) to switch to
   the lower-case set. A program that loops forever (BUBBLES does) can only
@@ -289,6 +296,33 @@ controller's sector buffer at `$FFD6C00`.
 
 The MEGA65 network programs (BBS, IRC, SSH ...) need the MEGA65 Ethernet
 controller, which the core does not have.
+
+### MEGA65 SD card
+
+MEGA65 programs reach the SD card through the hypervisor's DOS. Here the card
+is an image file: a FAT32 file system, either a whole card with a partition
+table (a real MEGA65 card's layout: the FAT32 partition is used, the system
+partition skipped) or a bare FAT32 image. To make one on the MiSTer:
+
+1. Put the files and folders for the card in `/media/fat/games/C65/SD`.
+2. Copy `c65_sd_image.sh` (in the release, or `scripts/mister/`) to
+   `/media/fat/Scripts` and run it from the Scripts menu. It writes
+   `/media/fat/games/C65/mega65sd.img` (the previous one is kept as
+   `mega65sd.img.bak`).
+3. In the core (BASIC 65 or S-BASIC 65 with *MEGA65 Extensions* on): F12,
+   *Mount SD Card / Data File (MEGA65)*, `mega65sd.img`.
+
+Then programs find their files on the card, and BASIC 65 can put a `.D81`
+from it in drive 8: `MOUNT"NAME.D81"` (or `MOUNT"NAME"`: a name without a
+dot also finds `NAME.D81`), followed by `DIR`, `DLOAD` and so on. The image
+must be in one piece on the card, which it always is in a freshly made image.
+An attached disk stays in the drive through a reset; mounting a disk in the
+OSD (or another SD card image) replaces it.
+
+Programs, and BASIC 65 saving to an attached `.D81`, write into the image,
+not into the files in the `SD` folder: running the script again replaces
+those changes, so copy anything you want to keep out of the image first (on
+the MiSTer: `mount -o loop` it, as the script does).
 
 ### C65TERM: a telnet BBS terminal
 
@@ -330,7 +364,7 @@ uploads and VT100. Building it needs [cc65](https://cc65.github.io)
 | Mount Drive 8 | a `.D81` file | the internal 3.5" drive |
 | Mount Drive 9 (1565) | a `.D81` file | the external 1565 drive, unit 9. It can be mounted at any time; the start-up message only reports it if it was mounted before the machine started |
 | Mount Drive 10 (1541) | a `.D64` or `.G64` file | the emulated 1541 on the IEC bus, unit 10 (needs a 1541 ROM and the SDRAM module) |
-| Mount Data File (MEGA65) | a `.SCP`, `.BIN` or `.DAT` file | the file that MEGA65 programs open through the hypervisor (e.g. Space Commander's `SPACE.SCP`); read only |
+| Mount SD Card / Data File (MEGA65) | an `.IMG` (FAT32 card image), or a single `.SCP`, `.BIN` or `.DAT` file | the MEGA65's SD card (see *MEGA65 SD card*); a single file answers to every name, for programs that only open one (e.g. Space Commander's `SPACE.SCP`) |
 | Load System ROM | a `.rom` / `.bin` file | replaces the ROM loaded from `boot.rom` and resets |
 | Load Program | a `.prg` file | copies the program into memory, see [Loading .PRG and .D64 files](#loading-prg-and-d64-files) |
 | Load 1541 ROM | a `.rom` / `.bin` file | the 1541's DOS ROM, if it is not in `boot1.rom` |
@@ -408,6 +442,10 @@ the C65 gets. "Positional" maps keys by their place on a C64/C65 keyboard.
 Quartus 17.0 (Lite is enough):
 
     quartus_sh --flow compile C65
+
+The MEGA65 hypervisor program (`rtl/hyppo`, C and assembler for cc65) is
+built into the FPGA from `rtl/hyppo/hyppo.hex`. After changing it, run
+`bash rtl/hyppo/build.sh` (needs cc65) before compiling.
 
 ## Simulation
 

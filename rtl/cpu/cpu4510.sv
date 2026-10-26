@@ -36,6 +36,13 @@ module cpu4510 (
 	// MEGA65 inline DMA ($D707) done: continue after the DMA list
 	input  logic        pc_load,
 	input  logic [15:0] pc_val,
+	// MEGA65 hypervisor entry / exit: load every register (one clk, while
+	// the bus is held between instructions); int_hold keeps IRQ and NMI
+	// waiting while the hypervisor runs
+	input  logic        reg_load,
+	input  logic  [7:0] reg_a, reg_x, reg_y, reg_z, reg_b, reg_p,
+	input  logic [15:0] reg_sp, reg_pc,
+	input  logic        int_hold,
 
 	output logic [15:0] dbg_pc,
 	output logic  [7:0] dbg_a, dbg_x, dbg_y, dbg_z, dbg_b, dbg_p,
@@ -111,7 +118,7 @@ wire [7:0] P = {fN, fV, fE, 1'b0, fD, fI, fZ, fC};
 wire [15:0] sp_dec = fE ? {SP[15:8], SP[7:0] - 8'd1} : SP - 16'd1;
 wire [15:0] sp_inc = fE ? {SP[15:8], SP[7:0] + 8'd1} : SP + 16'd1;
 
-wire take_int = (nmi_pend || (!irq_n && !fI)) && !map_inhibit && (neg_cnt == 2'd0) && !far_pfx;
+wire take_int = (nmi_pend || (!irq_n && !fI)) && !int_hold && !map_inhibit && (neg_cnt == 2'd0) && !far_pfx;
 
 logic branch_cond;
 always_comb begin
@@ -402,6 +409,11 @@ always_ff @(posedge clk) begin
 		A <= hyp_a; X <= hyp_x; Y <= hyp_y; fC <= hyp_c;
 	end
 	else if (pc_load) PC <= pc_val;
+	else if (reg_load) begin
+		A <= reg_a; X <= reg_x; Y <= reg_y; Z <= reg_z; B <= reg_b;
+		SP <= reg_sp; PC <= reg_pc;
+		{fN, fV, fE} <= reg_p[7:5]; {fD, fI, fZ, fC} <= reg_p[3:0];
+	end
 	else if (ce) begin
 		case (state)
 		S_VECLO: begin lo <= din; state <= S_VECHI; end
