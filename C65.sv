@@ -21,7 +21,6 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 assign VGA_SCALER     = 0;
 assign VGA_DISABLE    = 0;
@@ -62,6 +61,7 @@ localparam CONF_STR = {
 	"O[16:15],Mouse,Port 2,Port 1,Off;",
 	"O[3],DMA Revision,F018B,F018A;",
 	"O[17],MEGA65 Extensions,Off,On;",
+	"O[18],GO64,C64 mode,Load C64 core;",
 	"-;",
 	"R[0],Reset;",
 	"J,Fire;",
@@ -370,6 +370,33 @@ assign VGA_F1 = field;
 wire [17:0] audio_l, audio_r;
 wire        drive_led;
 
+// ------------------------------------------------------------------ core switch
+// GO64 / GO128 (core_req from the core) can load the MiSTer C64 or C128 core.
+// A core cannot ask the MiSTer for another core, so the request goes into DDR
+// at ARM address 0x3FFFF800 ("C65GO", the target 64 / 128, a sequence number),
+// where scripts/mister/c65_core_switch.sh, running on the MiSTer, picks it up
+// and loads the core.
+wire [1:0] core_req;
+reg        req_we = 1'b0;
+reg  [7:0] req_tgt, req_seq = 8'd0;
+
+assign DDRAM_CLK      = clk_sys;
+assign DDRAM_BURSTCNT = 8'd1;
+assign DDRAM_ADDR     = 29'h7FFFF00;
+assign DDRAM_BE       = 8'hFF;
+assign DDRAM_RD       = 1'b0;
+assign DDRAM_WE       = req_we;
+assign DDRAM_DIN      = {8'h00, req_seq, req_tgt, "O", "G", "5", "6", "C"};
+
+always @(posedge clk_sys) begin
+	if (req_we && !DDRAM_BUSY) req_we <= 1'b0;
+	if (core_req != 2'd0 && !req_we) begin
+		req_tgt <= (core_req == 2'd1) ? 8'd64 : 8'd128;
+		req_seq <= req_seq + 1'd1;
+		req_we  <= 1'b1;
+	end
+end
+
 // joystick_n: [4] fire, [3] up, [2] down, [1] left, [0] right
 wire [4:0] joy_a = {joystick_0[4], joystick_0[0], joystick_0[1], joystick_0[2], joystick_0[3]};
 wire [4:0] joy_b = {joystick_1[4], joystick_1[0], joystick_1[1], joystick_1[2], joystick_1[3]};
@@ -456,6 +483,7 @@ c65_core core
 	.iec_clk_i(drv_iec_clk), .iec_data_i(drv_iec_data),
 	.sd3_mounted(img_mounted[3]), .sd3_lba(sd_lba[3]), .sd3_rd(sd_rd[3]), .sd3_wr(sd_wr[3]), .sd3_ack(sd_ack[3]),
 	.sd3_buff_din(sd_buff_din[3]), .sd3_big(|img_size[63:32]),
+	.go64_core(status[18]), .core_req(core_req),
 	.uart_rxd(UART_RXD),
 	.uart_txd(UART_TXD),
 

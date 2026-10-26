@@ -82,6 +82,11 @@ module c65_core (
 	input  logic        sd3_big,          // the SD card image is 4 GB or larger
 	output logic        drive_led,
 
+	// MiSTer core switch: GO64 can load the MiSTer C64 core, and a knock at
+	// $D6FD / $D6FE asks for the C64 or C128 core (C65.sv passes it on)
+	input  logic        go64_core,
+	output logic  [1:0] core_req,         // one clk: 1 = C64 core, 2 = C128 core
+
 	// wall-clock time from the host (MiSTer hps_io RTC word), for the MEGA65 clock registers
 	input  logic [64:0] rtc,
 
@@ -846,8 +851,28 @@ end
 
 always_ff @(posedge clk) begin
 	if (reset) begin for (int i = 0; i < 16; i++) uart_regs[i] <= '0; kms <= '0; end
-	else if (io_wr && io_uart && !m65_reg) uart_regs[io_addr[3:0]] <= bus_dout;
+	else if (io_wr && io_uart && !m65_reg && io_addr[7:4] != 4'hF) uart_regs[io_addr[3:0]] <= bus_dout;
 	else if (io_wr && io_uart && io_addr[7:0] == 8'h14) kms <= bus_dout[3:0];
+end
+
+// MiSTer core switch requests.  The C64 cold start (GO64, or C= held at power
+// on) runs $FCE2 of the C64 KERNAL ($2E000); with the OSD's "GO64: Load C64
+// core" that asks for the MiSTer C64 core instead.  Any program can ask too:
+// $43 to $D6FD, then $40 (C64) or $80 (C128) to $D6FE.
+logic go_knock;
+always_ff @(posedge clk) begin
+	core_req <= 2'd0;
+	if (reset) go_knock <= 1'b0;
+	else begin
+		if (io_wr && io_uart && io_addr[7:0] == 8'hFD) go_knock <= (bus_dout == 8'h43);
+		else if (io_wr && io_uart && io_addr[7:0] == 8'hFE) begin
+			if (go_knock && bus_dout == 8'h40) core_req <= 2'd1;
+			if (go_knock && bus_dout == 8'h80) core_req <= 2'd2;
+			go_knock <= 1'b0;
+		end
+		if (go64_core && cpu_ce && dbg_sync && sel_rom && !cpu_far && !cpu_mapped && cpu_addr == 16'hFCE2 && !mem_addr[16])
+			core_req <= 2'd1;
+	end
 end
 
 // $D600-$D606: the serial port

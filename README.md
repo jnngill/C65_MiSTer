@@ -22,8 +22,9 @@ It does not turn the core into a MEGA65.
 ROMs, software, keyboards and controllers and report what works and what
 doesn't (see [Feedback and problems](#feedback-and-problems)). This is not a
 MEGA65, even with the MEGA65 Extensions option on: MEGA65 games and demos
-that use the SD card, digital audio or 40 MHz will not run, and
-for C64 games the MiSTer C64 core is the better choice than `GO64`.
+that need Ethernet or the full 40 MHz will not run. For C64 games the MiSTer
+C64 core is the better choice than `GO64`, and `GO64` can load it (see
+[GO64 / GO128: the MiSTer C64 and C128 cores](#go64--go128-the-mister-c64-and-c128-cores)).
 
 ## Status
 
@@ -185,6 +186,8 @@ newest dated `.rbf` is the one to use) and on the
 | `blank.d81` (release, or `disks/blank.d81`) | `/media/fat/games/C65/` |
 | `c65_prg_disk.sh` (optional, for `.prg` / `.d64` files; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
 | `c65_sd_image.sh` (optional, builds the MEGA65 SD card image; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
+| `c65_core_switch.sh` (optional, lets `GO64` / `GO128` load the MiSTer C64 / C128 cores; release, or `scripts/mister/`) | `/media/fat/Scripts/`, then run it once |
+| `go.d81` (optional, `GO128` and `GO64` programs; release, or `disks/`) | `/media/fat/games/C65/` |
 
 1. Create the folder `/media/fat/games/C65/`.
 2. Copy the `.rbf` to `/media/fat/_Computer/`.
@@ -297,6 +300,41 @@ controller's sector buffer at `$FFD6C00`.
 The MEGA65 network programs (BBS, IRC, SSH ...) need the MEGA65 Ethernet
 controller, which the core does not have.
 
+### GO64 / GO128: the MiSTer C64 and C128 cores
+
+`GO64` normally switches the C65 into its own C64 mode, which is not cycle
+exact. It can load the MiSTer C64 core instead, and the C128 core can be
+loaded the same way. A core cannot load another core by itself, so this needs
+a small helper on the MiSTer:
+
+1. Copy `c65_core_switch.sh` to `/media/fat/Scripts` and run it once from the
+   Scripts menu. It copies itself to `/media/fat/linux`, adds one line to
+   `/media/fat/linux/user-startup.sh` so it starts at every boot, and starts.
+   (`c65_core_switch.sh remove`, from a terminal, takes it out again.)
+   The helper has to be waiting in the background while the C65 core runs,
+   and the Scripts menu only runs a script when you pick it, so it starts
+   from `user-startup.sh`, the MiSTer's own hook for running things at boot.
+   It runs from its copy in `/media/fat/linux`, so tidying up the Scripts
+   folder cannot break the boot; running it from the Scripts menu again
+   updates that copy and restarts it.
+2. In the C65 core's OSD set **GO64** to **Load C64 core** (and *Save
+   settings*).
+
+Then `GO64` (and holding C= at power on, which also starts C64 mode) loads the
+newest `C64_*.rbf` in `_Computer`. For the C128 core, `RUN"GO128"` from
+`go.d81` (or type `POKE55037,67:POKE55038,128`); `RUN"GO64"` loads the C64
+core whatever the OSD option says. The other core starts fresh, with its own
+settings and its own folder (`games/C64`, `games/C128`): nothing is carried
+over from the C65, as with `GO64` itself. To choose a particular core, put
+`C64_CORE=/media/fat/_Computer/...rbf` (or `C128_CORE=`) into
+`/media/fat/linux/c65_core_switch.conf`.
+
+How it works: the C65 core writes "C65GO" and the target into DDR memory at
+`0x3FFFF800` (the C64 cold start is recognised by the CPU running `$FCE2` of
+the C64 KERNAL; programs ask by writing `$43` to `$D6FD` and then `$40` or
+`$80` to `$D6FE`); the helper, which only looks while the C65 core is
+running, clears it and sends `load_core` to the MiSTer.
+
 ### MEGA65 SD card
 
 MEGA65 programs reach the SD card through the hypervisor's DOS. Here the card
@@ -377,6 +415,7 @@ uploads and VT100. Building it needs [cc65](https://cc65.github.io)
 | Mouse | Port 2, Port 1, Off | a Commodore 1351 on that control port. S-BASIC 65's `MOUSE ON` uses port 2; on the stock ROM name the port, e.g. `MOUSE ON,2` |
 | DMA Revision | F018B, F018A | F018B for ROMs from mid 1991 on, F018A for older ones |
 | MEGA65 Extensions | Off, On | Off: a plain C65. On: the MEGA65 subset that S-BASIC 65 needs (see [MEGA65 extensions](#mega65-extensions)). Changing it restarts the machine |
+| GO64 | C64 mode, Load C64 core | Load C64 core: `GO64` loads the MiSTer C64 core (needs the `c65_core_switch.sh` helper, see [GO64 / GO128](#go64--go128-the-mister-c64-and-c128-cores)) |
 | Reset | | restarts the machine |
 
 ### Serial port

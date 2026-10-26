@@ -427,6 +427,7 @@ int main(int argc, char **argv) {
 	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, layout = 3, turbo = 0;
 	bool ntsc = false, f018b = true, use_xram = false, stop_brk = false;
 	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
+	int go64_core = 0;
 	int m65_ext = 1; bool uart_loop = false; std::string modem_path;
 	std::vector<unsigned char> prg; long prg_at = -1; size_t prg_pos = 0; int prg_div = 0; bool prg_busy = false;
 	int watch_addr = -1, watch_len = 0; unsigned char watch_old[64] = {0}; bool watch_init = false;
@@ -463,6 +464,7 @@ int main(int argc, char **argv) {
 		else if (a == "-after" && i + 1 < argc) after_pc = (int)strtol(argv[++i], nullptr, 16);
 		else if (a == "-mountat" && i + 1 < argc) mount_frame = atol(argv[++i]);
 		else if (a == "-strict") m65_ext = 0;
+		else if (a == "-go64core") go64_core = 1;
 		else if (a == "-sdlat" && i + 1 < argc) sd3_lat = atoi(argv[++i]);
 		else if (a == "-fdlat" && i + 1 < argc) sd_lat = atoi(argv[++i]);
 		else if (a == "-uartloop") uart_loop = true;
@@ -490,7 +492,7 @@ int main(int argc, char **argv) {
 	top->ntsc = ntsc; top->dma_f018b = f018b; top->turbo = turbo;
 	top->reset_in = 1; top->ld_wr = 0; top->ps2_key = 0; top->rom_backup = 1; top->rrom_ack = 0;
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
-	top->ps2_mouse = 0; top->mouse_port = mouse_port; top->m65_ext = m65_ext;
+	top->ps2_mouse = 0; top->mouse_port = mouse_port; top->m65_ext = m65_ext; top->go64_core = go64_core;
 	top->prg_dl = 0; top->prg_wr = 0; top->prg_ofs = 0; top->prg_byte = 0;
 	top->uart_rxd = 1;
 	top->iec_clk_i = 1; top->iec_data_i = 1;     // no IEC device (drives are VHDL and not simulated)
@@ -573,6 +575,7 @@ int main(int argc, char **argv) {
 			}
 		}
 		top->img_mounted = 0; top->sd3_mounted = 0;
+		if (top->core_req) printf("CORE_REQ %d frame %ld PC=%04X\n", top->core_req, frame_no, top->dbg_pc);
 		if (frame_done) {
 			frame_done = false;
 			key_frame();
