@@ -4,7 +4,10 @@
 // frequency and a volume.  The frequency is added to a 24-bit timing counter
 // at the MEGA65's 40.5 MHz; every carry out fetches the next sample from
 // memory.  When the current address reaches the top address the channel loops
-// back to the base address or stops (EN cleared, STP set).  Samples are 16 bit,
+// back to the base address or stops (EN cleared, STP set).  Enabling a
+// channel starts it at the base address, unless the program has written the
+// current address ($D72A-$D72C) since the channel last stopped; some
+// programs start samples that way and never set the base.  Samples are 16 bit,
 // 8 bit or one nybble per byte, signed or unsigned.  Channels 0 and 1 play on
 // the left, 2 and 3 on the right; $D71C-$D71F add each channel to the other
 // side as well.
@@ -42,6 +45,7 @@ logic [15:0] top     [4];
 logic  [7:0] vol     [4];
 logic  [7:0] xvol    [4];      // $D71C-$D71F: volume on the other side
 logic [23:0] cur     [4];
+logic  [3:0] cur_set;          // current address written by the program
 logic [23:0] tmg     [4];
 logic signed [15:0] smp [4];
 logic  [3:0] pend;             // a sample is due
@@ -61,7 +65,7 @@ endfunction
 
 always_ff @(posedge clk) begin
 	if (reset) begin
-		auden <= 1'b0; r711 <= '0; r712 <= '0; r713 <= '0; pend <= '0;
+		auden <= 1'b0; r711 <= '0; r712 <= '0; r713 <= '0; pend <= '0; cur_set <= '0;
 		f_busy <= 1'b0; f_hi <= 1'b0; f_wait <= 1'b0; fetch_req <= 1'b0;
 		for (int i = 0; i < 4; i++) begin
 			ctl[i] <= '0; base[i] <= '0; freq[i] <= '0; top[i] <= '0; vol[i] <= '0; xvol[i] <= '0;
@@ -133,7 +137,11 @@ always_ff @(posedge clk) begin
 						4'h0: begin
 							ctl[c] <= reg_din;
 							// enabling a channel starts it from the base address
-							if (reg_din[7] && !ctl[c][7]) begin cur[c] <= base[c]; tmg[c] <= '0; end
+							if (reg_din[7] && !ctl[c][7]) begin
+								if (!cur_set[c]) cur[c] <= base[c];
+								cur_set[c] <= 1'b0;
+								tmg[c] <= '0;
+							end
 							if (!reg_din[7]) smp[c] <= '0;
 						end
 						4'h1: base[c][7:0]   <= reg_din;
@@ -145,9 +153,9 @@ always_ff @(posedge clk) begin
 						4'h7: top[c][7:0]    <= reg_din;
 						4'h8: top[c][15:8]   <= reg_din;
 						4'h9: vol[c]         <= reg_din;
-						4'hA: cur[c][7:0]    <= reg_din;
-						4'hB: cur[c][15:8]   <= reg_din;
-						4'hC: cur[c][23:16]  <= reg_din;
+						4'hA: begin cur[c][7:0]   <= reg_din; cur_set[c] <= 1'b1; end
+						4'hB: begin cur[c][15:8]  <= reg_din; cur_set[c] <= 1'b1; end
+						4'hC: begin cur[c][23:16] <= reg_din; cur_set[c] <= 1'b1; end
 						4'hD: tmg[c][7:0]    <= reg_din;
 						4'hE: tmg[c][15:8]   <= reg_din;
 						4'hF: tmg[c][23:16]  <= reg_din;

@@ -148,6 +148,8 @@ logic        gs_mode;              // MEGA65 (VIC-IV) I/O was unlocked: 45GS02 e
 logic  [7:0] cpu_dout, bus_din;
 logic        irq_n, nmi_n;
 logic        hyp_busy, hyp_load, hyp_c;   // MEGA65 hypervisor trap stand-in
+logic        dma_resume;                 // inline DMA done: CPU continues at dma_resume_pc
+logic [15:0] dma_resume_pc;
 logic  [7:0] hyp_a, hyp_x, hyp_y;
 
 cpu4510 cpu (
@@ -158,6 +160,7 @@ cpu4510 cpu (
 	.dout(cpu_dout), .we(cpu_we), .din(bus_din),
 	.sync(dbg_sync),
 	.hyp_load(hyp_load), .hyp_a(hyp_a), .hyp_x(hyp_x), .hyp_y(hyp_y), .hyp_c(hyp_c),
+	.pc_load(dma_resume), .pc_val(dma_resume_pc),
 	.dbg_pc(dbg_pc), .dbg_a(dbg_a), .dbg_x(dbg_x), .dbg_y(dbg_y), .dbg_z(dbg_z),
 	.dbg_b(dbg_b), .dbg_p(dbg_p), .dbg_sp(dbg_sp)
 );
@@ -174,6 +177,7 @@ logic        bus_we;
 dma_f018 dma (
 	.clk(clk), .reset(reset), .ce(dma_ce), .f018b(dma_f018b),
 	.reg_addr(io_addr[2:0]), .reg_we(dma_reg_we), .reg_din(bus_dout), .reg_dout(dma_reg_dout),
+	.cpu_pc(dbg_pc), .resume(dma_resume), .resume_pc(dma_resume_pc),
 	.busy(dma_busy), .setup(dma_setup), .addr(dma_addr), .io(dma_io), .we(dma_we), .dout(dma_dout), .din(bus_din)
 );
 
@@ -947,7 +951,7 @@ always_comb begin
 end
 
 // $D705 (enhanced DMA job) only exists in MEGA65 mode
-assign dma_reg_we = io_wr && io_dma && (io_addr[7:3] == 5'd0) && (io_addr[2:0] != 3'd5 || gs_mode);
+assign dma_reg_we = io_wr && io_dma && (io_addr[7:3] == 5'd0) && ((io_addr[2:0] != 3'd5 && io_addr[2:0] != 3'd7) || gs_mode);
 assign dbg_op     = bus_din;
 
 assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n & ser_irq_n;

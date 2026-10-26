@@ -105,10 +105,11 @@ both settings (C65 software does not use it).
 | F011 sector buffer mapped flat at `$FFD6C00-$FFD6DFF` (the BASIC 65 DOS reads and writes sectors there) | done, confirmed on hardware with BASIC 65 920422 (`DIR`, `SAVE`, `LOAD`) |
 | Writable `$20000-$3FFFF` (far pointer and DMA writes, as on the MEGA65 where this is RAM) | done. A copy of the ROM is kept in the SDRAM module and put back at the next reset, so S-BASIC returns without reloading the core |
 | Keyboard: matrix peek (`$D613` / `$D614`), modifier keys (`$D611`), cursor left / up (`$D60F`), and the typing queue: oldest key as ASCII (`$D610`) and PETSCII (`$D619`), its modifiers (`$D60A`), 8 keys with repeat | done, confirmed on hardware (the Open ROMs read `$D611` for SHIFT; BASIC 65 920422 types through `$D619`) |
-| Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects). Samples come from chip RAM only; no audio DMA interrupts or sine mode |
+| Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects, Little Mega People's samples). A sample can be started from the current address (`$D72A-$D72C`) as well as the base address. Samples come from chip RAM only; no audio DMA interrupts or sine mode |
 | SD card, Ethernet, a true 40 MHz | not implemented. The CPU's top speed is 16 MHz |
 | Attic RAM: 8 MB at `$8000000`, through far pointers and DMA | done, confirmed on hardware (S-BASIC `EDMA` fill and copy back); kept in the SDRAM module, so it needs one (it does not depend on the *Expansion RAM* option) |
 | Enhanced DMA jobs (`$D705`): megabyte options, list format, transparency (`$06`/`$07`, `$86`), source / destination step rates in 1/256 steps (`$82`-`$85`) (S-BASIC `EDMA`) | done, confirmed on hardware (copy, fill, transparency, source and destination step rates). Other options (line drawing, spiral mode) are ignored |
+| Inline DMA jobs (`$D707`): the enhanced job list follows the `STA $D707` instruction and the CPU carries on after it | done, confirmed on hardware (Little Mega People). The list is read from bank 0 at the CPU's address, so the code must not be in a `MAP`ped block |
 
 Verified with S-BASIC 65 V250507:
 
@@ -269,6 +270,16 @@ Tested on hardware:
   correct. With BASIC 65 920422 as the ROM, plain `LOAD"SPACE COMMANDER"`
   and `RUN` work.
 - **Titan Fall**: `LOAD"TITANFALL"` and `RUN`.
+- **Little Mega People** (with BASIC 65 920422): mount `littlemegapeople.d81`,
+  `LOAD"LITTLEMEGAPEOPLE"` and `RUN`. It loads its graphics and sounds from
+  the disk ("MOVING IN..."); the guestbook, the house, gameplay, SID sound
+  and the sampled voices and effects are correct.
+- **Pascal65** (with BASIC 65 920422): `LOAD"PASCAL65"` and `RUN`; compiling
+  and running the BUBBLES demo works. Its messages are mixed case, so if
+  capitals show as graphics characters press SHIFT + C= (MEGA) to switch to
+  the lower-case set. A program that loops forever (BUBBLES does) can only
+  be left with the OSD's Reset: RUN/STOP + RESTORE drops into the monitor,
+  which keeps breaking again.
 
 The MEGA65's own ROM (**BASIC 65**, e.g. V920422, built from the C65 ROM
 910828 with the patch the MEGA65 team publishes) boots, shows the clock and

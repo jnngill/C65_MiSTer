@@ -15,6 +15,11 @@
 //   $86 nn           transparent value (default $00) is not written
 //   $0A / $0B        list format F018A / F018B
 // Others are skipped.  The options last until the next $D705 job is started.
+//
+// Writing $D707 starts an "inline" enhanced job: the list follows the STA
+// $D707 instruction in memory (bank 0, at the CPU's PC).  When the job ends
+// the DMA holds the bus for one more clk (DONE) and resume / resume_pc move
+// the CPU's PC past the list.
 
 module dma_f018 (
 	input  logic        clk,
@@ -26,6 +31,10 @@ module dma_f018 (
 	input  logic        reg_we,
 	input  logic  [7:0] reg_din,
 	output logic  [7:0] reg_dout,
+	input  logic [15:0] cpu_pc,      // list address of an inline ($D707) job
+
+	output logic        resume,      // inline job done: load the CPU's PC ...
+	output logic [15:0] resume_pc,   // ... with the address after the list
 
 	output logic        busy,
 	output logic        setup,       // decoding the list this clk: no bus cycle may start
@@ -36,7 +45,7 @@ module dma_f018 (
 	input  logic  [7:0] din
 );
 
-typedef enum logic [2:0] { IDLE, OPT, LIST, SETUP, RD_SRC, RD_DST, WR_DST, WR_SRC } state_t;
+typedef enum logic [3:0] { IDLE, OPT, LIST, SETUP, RD_SRC, RD_DST, WR_DST, WR_SRC, DONE } state_t;
 state_t state;
 
 logic [15:0] list_addr;
@@ -45,6 +54,7 @@ logic  [3:0] list_idx;
 logic  [7:0] list [12];
 logic [27:0] src, dst;
 logic        enh;            // enhanced job (started through $D705)
+logic        inl;            // inline job (started through $D707)
 logic        job_b;          // list format of this job: 1 = F018B
 logic        opt_arg;        // next list byte is the argument of opt_code
 logic  [7:0] opt_code, src_mb, dst_mb;
@@ -84,7 +94,7 @@ task automatic advance(input logic src_fixed);
 	count <= count - 17'd1;
 	if (count == 17'd1) begin
 		if (chain) begin list_idx <= '0; opt_arg <= 1'b0; state <= enh ? OPT : LIST; end
-		else state <= IDLE;
+		else state <= inl ? DONE : IDLE;
 	end
 	else state <= (op == 2'd3) ? WR_DST : RD_SRC;
 endtask
@@ -93,6 +103,8 @@ wire transparent = tr_en && (op == 2'd0 || op == 2'd1);
 
 assign busy  = (state != IDLE);
 assign setup = (state == SETUP);
+assign resume    = (state == DONE);
+assign resume_pc = list_addr;
 
 always_comb begin
 	addr = {5'd0, list_bank, list_addr};
@@ -122,20 +134,25 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		state <= IDLE;
 		list_addr <= '0; list_bank <= '0; list_idx <= '0;
-		enh <= 1'b0; job_b <= 1'b1; opt_arg <= 1'b0; src_mb <= '0; dst_mb <= '0;
+		enh <= 1'b0; inl <= 1'b0; job_b <= 1'b1; opt_arg <= 1'b0; src_mb <= '0; dst_mb <= '0;
 		tr_en <= 1'b0; tr_val <= '0; srate <= 16'h0100; drate <= 16'h0100;
 	end
 	else begin
 		if (reg_we && !busy) begin
 			case (reg_addr)
 				3'd0: begin
-					list_addr[7:0] <= reg_din; list_idx <= '0; enh <= 1'b0; job_b <= f018b; state <= LIST;
+					list_addr[7:0] <= reg_din; list_idx <= '0; enh <= 1'b0; inl <= 1'b0; job_b <= f018b; state <= LIST;
 					tr_en <= 1'b0; srate <= 16'h0100; drate <= 16'h0100; src_mb <= '0; dst_mb <= '0;
 				end
 				3'd1: list_addr[15:8] <= reg_din;
 				3'd2: list_bank <= reg_din[6:0];
 				3'd5: begin
-					list_addr[7:0] <= reg_din; list_idx <= '0; enh <= 1'b1; job_b <= f018b;
+					list_addr[7:0] <= reg_din; list_idx <= '0; enh <= 1'b1; inl <= 1'b0; job_b <= f018b;
+					opt_arg <= 1'b0; src_mb <= '0; dst_mb <= '0; state <= OPT;
+					tr_en <= 1'b0; tr_val <= '0; srate <= 16'h0100; drate <= 16'h0100;
+				end
+				3'd7: begin
+					list_addr <= cpu_pc; list_bank <= '0; list_idx <= '0; enh <= 1'b1; inl <= 1'b1; job_b <= f018b;
 					opt_arg <= 1'b0; src_mb <= '0; dst_mb <= '0; state <= OPT;
 					tr_en <= 1'b0; tr_val <= '0; srate <= 16'h0100; drate <= 16'h0100;
 				end
@@ -191,6 +208,8 @@ always_ff @(posedge clk) begin
 			default: ;
 			endcase
 		end
+
+		if (state == DONE) state <= IDLE;
 
 		// list fully read: decode it (no bus access in this state)
 		if (state == SETUP) begin

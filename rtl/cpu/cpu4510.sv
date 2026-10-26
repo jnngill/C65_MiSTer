@@ -33,6 +33,9 @@ module cpu4510 (
 	input  logic        hyp_load,
 	input  logic  [7:0] hyp_a, hyp_x, hyp_y,
 	input  logic        hyp_c,
+	// MEGA65 inline DMA ($D707) done: continue after the DMA list
+	input  logic        pc_load,
+	input  logic [15:0] pc_val,
 
 	output logic [15:0] dbg_pc,
 	output logic  [7:0] dbg_a, dbg_x, dbg_y, dbg_z, dbg_b, dbg_p,
@@ -398,6 +401,7 @@ always_ff @(posedge clk) begin
 		// hypervisor trap results (the core holds the bus, so no ce this clk)
 		A <= hyp_a; X <= hyp_x; Y <= hyp_y; fC <= hyp_c;
 	end
+	else if (pc_load) PC <= pc_val;
 	else if (ce) begin
 		case (state)
 		S_VECLO: begin lo <= din; state <= S_VECHI; end
