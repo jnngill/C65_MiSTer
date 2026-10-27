@@ -4,7 +4,8 @@
 //   * VIC-II text / bitmap modes, 40 and 80 columns, C65 character attributes
 //   * bitplane modes (up to 8 planes, 320 or 640 wide)
 //   * 8 sprites with collisions
-//   * 256 entry palette (4 bits per gun), raster interrupt
+//   * four banks of 256 palette entries (4 bits per gun), raster interrupt
+//   * VIC-IV border / text window geometry, 16-bit text and the raster rewrite buffer
 //
 // clk is the system clock (32x the 1 MHz phase clock); one 640-mode pixel is
 // two clk periods (ce_pix), one 320-mode pixel is four.
@@ -73,13 +74,22 @@ logic [19:0] scrnptr;        // VIC-IV $D060-63: screen memory address
 logic [15:0] colptr;         // VIC-IV $D064/65: offset into colour RAM
 logic [19:0] charptr;        // VIC-IV $D068-6A: character set address
 logic        hotreg;         // VIC-IV $D05D.7: VIC-II/III writes recompute the pointers
-logic        text400;        // V400 text (50 rows), taken at the last recalculation
-logic  [7:0] sdbdrwd;        // VIC-IV $D05C / $D05D.0-5: side border width (stored only)
+logic  [7:0] sdbdrwd;        // VIC-IV $D05C / $D05D.0-5: side border width
 logic  [5:0] sdbdrwd_hi;
 logic  [3:0] scrnptr_mb;     // VIC-IV $D063.0-3 (stored only, screen RAM is below 1MB here)
 logic  [1:0] chrcount_hi;    // VIC-IV $D063.4-5: CHRCOUNT bits 9-8
 logic  [1:0] d063_hi;        // VIC-IV $D063.6-7 (stored only)
 logic  [7:0] dispregs [4];   // $D05E CHRCOUNT, $D07B DISPROWS, $D05B CHRYSCL, $D05A CHRXSCL (stored only)
+// VIC-IV display geometry, in the MEGA65's physical pixels (see "display window")
+logic [11:0] tbdrpos;        // $D048/49: top border position
+logic [11:0] bbdrpos;        // $D04A/4B: bottom border position
+logic [11:0] textxpos;       // $D04C/4D: text / bitmap X position
+logic [11:0] textypos;       // $D04E/4F: text / bitmap Y position
+logic  [7:0] sprbpmen;       // $D049.7-4 / $D04B.7-4 (stored only)
+logic  [7:0] sprtilen;       // $D04D.7-4 / $D04F.7-4 (stored only)
+logic  [1:0] d051_hi;        // $D051.7 NORRDEL (stored only), $D051.6 DBLRR
+logic        boldalt;        // $D053.4 BOLDISALT: BOLD alone selects the alternate palette
+logic  [7:0] palsel;         // $D070: MAPEDPAL, BTPALSEL, SPRPALSEL, ABTPALSEL palette banks
 logic        hot_reload;     // a VIC-II/III register changed: recompute the pointers above
 logic  [1:0] vic_bank_d;
 
@@ -96,6 +106,13 @@ wire v400  = ctrl_b[3];
 wire h1280 = ctrl_b[2] && bpm;   // 1280 pixels across: bitplane modes only, one pixel per clk
 wire palram = ctrl_a[2];
 wire crom9 = ctrl_a[6];
+wire dblrr = d051_hi[0];
+
+// physical row of VIC-II raster line v (the MEGA65's legacy layout: PAL top
+// border at 104 = line 51, NTSC at 42)
+function automatic [12:0] yphys(input logic [8:0] v, input logic is_ntsc);
+	yphys = {3'd0, v, 1'b0} + (is_ntsc ? 13'h1FC4 : 13'd2);
+endfunction
 
 logic [8:0] vc;           // raster line
 logic       ss_set_any, sd_set_any;
@@ -116,10 +133,11 @@ always_ff @(posedge clk) begin
 		sprptr_adr <= '0; sprptr16 <= 1'b0; bp_bank <= '0;
 		spr16 <= '0; sprx64 <= '0; sprhgten <= '0; sprhght <= 8'd21;
 		ctrl_c <= '0; linestep <= 10'd40; scrnptr <= '0; colptr <= '0; hot_reload <= 1'b1; vic_bank_d <= '0;
-		text400 <= 1'b0;
-		charptr <= 20'h01000; hotreg <= 1'b1; sdbdrwd <= '0; sdbdrwd_hi <= '0; scrnptr_mb <= '0;
+		charptr <= 20'h01000; hotreg <= 1'b1; sdbdrwd <= 8'd80; sdbdrwd_hi <= '0; scrnptr_mb <= '0;
 		chrcount_hi <= '0; d063_hi <= '0;
-		dispregs[0] <= 8'd40; dispregs[1] <= 8'd25; dispregs[2] <= 8'd1; dispregs[3] <= 8'd120;
+		dispregs[0] <= 8'd40; dispregs[1] <= 8'd24; dispregs[2] <= 8'd1; dispregs[3] <= 8'd120;
+		tbdrpos <= 12'd104; bbdrpos <= 12'd504; textxpos <= 12'd80; textypos <= 12'd104;
+		sprbpmen <= '0; sprtilen <= '0; d051_hi <= '0; boldalt <= 1'b0; palsel <= 8'hFF;
 		for (int i = 0; i < 8; i++) begin
 			spr_x[i] <= '0; spr_y[i] <= '0; spr_col[i] <= '0; bp_addr[i] <= '0;
 		end
@@ -147,8 +165,15 @@ always_ff @(posedge clk) begin
 			colptr   <= '0;
 			charptr  <= {4'd0, vic_bank, cb[3:1], 11'd0};
 			dispregs[0] <= {1'b0, n_cols};
-			text400     <= v400;
 			chrcount_hi <= '0;
+			// borders and text position from RSEL / CSEL and the scroll registers,
+			// as the MEGA65 computes them; V400 gives 50 rows of 1 physical row each
+			tbdrpos  <= 12'(yphys(rsel ? 9'd51 : 9'd55, ntsc));
+			bbdrpos  <= 12'(yphys(rsel ? 9'd251 : 9'd247, ntsc));
+			textypos <= 12'(yphys(9'd48 + {6'd0, yscroll}, ntsc));
+			textxpos <= h640 ? 12'd79 + {9'd0, xscroll} : 12'd80 + {8'd0, xscroll, 1'b0};
+			dispregs[1] <= v400 ? 8'd49 : 8'd24;
+			dispregs[2] <= v400 ? 8'd0 : 8'd1;
 		end
 		// with HOTREG cleared ($D05D.7 = 0) only the VIC-IV registers set the pointers
 		if (reg_we && hotreg && (reg_addr == 7'h11 || reg_addr == 7'h16 || reg_addr == 7'h18 || (vic3_mode && reg_addr == 7'h31)))
@@ -231,6 +256,17 @@ always_ff @(posedge clk) begin
 					7'h7B: dispregs[1] <= reg_din;
 					7'h5B: dispregs[2] <= reg_din;
 					7'h5A: dispregs[3] <= reg_din;
+					7'h48: tbdrpos[7:0] <= reg_din;
+					7'h49: begin tbdrpos[11:8] <= reg_din[3:0]; sprbpmen[3:0] <= reg_din[7:4]; end
+					7'h4A: bbdrpos[7:0] <= reg_din;
+					7'h4B: begin bbdrpos[11:8] <= reg_din[3:0]; sprbpmen[7:4] <= reg_din[7:4]; end
+					7'h4C: textxpos[7:0] <= reg_din;
+					7'h4D: begin textxpos[11:8] <= reg_din[3:0]; sprtilen[3:0] <= reg_din[7:4]; end
+					7'h4E: textypos[7:0] <= reg_din;
+					7'h4F: begin textypos[11:8] <= reg_din[3:0]; sprtilen[7:4] <= reg_din[7:4]; end
+					7'h51: d051_hi <= reg_din[7:6];
+					7'h53: boldalt <= reg_din[4];
+					7'h70: palsel  <= reg_din;
 					default: ;
 				endcase
 			end
@@ -313,6 +349,17 @@ always_comb begin
 			7'h6C: reg_dout = sprptr_adr[7:0];
 			7'h6D: reg_dout = sprptr_adr[15:8];
 			7'h6E: reg_dout = {sprptr16, sprptr_adr[22:16]};
+			7'h48: reg_dout = tbdrpos[7:0];
+			7'h49: reg_dout = {sprbpmen[3:0], tbdrpos[11:8]};
+			7'h4A: reg_dout = bbdrpos[7:0];
+			7'h4B: reg_dout = {sprbpmen[7:4], bbdrpos[11:8]};
+			7'h4C: reg_dout = textxpos[7:0];
+			7'h4D: reg_dout = {sprtilen[3:0], textxpos[11:8]};
+			7'h4E: reg_dout = textypos[7:0];
+			7'h4F: reg_dout = {sprtilen[7:4], textypos[11:8]};
+			7'h51: reg_dout = {d051_hi, 6'd0};
+			7'h53: reg_dout = {3'd0, boldalt, 4'd0};
+			7'h70: reg_dout = palsel;
 			default: ;
 		endcase
 	end
@@ -322,30 +369,35 @@ assign irq_n  = ~|(irq_flag & irq_en);
 assign raster = vc;
 
 // ------------------------------------------------------------------ palette
-logic [4:0] pal_r [256];
-logic [3:0] pal_g [256];
-logic [3:0] pal_b [256];
+// four banks of 256 entries as on the MEGA65 ($D070); the CPU sees the MAPEDPAL
+// bank at $D100-$D3FF.  All four selections start at bank 3, so C65 software
+// sees a single palette.
+logic [4:0] pal_r [1024];
+logic [3:0] pal_g [1024];
+logic [3:0] pal_b [1024];
 logic [7:0] pix_idx;        // palette index of the pixel being produced
+logic [1:0] pix_bank;       // and its palette bank
 logic [4:0] pr_q;
 logic [3:0] pg_q, pb_q;
 logic [4:0] cr_q;
 logic [3:0] cg_q, cb_q;
+wire  [9:0] pal_caddr = {palsel[7:6], pal_addr[7:0]};
 
 always_ff @(posedge clk) begin
 	if (pal_we) begin
 		case (pal_addr[9:8])
-			2'd1: pal_r[pal_addr[7:0]] <= reg_din[4:0];
-			2'd2: pal_g[pal_addr[7:0]] <= reg_din[3:0];
-			2'd3: pal_b[pal_addr[7:0]] <= reg_din[3:0];
+			2'd1: pal_r[pal_caddr] <= reg_din[4:0];
+			2'd2: pal_g[pal_caddr] <= reg_din[3:0];
+			2'd3: pal_b[pal_caddr] <= reg_din[3:0];
 			default: ;
 		endcase
 	end
-	cr_q <= pal_r[pal_addr[7:0]];
-	cg_q <= pal_g[pal_addr[7:0]];
-	cb_q <= pal_b[pal_addr[7:0]];
-	pr_q <= pal_r[pix_idx];
-	pg_q <= pal_g[pix_idx];
-	pb_q <= pal_b[pix_idx];
+	cr_q <= pal_r[pal_caddr];
+	cg_q <= pal_g[pal_caddr];
+	cb_q <= pal_b[pal_caddr];
+	pr_q <= pal_r[{pix_bank, pix_idx}];
+	pg_q <= pal_g[{pix_bank, pix_idx}];
+	pb_q <= pal_b[{pix_bank, pix_idx}];
 end
 
 always_comb begin
@@ -431,20 +483,104 @@ always_comb begin
 end
 
 // ------------------------------------------------------------------ display window
+// The borders and the text / bitmap window come from the VIC-IV registers, in
+// the MEGA65's physical pixels: 800 across (one per 640-mode pixel, phys_x =
+// hx + 32) and two rows per raster line (phys_y = yphys(vc), plus the field
+// in 400 line modes).  The hot registers set them from the VIC-II ones, which
+// gives the C65 layout: side borders at 80 / 720 (38 columns 94 / 702), top
+// and bottom at 104 / 504 (24 rows 112 / 496), text at 80 + 2 * XSCROLL and
+// yphys(48 + YSCROLL).  Bitplanes keep the C65's fixed window.
 wire [8:0] y_first = 9'd48 + {6'd0, yscroll};
-wire [8:0] dy      = vc - y_first;                 // line within the 200 line window
+wire [8:0] dy      = vc - y_first;                 // line within the 200 line window (bitplanes)
 wire       in_rows = (vc >= y_first) && (dy < 9'd200);
-wire       vborder = !den || (rsel ? !(vc >= 9'd51 && vc < 9'd251) : !(vc >= 9'd55 && vc < 9'd247));
-wire       hborder = csel ? !(x >= 10'd24 && x < 10'd344) : !(x >= 10'd31 && x < 10'd335);
+
+wire [12:0] py_cur  = yphys(vc, ntsc) + {12'd0, field};
+wire [13:0] sdbw    = {sdbdrwd_hi, sdbdrwd};
+wire [13:0] bx_l    = sdbw + (csel ? 14'd0 : 14'd14);
+wire [13:0] bx_r    = 14'd800 - sdbw - (csel ? 14'd0 : 14'd18);
+wire [13:0] phx     = {3'd0, hx} + 14'd32;
+wire        vborder = !den || py_cur[12] || py_cur[11:0] < tbdrpos || py_cur[11:0] >= bbdrpos;
+wire        hborder = phx < bx_l || phx >= bx_r;
 
 // cell geometry in 640-mode pixels
+wire [9:0] chrcount = {chrcount_hi, dispregs[0]};
 wire [4:0] cell_w   = h640 ? 5'd8 : 5'd16;
 wire [4:0] cell_wf  = h1280 ? 5'd4 : cell_w;                   // fetch cell, in 640-pixels
-wire [7:0] n_cols_f = h1280 ? 8'd160 : {1'b0, n_cols};          // cells per line
-// first displayed pixel.  40 column modes scroll in 320-pixels; in 80 column
-// modes the normal position is XSCROLL = 1 and one step is one 640-pixel.
-wire [10:0] gfx_x0  = h640 ? 11'd47 + {8'd0, xscroll} : 11'd48 + {7'd0, xscroll, 1'b0};
-wire [10:0] fetch_x0 = gfx_x0 - {6'd0, cell_wf};              // fetch runs one cell ahead
+// cells per line: CHRCOUNT for text (up to 255 here), else the C65 width
+wire [7:0] n_cols_f = h1280 ? 8'd160 : (!bmm && !bpm) ? ((chrcount > 10'd255) ? 8'd255 : chrcount[7:0]) : {1'b0, n_cols};
+// first displayed pixel.  Bitplanes: 40 column modes scroll in 320-pixels; in
+// 80 column modes the normal position is XSCROLL = 1 and one step is one
+// 640-pixel.  Text and bitmaps start at TEXTXPOS (which the hot registers set
+// the same way), kept far enough right for the fetch to run one cell ahead.
+wire [10:0] gfx_x0_bp = h640 ? 11'd47 + {8'd0, xscroll} : 11'd48 + {7'd0, xscroll, 1'b0};
+wire [11:0] tx_hx     = textxpos - 12'd32;
+wire [10:0] gfx_x0_tx = (textxpos < 12'd32 + {7'd0, cell_wf}) ? {6'd0, cell_wf} :
+                        (tx_hx > 12'(2 * X_BLANK0 - 1)) ? 11'(2 * X_BLANK0 - 1) : tx_hx[10:0];
+wire [10:0] gfx_x0    = bpm ? gfx_x0_bp : gfx_x0_tx;
+wire [10:0] fetch_x0  = gfx_x0 - {6'd0, cell_wf};              // fetch runs one cell ahead
+
+// Text rows, VIC-IV style: the first glyph row is at physical row TEXTYPOS,
+// each glyph row lasts CHRYSCL+1 physical rows, DISPROWS+1 text rows are
+// shown.  With DBLRR (and in bitmap mode) the rows are taken every second
+// physical row, i.e. once per raster line, as in 200 line modes.
+// Two raster lines are tracked: the next one (cl_, used by the in-line fetch)
+// and the one after (al_, drawn ahead by the raster rewrite buffer).
+wire        tr_dbl   = dblrr || bmm;
+wire  [7:0] chryscl  = dispregs[2];
+wire  [8:0] an_line  = (vc + 9'd2 >= vtotal) ? vc + 9'd2 - vtotal : vc + 9'd2;
+wire        an_wrap  = vc + 9'd2 >= vtotal;
+wire        an_field = field ^ (an_wrap && (v400 || ctrl_b[0]));
+wire [12:0] an_py    = yphys(an_line, ntsc) + {12'd0, an_field && !tr_dbl};
+wire [12:0] an_d     = an_py - {1'b0, textypos};
+wire        an_before = an_py[12] || an_d[12];
+wire [11:0] an_d0    = tr_dbl ? {1'b0, an_d[11:1]} : an_d[11:0];   // steps from the first row
+
+logic        al_started, al_on, cl_on;
+logic [10:0] al_prow, cl_prow;        // glyph pixel row: text row = [10:3], row in the glyph = [2:0]
+logic  [7:0] al_sub;
+logic        an_started, an_on;
+logic [10:0] an_prow;
+logic  [7:0] an_sub;
+always_comb begin
+	logic [8:0] s;
+	s = '0; an_started = 1'b0; an_prow = '0; an_sub = '0;
+	if (an_before) begin end
+	else if (!al_started || an_line == 9'd0) begin
+		an_started = 1'b1;
+		if (chryscl == 8'd0) an_prow = an_d0[10:0];
+		else if (an_d0 <= {4'd0, chryscl}) an_sub = an_d0[7:0];
+		else if (chryscl == 8'd1) begin an_prow = {1'b0, an_d0[10:1]}; an_sub = {7'd0, an_d0[0]}; end
+	end
+	else begin
+		an_started = 1'b1;
+		if (chryscl == 8'd0) an_prow = al_prow + (tr_dbl ? 11'd1 : 11'd2);
+		else begin
+			s = {1'b0, al_sub} + (tr_dbl ? 9'd1 : 9'd2);
+			if (s > {1'b0, chryscl}) begin an_sub = 8'(s - {1'b0, chryscl} - 9'd1); an_prow = al_prow + 11'd1; end
+			else begin an_sub = s[7:0]; an_prow = al_prow; end
+		end
+	end
+	an_on = an_started && (an_prow[10:3] <= dispregs[1]);
+end
+
+// the next line's text row offsets, ready at its line_start
+logic [17:0] row_ofs;        // bytes from the start of the screen to this text row
+logic  [9:0] row_base_t;     // bitmap: cells before this text row
+always_ff @(posedge clk) begin
+	if (reset) begin
+		al_started <= 1'b0; al_on <= 1'b0; cl_on <= 1'b0; al_prow <= '0; cl_prow <= '0; al_sub <= '0;
+	end
+	else if (ce_pix && line_start) begin
+		cl_on   <= al_on;
+		cl_prow <= al_prow;
+		row_ofs    <= {10'd0, al_prow[10:3]} * {8'd0, linestep};
+		row_base_t <= 10'({2'd0, al_prow[10:3]} * {3'd0, n_cols});
+		al_started <= an_started;
+		al_on      <= an_on;
+		al_prow    <= an_prow;
+		al_sub     <= an_sub;
+	end
+end
 
 // ------------------------------------------------------------------ fetch engine
 logic  [7:0] f_col;          // column being fetched
@@ -452,26 +588,24 @@ logic  [4:0] f_cnt;          // 640-pixel counter inside the fetch cell
 logic        f_run;
 logic  [3:0] f_step;         // clk step inside the cell
 logic        f_go;
-logic [11:0] row_base;       // row * columns
+logic [11:0] row_base;       // bitplanes: row * columns
 logic  [7:0] f_scr, f_col_byte, f_gfx;
 logic  [7:0] f_bp [8];
 logic [18:0] vaddr_gfx;
 
-// V400 text (80x50 / 40x50): each field shows every other pixel row, so a
-// text row lasts 4 raster lines and the field supplies the low bit of the row
-// text400 is V400 as seen by the last hot register recalculation: on the
-// VIC-IV, writing $D031 with HOTREG off ($D05D.7 = 0) leaves the text rows
-// alone (Space Commander does that), with HOTREG on it gives 50 rows (the
-// MEGA65 Open ROMs' 80x50).  A plain C65 always recalculates.
-wire       v400t     = v400 && text400 && !bpm && !bmm;
-wire [2:0] text_rc   = v400t ? {dy[1:0], field} : dy[2:0];
-wire [11:0] cell_idx = row_base + {4'd0, f_col};
+// V400 text (80x50 / 40x50, CHRYSCL = 0): each field shows every other pixel
+// row, so a text row lasts 4 raster lines and the field supplies the low bit
+// of the row.  On the VIC-IV, writing $D031 with HOTREG off ($D05D.7 = 0)
+// leaves CHRYSCL alone; with HOTREG on V400 gives 50 rows (the MEGA65 Open
+// ROMs' 80x50).  A plain C65 always recalculates.
+wire        t_rows   = bpm ? in_rows : cl_on;
+wire [2:0]  text_rc  = bpm ? dy[2:0] : cl_prow[2:0];
+wire [11:0] cell_idx = (bpm ? row_base : {2'd0, row_base_t}) + {4'd0, f_col};
 
 // screen and colour RAM addresses of the cell being fetched
-logic [11:0] row_ofs;        // bytes from the start of the screen to this text row
 wire  [7:0]  col_ofs  = chr16 ? {f_col[6:0], 1'b0} : f_col;
-wire [18:0]  scr_addr = scrnptr[18:0] + {7'd0, row_ofs} + {11'd0, col_ofs};
-wire [15:0]  col_ofs16 = colptr + {4'd0, row_ofs} + {8'd0, col_ofs};
+wire [18:0]  scr_addr = scrnptr[18:0] + {1'd0, row_ofs} + {11'd0, col_ofs};
+wire [15:0]  col_ofs16 = colptr + row_ofs[15:0] + {8'd0, col_ofs};
 // colour RAM, 32K as on the MEGA65: the first 2K are chip RAM $1F800, the rest
 // ($FF80800-$FF87FFF) is seen at video address $60000
 function automatic [18:0] cram_vaddr(input logic [15:0] o);
@@ -518,7 +652,7 @@ always_ff @(posedge clk) begin
 	else begin
 		f_go <= 1'b0;
 		if (ce_pix) begin
-			if (hx == fetch_x0 && in_rows) begin
+			if (hx == fetch_x0 && t_rows) begin
 				f_run <= 1'b1; f_col <= '0; f_cnt <= '0; f_go <= 1'b1;
 			end
 			else if (f_run) begin
@@ -529,19 +663,12 @@ always_ff @(posedge clk) begin
 				end
 				else f_cnt <= f_cnt + 5'd1;
 			end
-			// row bookkeeping at the start of each raster line
+			// bitplane row bookkeeping at the start of each raster line
+			// (text and bitmap rows: see "display window")
 			if (line_start) begin
 				// vc is still the old line here; the new line is vc+1
-				if (vc + 9'd1 == y_first) begin
-					row_base <= '0;
-					row_ofs  <= '0;
-				end
-				else if (in_rows) begin
-					if (v400t ? (dy[1:0] == 2'd3) : (text_rc == 3'd7)) begin
-						row_base <= row_base + {4'd0, n_cols_f};
-						row_ofs  <= row_ofs + {2'd0, linestep};
-					end
-				end
+				if (vc + 9'd1 == y_first) row_base <= '0;
+				else if (in_rows && dy[2:0] == 3'd7) row_base <= row_base + {4'd0, n_cols_f};
 			end
 		end
 
@@ -579,33 +706,40 @@ end
 // sets, for the cells after it, a vertical glyph offset (screen byte 1 bits
 // 7-5) and transparency (colour byte 0 bit 7: background pixels are skipped).
 //
+// Colour byte 0 bit 3 makes a cell a nibble-colour (NCM) glyph: the 64 bytes
+// of a full-colour glyph drawn as 16 pixels of 4 bits (low nibble first), 0 =
+// background, 15 = the foreground colour, n = {foreground[7:4], n}.  Screen
+// byte 1 bits 7-5 (and colour byte 0 bit 2 for NCM) trim pixels off the
+// right; colour byte 0 bits 7 / 6 flip the glyph.  A full-colour or NCM cell
+// takes its whole foreground byte from colour byte 1 when ATTR is off (and any
+// cell does in multicolour mode).
+//
 // Line L is drawn while line L-1 is shown, after the sprite fetch, into the
 // half of the buffer picked by L[0]; the display reads it back pixel by pixel
-// and clears each entry once it has been shown.  One cell costs 12 clk (full
-// colour), 10 clk (one glyph byte) or 5 clk (GOTOX, or off the right edge).
-// Cells that do not fit in the line time are not drawn.
+// and clears each entry once it has been shown.  One cell costs 17 clk (NCM),
+// 12 clk (full colour), 10 clk (one glyph byte) or 5 clk (GOTOX, or off the
+// right edge).  Cells that do not fit in the line time are not drawn.
 
 wire        rrb_mode  = chr16 && !bmm && !bpm;
-wire  [9:0] chrcount  = {chrcount_hi, dispregs[0]};
 wire [10:0] rr_width  = h640 ? 11'd640 : 11'd320;
 
-// the line being drawn: two lines ahead of vc at line_start (vc is still the old line)
-wire  [8:0] rr_line   = (vc + 9'd2 >= {1'b0, vtotal}) ? vc + 9'd2 - {1'b0, vtotal} : vc + 9'd2;
-wire  [8:0] rr_dy     = rr_line - y_first;
-wire        rr_inrows = (rr_line >= y_first) && (rr_dy < 9'd200);
+// the line being drawn: two lines ahead of vc at line_start (vc is still the
+// old line), whose text row is an_prow from "display window"
+wire  [8:0] rr_line   = an_line;
 
 logic        rr_pend, rr_run, rr_bank;
 logic  [9:0] rr_cell;
 logic  [2:0] rr_rc;
 logic [18:0] rr_scr;          // screen address of the current cell
 logic [15:0] rr_col;          // colour RAM offset of the current cell
-logic  [3:0] rr_t;
+logic  [4:0] rr_t;
 logic [10:0] rr_x;
 logic  [2:0] rr_yoff;
 logic        rr_trans;
 logic  [7:0] rr_slo, rr_shi, rr_c0, rr_c1;
-logic        rr_fcm, rr_rom, rr_skip;
-logic  [3:0] rr_len;
+logic        rr_fcm, rr_ncm, rr_rom, rr_skip;
+logic  [4:0] rr_len;
+logic  [4:0] rr_wid;          // pixels the current glyph draws (after trimming)
 logic [18:0] rr_vaddr;
 
 wire [12:0] rr_char    = {rr_shi[4:0], rr_slo};
@@ -619,8 +753,13 @@ function automatic [18:0] rr_fcm_addr(input logic [12:0] ch, input logic [2:0] r
                                       input logic [2:0] k, input logic vflip, input logic hflip);
 	rr_fcm_addr = {ch, vflip ? ~rc : rc, hflip ? ~k : k} - {13'd0, yo, 3'd0};
 endfunction
-wire [18:0] rr_gaddr   = charptr[18:0] + {3'd0, rr_char, rr_rc} - {16'd0, rr_yoff};
+// one-byte glyphs, used at t4 (vram_q = colour byte 0: bit 7 flips vertically)
+wire [18:0] rr_gaddr   = charptr[18:0] + {3'd0, rr_char, rr_rc ^ {3{vram_q[7]}}} - {16'd0, rr_yoff};
 wire        rr_grom    = (rr_gaddr[18:16] == 3'd0) && (rr_gaddr[14:12] == 3'b001);
+// at t4: NCM, and the glyph width after the trim bits
+wire        rr_cncm    = vram_q[3];
+wire  [3:0] rr_trim    = {rr_cncm & vram_q[2], rr_shi[7:5]};
+wire  [4:0] rr_cwid    = rr_cncm ? 5'd16 - {1'b0, rr_trim} : 5'd8 - {2'd0, rr_trim[2:0]};
 
 // Glyph rows pushed up by the GOTOX offset come from the character before;
 // for character $800 that is $1FFC0, which here is colour RAM.  The MEGA65's
@@ -630,13 +769,24 @@ logic        rr_zq;
 always_ff @(posedge clk) rr_zq <= (rr_vaddr[18:11] == 8'h3F);
 
 // line buffer writer
-logic        w_act, w_fcm, w_rom, w_trans, w_bank;
-logic  [2:0] w_i;
+logic        w_act, w_fcm, w_ncm, w_hflip, w_rom, w_trans, w_bank, w_alt;
+logic  [3:0] w_i;
+logic  [4:0] w_n;             // pixels to write
 logic  [7:0] w_bits, w_col;
+logic  [7:0] w_buf [8];       // NCM: the glyph bytes, which arrive faster than they are drawn
 logic [10:0] w_x;
 logic        lb_we;
 logic [10:0] lb_waddr;
-logic  [8:0] lb_wdata;
+logic  [9:0] lb_wdata;       // {alternate palette, foreground, colour}
+
+// VIC-III attributes of a one-byte glyph (colour byte 1): REVERSE, and BOLD,
+// which adds 16 to the colour, or with REVERSE (or alone with BOLDISALT)
+// selects the alternate palette bank instead of reversing
+wire rr_rev  = attr && rr_c1[5] && (!rr_c1[6] || boldalt);
+wire rr_bold = attr && rr_c1[6] && !boldalt;
+wire rr_alt  = attr && rr_c1[6] && (rr_c1[5] || boldalt);
+// colour of a full-colour / NCM cell at t5 (vram_q = colour byte 1)
+wire [7:0] rr_fcol = (mcm || !attr) ? vram_q : {3'h0, attr && vram_q[6] && !boldalt, vram_q[3:0]};
 
 always_ff @(posedge clk) begin
 	lb_we <= 1'b0;
@@ -648,69 +798,73 @@ always_ff @(posedge clk) begin
 			// start the next line (whatever was not drawn of this one is dropped)
 			rr_run  <= 1'b0;
 			w_act   <= 1'b0;
-			rr_pend <= rrb_mode && rr_inrows;
+			rr_pend <= rrb_mode && an_on;
 			rr_bank <= rr_line[0];
-			rr_rc   <= v400t ? {rr_dy[1:0], field} : rr_dy[2:0];
-			rr_scr  <= scrnptr[18:0] + {9'd0, linestep} * (v400t ? {13'd0, rr_dy[7:2]} : {14'd0, rr_dy[7:3]});
-			rr_col  <= {6'd0, linestep} * (v400t ? {10'd0, rr_dy[7:2]} : {11'd0, rr_dy[7:3]});
+			rr_rc   <= an_prow[2:0];
+			rr_scr  <= scrnptr[18:0] + {9'd0, linestep} * {11'd0, an_prow[10:3]};
+			rr_col  <= {6'd0, linestep} * {8'd0, an_prow[10:3]};
 		end
 		else if (rr_pend && !spr_bus) begin
 			rr_pend <= 1'b0; rr_run <= 1'b1; rr_cell <= '0; rr_t <= '0;
 			rr_x <= '0; rr_yoff <= '0; rr_trans <= 1'b0;
 		end
 		else if (rr_run) begin
-			rr_t <= rr_t + 4'd1;
+			rr_t <= rr_t + 5'd1;
 			case (rr_t)
 				4'd0: rr_vaddr <= rr_scr;
 				4'd1: rr_vaddr <= rr_scr + 19'd1;
 				4'd2: begin rr_slo <= vram_q; rr_vaddr <= rr_caddr; end
 				4'd3: begin rr_shi <= vram_q; rr_vaddr <= rr_caddr1; end
 				4'd4: begin
-					rr_c0 <= vram_q;
-					rr_fcm <= rr_cfcm;
+					rr_c0  <= vram_q;
+					rr_fcm <= rr_cfcm || rr_cncm;
+					rr_ncm <= rr_cncm;
+					rr_wid <= rr_cwid;
 					if (vram_q[4]) begin
 						// GOTOX
 						rr_x     <= {1'b0, rr_shi[1:0], rr_slo};
 						rr_yoff  <= rr_shi[7:5];
 						rr_trans <= vram_q[7];
-						rr_len   <= 4'd5;
+						rr_len   <= 5'd5;
 					end
 					else if (rr_x >= rr_width) begin
-						rr_x   <= rr_x + 11'd8;
-						rr_len <= 4'd5;
+						rr_x   <= rr_x + {6'd0, rr_cwid};
+						rr_len <= 5'd5;
 					end
-					else if (rr_cfcm) begin
+					else if (rr_cfcm || rr_cncm) begin
 						rr_vaddr <= rr_fcm_addr(rr_char, rr_rc, rr_yoff, 3'd0, vram_q[7], vram_q[6]);
-						rr_len   <= 4'd12;
+						rr_len   <= rr_cncm ? 5'd17 : 5'd12;
 					end
 					else begin
 						rr_vaddr <= rr_grom ? {2'b00, crom9 ? 5'h09 : 5'h0D, rr_gaddr[11:0]} : rr_gaddr;
 						rr_rom   <= rr_grom;
-						rr_len   <= 4'd10;
+						rr_len   <= 5'd10;
 					end
 				end
 				default: begin
-					if (rr_t == 4'd5) rr_c1 <= vram_q;
-					if (rr_fcm && rr_t <= 4'd11)
-						rr_vaddr <= rr_fcm_addr(rr_char, rr_rc, rr_yoff, 3'(rr_t - 4'd4), rr_c0[7], rr_c0[6]);
-					// hand the cell to the writer: full colour pixel bytes arrive
-					// t6..t13, a one-byte glyph is in at t6
-					if (rr_t == 4'd5 && rr_fcm) begin
-						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b1; w_x <= rr_x; w_trans <= rr_trans;
-						w_bank <= rr_bank; w_col <= {4'h0, vram_q[3:0]};
-						rr_x <= rr_x + 11'd8;
+					if (rr_t == 5'd5) rr_c1 <= vram_q;
+					if (rr_fcm && rr_t <= 5'd11)
+						rr_vaddr <= rr_fcm_addr(rr_char, rr_rc, rr_yoff, 3'(rr_t - 5'd4), rr_c0[7], rr_c0[6]);
+					// hand the cell to the writer: full colour / NCM pixel bytes
+					// arrive t6..t13, a one-byte glyph is in at t6
+					if (rr_t == 5'd5 && rr_fcm) begin
+						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b1; w_ncm <= rr_ncm; w_hflip <= rr_c0[6];
+						w_n <= rr_wid; w_x <= rr_x; w_trans <= rr_trans;
+						w_bank <= rr_bank; w_col <= rr_fcol; w_alt <= 1'b0;
+						rr_x <= rr_x + {6'd0, rr_wid};
 					end
-					if (rr_t == 4'd6 && !rr_fcm) begin
-						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b0; w_x <= rr_x; w_trans <= rr_trans;
-						w_bank <= rr_bank; w_col <= {4'h0, rr_c1[3:0]};
-						w_bits <= (rr_rom ? vrom_q : vram_q) ^ {8{attr && rr_c1[5]}};
-						rr_x <= rr_x + 11'd8;
+					if (rr_t == 5'd6 && !rr_fcm) begin
+						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b0; w_ncm <= 1'b0; w_hflip <= rr_c0[6];
+						w_n <= rr_wid; w_x <= rr_x; w_trans <= rr_trans;
+						w_bank <= rr_bank; w_col <= mcm ? rr_c1 : {3'h0, rr_bold, rr_c1[3:0]}; w_alt <= rr_alt;
+						w_bits <= (rr_rom ? vrom_q : vram_q) ^ {8{rr_rev}};
+						rr_x <= rr_x + {6'd0, rr_wid};
 					end
 				end
 			endcase
 			// rr_len is set at t4, so at t4 itself a short cell (GOTOX, or off the
 			// right edge) has to end without it
-			if (rr_t == 4'd4 ? (vram_q[4] || rr_x >= rr_width) : (rr_t > 4'd4 && rr_t == rr_len - 4'd1)) begin
+			if (rr_t == 5'd4 ? (vram_q[4] || rr_x >= rr_width) : (rr_t > 5'd4 && rr_t == rr_len - 5'd1)) begin
 				rr_t <= '0;
 				if (rr_cell == chrcount - 10'd1) rr_run <= 1'b0;
 				else begin
@@ -722,23 +876,32 @@ always_ff @(posedge clk) begin
 		end
 
 		// writer: full colour cells take one pixel byte per clk from vram_q
-		// (bytes arrive t6..t13); one-byte glyphs write a bit per clk after t6
+		// (bytes arrive t6..t13); NCM cells keep the bytes in w_buf and draw
+		// two pixels from each; one-byte glyphs write a bit per clk after t6
 		if (w_act) begin
 			logic px_on;
-			logic [7:0] px;
-			if (w_fcm) begin
-				px    = rr_zq ? 8'h00 : vram_q;
+			logic [7:0] px, nb;
+			logic [3:0] nib;
+			px = rr_zq ? 8'h00 : vram_q;
+			if (w_i < 4'd8) w_buf[w_i[2:0]] <= px;
+			if (w_ncm) begin
+				nb    = (w_i == 4'd0) ? px : w_buf[w_i[3:1]];
+				nib   = (w_i[0] ^ w_hflip) ? nb[7:4] : nb[3:0];
+				px_on = (nib != 4'h0);
+				lb_wdata <= {w_alt, px_on, (nib == 4'hF) ? w_col : {w_col[7:4], nib}};
+			end
+			else if (w_fcm) begin
 				px_on = (px != 8'h00);
-				lb_wdata <= {px_on, (px == 8'hFF) ? w_col : px};
+				lb_wdata <= {w_alt, px_on, (px == 8'hFF) ? w_col : px};
 			end
 			else begin
-				px_on = w_bits[3'd7 - w_i];
-				lb_wdata <= {px_on, w_col};
+				px_on = w_bits[w_hflip ? w_i[2:0] : 3'd7 - w_i[2:0]];
+				lb_wdata <= {w_alt, px_on, w_col};
 			end
-			lb_waddr <= {w_bank, w_x[9:0] + {7'd0, w_i}};
-			lb_we    <= (px_on || !w_trans) && (w_x + {8'd0, w_i} < 11'd1024);
-			w_i <= w_i + 3'd1;
-			if (w_i == 3'd7) w_act <= 1'b0;
+			lb_waddr <= {w_bank, w_x[9:0] + {6'd0, w_i}};
+			lb_we    <= (px_on || !w_trans) && (w_x + {7'd0, w_i} < 11'd1024);
+			w_i <= w_i + 4'd1;
+			if ({1'b0, w_i} == w_n - 5'd1) w_act <= 1'b0;
 		end
 	end
 end
@@ -750,7 +913,7 @@ logic [9:0] dbg_wcell, dbg_wcell_q;
 always_ff @(posedge clk) begin
 	if (rr_run && ((rr_t == 4'd5 && rr_fcm) || (rr_t == 4'd6 && !rr_fcm))) dbg_wcell_q <= rr_cell;
 	if (lb_we || w_act) dbg_wcell <= dbg_wcell_q;
-	if (ce_pix && line_start && rrb_mode && rr_inrows) dbg_line <= rr_line;
+	if (ce_pix && line_start && rrb_mode && an_on) dbg_line <= rr_line;
 	if (rr_run && rr_t == 4'd4 && dbg_line == y_first)
 		$display("RRB f%0d c%0d t4 x=%0d c0=%02x ch=%04x spr=%0d", frame, rr_cell, rr_x, vram_q, rr_char, spr_bus);
 	if (lb_we && dbg_line == y_first && lb_waddr[9:0] >= 10'd24 && lb_waddr[9:0] < 10'd40)
@@ -765,16 +928,16 @@ end
 
 // display side: read one entry per pixel, clear it after its last use
 logic [10:0] lb_raddr;
-logic  [8:0] lb_q, rr_px;
+logic  [9:0] lb_q, rr_px;
 logic        rr_clr, rr_v;
 wire  [10:0] rr_nx    = hx - gfx_x0;
-wire         rr_valid = rrb_mode && in_rows && (rr_nx < 11'd640);
+wire         rr_valid = rrb_mode && cl_on && (rr_nx < 11'd640);
 wire  [10:0] lb_baddr = ce_pix ? {vc[0], h640 ? rr_nx[9:0] : {1'b0, rr_nx[9:1]}} : lb_raddr;
 
-dpram #(11, 9) linebuf (
+dpram #(11, 10) linebuf (
 	.clk(clk),
 	.a_addr(lb_waddr), .a_din(lb_wdata), .a_we(lb_we), .a_q(),
-	.b_addr(lb_baddr), .b_din(9'd0), .b_we(!ce_pix && rr_clr), .b_q(lb_q)
+	.b_addr(lb_baddr), .b_din(10'd0), .b_we(!ce_pix && rr_clr), .b_q(lb_q)
 );
 
 always_ff @(posedge clk) begin
@@ -786,7 +949,7 @@ always_ff @(posedge clk) begin
 	else begin
 		// the entry read on the ce_pix clk is out now
 		rr_clr <= 1'b0;
-		rr_px  <= rr_v ? lb_q : 9'h000;
+		rr_px  <= rr_v ? lb_q : 10'h000;
 	end
 end
 
@@ -795,6 +958,7 @@ logic  [7:0] sh_gfx, sh_scr, sh_col;
 logic  [7:0] sh_bp [8];
 logic        sh_on;           // inside the fetched area
 logic        sh_fcm;          // the cell is a full-colour character
+logic        sh_alt;          // the cell uses the alternate palette bank
 logic  [4:0] d_cnt;
 logic  [7:0] d_col;
 logic        d_run;
@@ -804,18 +968,23 @@ logic  [1:0] mc_bits;
 wire blink_on = frame[4];
 
 // attribute processing happens when the cell is loaded
+// BOLD adds 16 to the colour; BOLD with REVERSE (or BOLD alone with
+// BOLDISALT) selects the alternate palette bank instead of reversing
 logic [7:0] ld_gfx, ld_fg;
+logic       ld_alt;
 always_comb begin
 	ld_gfx = f_gfx;
 	ld_fg  = {4'h0, f_col_byte[3:0]};
+	ld_alt = 1'b0;
 	if (attr && !bmm && !mcm && !ecm) begin
 		if (f_col_byte[4] && blink_on) begin
 			if (f_col_byte[7:5] == 3'd0) ld_gfx = 8'h00;     // plain blink
 		end
 		else begin
 			if (f_col_byte[7] && text_rc == 3'd7) ld_gfx = 8'hFF;   // underline
-			if (f_col_byte[5]) ld_gfx = ~ld_gfx;                    // reverse
-			if (f_col_byte[6]) ld_fg[4] = 1'b1;                     // bold / alternate palette
+			if (f_col_byte[5] && (!f_col_byte[6] || boldalt)) ld_gfx = ~ld_gfx;   // reverse
+			if (f_col_byte[6] && !boldalt) ld_fg[4] = 1'b1;         // bold
+			ld_alt = f_col_byte[6] && (f_col_byte[5] || boldalt);
 		end
 	end
 end
@@ -897,7 +1066,7 @@ always_ff @(posedge clk) begin
 	else if (ce_pix || h1280) begin
 		logic load;
 		load = 1'b0;
-		if (ce_pix && hx == gfx_x0 && in_rows) begin
+		if (ce_pix && hx == gfx_x0 && t_rows) begin
 			d_run <= 1'b1; d_col <= '0; d_cnt <= '0; load = 1'b1;
 		end
 		else if (d_run) begin
@@ -915,6 +1084,7 @@ always_ff @(posedge clk) begin
 			sh_col <= (bmm || mcm || ecm) ? f_col_byte : ld_fg;
 			for (int i = 0; i < 8; i++) sh_bp[i] <= f_bp[i];
 			sh_fcm <= f_fcm && chr16;
+			sh_alt <= ld_alt;
 			sh_on  <= 1'b1;
 			mc_phase <= 1'b0;
 		end
@@ -1098,11 +1268,15 @@ assign vaddr = spr_bus ? spr_vaddr : (rrb_mode && rr_run) ? rr_vaddr : vaddr_gfx
 logic bord_q;
 always_ff @(posedge clk) if (ce_pix) bord_q <= vborder || hborder;
 
+// palette banks: BTPALSEL for the border and graphics, ABTPALSEL for cells
+// with the alternate palette, SPRPALSEL for sprites
+wire gfx_alt = rrb_mode ? rr_px[9] : (sh_on && !bpm && sh_alt);
 logic [7:0] idx_c;
+logic [1:0] bank_c;
 always_comb begin
-	if (bord_q) idx_c = col_border;
-	else if (spr_any && (spr_front || !gfx_fg)) idx_c = spr_idx;
-	else idx_c = gfx_idx;
+	if (bord_q) begin idx_c = col_border; bank_c = palsel[5:4]; end
+	else if (spr_any && (spr_front || !gfx_fg)) begin idx_c = spr_idx; bank_c = palsel[3:2]; end
+	else begin idx_c = gfx_idx; bank_c = gfx_alt ? palsel[1:0] : palsel[5:4]; end
 end
 
 logic hbl_q, vbl_q, hs_q, vs_q;
@@ -1115,6 +1289,7 @@ always_ff @(posedge clk) pix_idx_q <= pix_idx;
 always_ff @(posedge clk) begin
 	if (pix_ce) begin
 		pix_idx <= idx_c;
+		pix_bank <= bank_c;
 		hbl_q <= hbl_i; vbl_q <= vbl_i; hs_q <= hs_i; vs_q <= vs_i;
 		// the palette RAM outputs (pr_q..) now hold the entry for pix_idx_q
 		if (pix_idx_q[7:4] == 4'd0 && !palram) {r, g, b} <= rom_pal(pix_idx_q[3:0]);

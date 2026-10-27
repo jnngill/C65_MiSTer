@@ -94,12 +94,15 @@ both settings (C65 software does not use it).
 | Character set RAM at `$FF7E000` | done |
 | Multiplier / divider at `$D768-$D77F` | done |
 | VIC-IV: 16-bit sprite pointers (`$D06C-$D06E`), bitplane bank (`$D07C`) | done |
-| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done. 32K of colour RAM (`$FF80000-$FF87FFF`) as on the MEGA65 (the C65 has 2K), so 80 column and larger full-colour screens work (confirmed on hardware from the CPU / DMA side, the video side in simulation). S-BASIC's own `FCM ON` is always 40x25. Per-character flips untested; alpha and nibble-colour (NCM) characters missing |
+| VIC-IV full-colour character mode: 16-bit characters, `$D054` CHR16 / FCLRLO / FCLRHI, screen pointer `$D060-$D063`, row step `$D058/59`, colour offset `$D064/65` (S-BASIC `FCM` commands) | done. 32K of colour RAM (`$FF80000-$FF87FFF`) as on the MEGA65 (the C65 has 2K), so 80 column and larger full-colour screens work (confirmed on hardware from the CPU / DMA side, the video side in simulation). S-BASIC's own `FCM ON` is always 40x25. Alpha characters missing |
 | VIC-IV raster rewrite buffer: each 16-bit text line is drawn into a line buffer, CHRCOUNT cells per row (`$D05E`, `$D063`), GOTOX cells (colour byte 0 bit 4) with transparency and the vertical glyph offset | done, confirmed on hardware (Space Commander). GOTOX row mask, pixel trimming and alpha are ignored |
 | VIC-IV hot registers (`$D05D` bit 7) and the character set pointer (`$D068-$D06A`) | done |
 | V400 text: 80x50 and 40x50 screens (`$D031` bit 3 in text modes) | done, confirmed on hardware with the MEGA65 Open ROMs. As on the VIC-IV, the text rows follow V400 only when it is set with hot registers on (`$D05D` bit 7); Space Commander sets V400 with them off and keeps 25 rows. S-BASIC 65 itself has no 50-line mode |
 | VIC-IV sprites: 16-colour (`$D06B`) with 16 palette entries per sprite, 64 pixels wide (`$D057`), programmable height (`$D055/56`) (S-BASIC `FCSPRITE` commands) | done; wide and tall sprites untested |
-| Other VIC-IV registers (borders, scaling, text position, palette banks, sprite alpha / tiling) | stored and read back, no effect on the picture |
+| VIC-IV display geometry: border positions (`$D048-$D04B`, side border width `$D05C/5D`), text / bitmap position (`$D04C-$D04F`), text rows (`$D07B` DISPROWS), glyph row height (`$D05B` CHRYSCL), every-other-row rendering (`$D051` DBLRR), characters per row (`$D05E`) also in 8-bit text modes | done, in the MEGA65's physical pixels (800 across, two rows per raster line); the hot registers set them from the VIC-II / VIC-III ones as the MEGA65 does. Bitplanes keep the C65's fixed window. Tested in simulation; Space Commander, Little Mega People, Pascal65 and BASIC 65 look unchanged on hardware |
+| VIC-IV palette banks (`$D070`: CPU-mapped, text / bitmap, sprite and alternate banks) and `$D053` BOLDISALT; BOLD + REVERSE selects the alternate palette as on the MEGA65 | done, tested in simulation |
+| VIC-IV 16-bit text cells: nibble-colour (NCM) glyphs (colour byte 0 bit 3: 16 pixels of 4 bits), glyph width trimming (screen byte 1 bits 7-5), horizontal / vertical flips (colour byte 0 bits 6 / 7), the full 8-bit foreground colour from colour byte 1 when ATTR is off | done, tested in simulation |
+| Other VIC-IV registers (horizontal scaling `$D05A`, sprite alpha / tiling / H640, alpha characters) | stored and read back, no effect on the picture |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
 | Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
 | Hypervisor mode (`$D640-$D67F` traps and register save area, 16K hypervisor RAM at `$8000-$BFFF`) running the core's own hypervisor DOS (`rtl/hyppo`, see *MEGA65 SD card* below) | done. Only the DOS trap (`$D640`) is implemented; the others fail with "not implemented" |
@@ -147,7 +150,6 @@ Verified with S-BASIC 65 V250507:
 
 Known not to work under S-BASIC 65:
 
-- `MOUNT` (needs the MEGA65 hypervisor's SD card access); use the OSD.
 - Relative files (`DOPEN` with `L`, `RECORD`) do not work: records are not
   stored, `DCLOSE` can report `71,BAM CORRUPTED`, and the directory entry
   can get a nonsense block count. Traced in simulation, this is a bug in
