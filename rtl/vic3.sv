@@ -4,8 +4,9 @@
 //   * VIC-II text / bitmap modes, 40 and 80 columns, C65 character attributes
 //   * bitplane modes (up to 8 planes, 320 or 640 wide)
 //   * 8 sprites with collisions
-//   * four banks of 256 palette entries (4 bits per gun), raster interrupt
+//   * four banks of 256 palette entries (8 bits per gun, MEGA65 nibble order), raster interrupt
 //   * VIC-IV border / text window geometry, 16-bit text and the raster rewrite buffer
+//   * VIC-IV sprite extensions, alpha compositing, horizontal text scaling, physical raster
 //
 // clk is the system clock (32x the 1 MHz phase clock); one 640-mode pixel is
 // two clk periods (ce_pix), one 320-mode pixel is four.
@@ -39,7 +40,7 @@ module vic3 (
 	input  logic  [7:0] vram_q,
 	input  logic  [7:0] vrom_q,
 
-	output logic  [3:0] r, g, b,
+	output logic  [7:0] r, g, b,
 	output logic        pix_ce,        // r, g, b and the syncs were updated on this clk
 	output logic        hsync, vsync, hblank, vblank,
 	output logic        field,         // 400-line (interlaced) modes: 0 = first field, 1 = second
@@ -55,7 +56,8 @@ logic [7:0] spr_mc0, spr_mc1;
 logic [7:0] ss_coll, sd_coll;
 logic [2:0] yscroll, xscroll;
 logic       rsel, den, bmm, ecm, csel, mcm, res;
-logic [8:0] rcmp;
+logic [10:0] rcmp;          // raster compare: VIC-II line, or physical raster ($D079/7A)
+logic        rsrc;          // $D07A.7 FNRSTCMP: 1 = rcmp is a VIC-II line, 0 = a physical raster
 logic [3:0] vm, cb;
 logic [3:0] irq_flag, irq_en;
 logic [7:0] col_border, col_bg0, col_bg1, col_bg2, col_bg3;
@@ -90,7 +92,24 @@ logic  [7:0] sprtilen;       // $D04D.7-4 / $D04F.7-4 (stored only)
 logic  [1:0] d051_hi;        // $D051.7 NORRDEL (stored only), $D051.6 DBLRR
 logic        boldalt;        // $D053.4 BOLDISALT: BOLD alone selects the alternate palette
 logic  [7:0] palsel;         // $D070: MAPEDPAL, BTPALSEL, SPRPALSEL, ABTPALSEL palette banks
+logic  [1:0] d053_hi;        // $D053.6-5 SHDEMU / UPSCALE (stored only)
+logic  [7:0] sprxmsb2;       // $D05F: sprite X bit 9 (H640 sprites)
+logic  [6:0] d06f;           // $D06F.6-0 VGA60 / first raster (stored only; bit 7 reads the PAL / NTSC switch)
+logic  [7:0] bp16ens;        // $D071 (stored only)
+logic  [7:0] spryadj;        // $D072 (stored only)
+logic  [7:0] d073;           // $D073 ALPHADELAY / RASTERHEIGHT (stored only)
+logic  [7:0] spralphen;      // $D074: sprites blended with SPRALPHAVAL
+logic  [7:0] spralpha;       // $D075: sprite alpha value
+logic  [7:0] sprv400;        // $D076: sprite Y in physical rows
+logic  [7:0] sprymsb;        // $D077 / $D078: sprite Y bits 8 and 9 (V400 sprites)
+logic  [7:0] sprymsb2;
+logic  [3:0] d07a_x;         // $D07A.6-3 (stored only)
+logic  [7:0] sprfirstx;      // $D067 (stored only)
+logic [13:0] rxcmp;          // $D050/51: X compare (stored only)
 logic        hot_reload;     // a VIC-II/III register changed: recompute the pointers above
+logic [13:0] phx;            // physical X of the current pixel (see "display window")
+logic  [9:0] ph_ras;         // physical raster (see "timing")
+logic  [9:0] ph_ras_q;
 logic  [1:0] vic_bank_d;
 
 wire h640  = ctrl_b[7];
@@ -123,7 +142,7 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		spr_en <= '0; spr_xexp <= '0; spr_yexp <= '0; spr_mc <= '0; spr_pri <= '0;
 		yscroll <= 3'd3; xscroll <= '0; rsel <= 1'b1; den <= 1'b0; bmm <= '0; ecm <= '0;
-		csel <= 1'b1; mcm <= '0; res <= '0; rcmp <= '0; vm <= 4'd1; cb <= 4'd2;
+		csel <= 1'b1; mcm <= '0; res <= '0; rcmp <= '0; rsrc <= 1'b1; vm <= 4'd1; cb <= 4'd2;
 		irq_flag <= '0; irq_en <= '0;
 		col_border <= 8'd14; col_bg0 <= 8'd6; col_bg1 <= 8'd1; col_bg2 <= 8'd2; col_bg3 <= 8'd3;
 		spr_mc0 <= 8'd4; spr_mc1 <= 8'd0;
@@ -138,6 +157,9 @@ always_ff @(posedge clk) begin
 		dispregs[0] <= 8'd40; dispregs[1] <= 8'd24; dispregs[2] <= 8'd1; dispregs[3] <= 8'd120;
 		tbdrpos <= 12'd104; bbdrpos <= 12'd504; textxpos <= 12'd80; textypos <= 12'd104;
 		sprbpmen <= '0; sprtilen <= '0; d051_hi <= '0; boldalt <= 1'b0; palsel <= 8'hFF;
+		d053_hi <= '0; sprxmsb2 <= '0; d06f <= '0; bp16ens <= '0; spryadj <= '0; d073 <= 8'h11;
+		spralphen <= '0; spralpha <= 8'h80; sprv400 <= '0; sprymsb <= '0; sprymsb2 <= '0;
+		d07a_x <= '0; sprfirstx <= 8'd31; rxcmp <= '0;
 		for (int i = 0; i < 8; i++) begin
 			spr_x[i] <= '0; spr_y[i] <= '0; spr_col[i] <= '0; bp_addr[i] <= '0;
 		end
@@ -191,9 +213,9 @@ always_ff @(posedge clk) begin
 					else             spr_x[reg_addr[3:1]][7:0] <= reg_din;
 				end
 				7'h10: for (int i = 0; i < 8; i++) spr_x[i][8] <= reg_din[i];
-				7'h11: begin rcmp[8] <= reg_din[7]; ecm <= reg_din[6]; bmm <= reg_din[5];
+				7'h11: begin rcmp[10:8] <= {2'b00, reg_din[7]}; rsrc <= 1'b1; ecm <= reg_din[6]; bmm <= reg_din[5];
 				             den <= reg_din[4]; rsel <= reg_din[3]; yscroll <= reg_din[2:0]; end
-				7'h12: rcmp[7:0] <= reg_din;
+				7'h12: begin rcmp[7:0] <= reg_din; rsrc <= 1'b1; end
 				7'h15: spr_en <= reg_din;
 				7'h16: begin res <= reg_din[5]; mcm <= reg_din[4]; csel <= reg_din[3]; xscroll <= reg_din[2:0]; end
 				7'h17: spr_yexp <= reg_din;
@@ -264,8 +286,22 @@ always_ff @(posedge clk) begin
 					7'h4D: begin textxpos[11:8] <= reg_din[3:0]; sprtilen[3:0] <= reg_din[7:4]; end
 					7'h4E: textypos[7:0] <= reg_din;
 					7'h4F: begin textypos[11:8] <= reg_din[3:0]; sprtilen[7:4] <= reg_din[7:4]; end
-					7'h51: d051_hi <= reg_din[7:6];
-					7'h53: boldalt <= reg_din[4];
+					7'h51: begin d051_hi <= reg_din[7:6]; rxcmp[13:8] <= reg_din[5:0]; end
+					7'h53: begin boldalt <= reg_din[4]; d053_hi <= reg_din[6:5]; end
+					7'h50: rxcmp[7:0] <= reg_din;
+					7'h5F: sprxmsb2 <= reg_din;
+					7'h67: sprfirstx <= reg_din;
+					7'h6F: d06f <= reg_din[6:0];
+					7'h71: bp16ens <= reg_din;
+					7'h72: spryadj <= reg_din;
+					7'h73: d073 <= reg_din;
+					7'h74: spralphen <= reg_din;
+					7'h75: spralpha <= reg_din;
+					7'h76: sprv400 <= reg_din;
+					7'h77: sprymsb <= reg_din;
+					7'h78: sprymsb2 <= reg_din;
+					7'h79: rcmp[7:0] <= reg_din;
+					7'h7A: begin rcmp[10:8] <= reg_din[2:0]; d07a_x <= reg_din[6:3]; rsrc <= reg_din[7]; end
 					7'h70: palsel  <= reg_din;
 					default: ;
 				endcase
@@ -357,8 +393,23 @@ always_comb begin
 			7'h4D: reg_dout = {sprtilen[3:0], textxpos[11:8]};
 			7'h4E: reg_dout = textypos[7:0];
 			7'h4F: reg_dout = {sprtilen[7:4], textypos[11:8]};
-			7'h51: reg_dout = {d051_hi, 6'd0};
-			7'h53: reg_dout = {3'd0, boldalt, 4'd0};
+			7'h50: reg_dout = phx[7:0];
+			7'h51: reg_dout = {d051_hi, phx[13:8]};
+			7'h52: reg_dout = ph_ras[7:0];
+			7'h53: reg_dout = {rsrc, d053_hi, boldalt, 2'd0, ph_ras[9:8]};
+			7'h5F: reg_dout = sprxmsb2;
+			7'h67: reg_dout = sprfirstx;
+			7'h6F: reg_dout = {ntsc, d06f};
+			7'h71: reg_dout = bp16ens;
+			7'h72: reg_dout = spryadj;
+			7'h73: reg_dout = d073;
+			7'h74: reg_dout = spralphen;
+			7'h75: reg_dout = spralpha;
+			7'h76: reg_dout = sprv400;
+			7'h77: reg_dout = sprymsb;
+			7'h78: reg_dout = sprymsb2;
+			7'h79: reg_dout = rcmp[7:0];
+			7'h7A: reg_dout = {rsrc, d07a_x, rcmp[10:8]};
 			7'h70: reg_dout = palsel;
 			default: ;
 		endcase
@@ -372,39 +423,44 @@ assign raster = vc;
 // four banks of 256 entries as on the MEGA65 ($D070); the CPU sees the MAPEDPAL
 // bank at $D100-$D3FF.  All four selections start at bank 3, so C65 software
 // sees a single palette.
-logic [4:0] pal_r [1024];
-logic [3:0] pal_g [1024];
-logic [3:0] pal_b [1024];
+// Entries hold the byte as written.  The VIC-III uses the low nibble (and red
+// bit 4); the MEGA65 puts the colour's low four bits in the high nibble, so a
+// gun is {v[3:0], v[7:4]}.  A plain C65 shows {v[3:0], v[3:0]}.
+logic [7:0] pal_r [1024];
+logic [7:0] pal_g [1024];
+logic [7:0] pal_b [1024];
 logic [7:0] pix_idx;        // palette index of the pixel being produced
 logic [1:0] pix_bank;       // and its palette bank
-logic [4:0] pr_q;
-logic [3:0] pg_q, pb_q;
-logic [4:0] cr_q;
-logic [3:0] cg_q, cb_q;
+logic [1:0] pix_abank;      // palette bank of its blend colour
+logic [7:0] pr_q, pg_q, pb_q;
+logic [7:0] cr_q, cg_q, cb_q;
 wire  [9:0] pal_caddr = {palsel[7:6], pal_addr[7:0]};
+// pixel read port: the pixel's entry, and on the ce_pix clks the blend colour
+// (that read is a repeat of the pixel's; see "output mux")
+wire  [9:0] pal_paddr = (ce_pix && !h1280) ? {pix_abank, col_bg0} : {pix_bank, pix_idx};
 
 always_ff @(posedge clk) begin
 	if (pal_we) begin
 		case (pal_addr[9:8])
-			2'd1: pal_r[pal_caddr] <= reg_din[4:0];
-			2'd2: pal_g[pal_caddr] <= reg_din[3:0];
-			2'd3: pal_b[pal_caddr] <= reg_din[3:0];
+			2'd1: pal_r[pal_caddr] <= reg_din;
+			2'd2: pal_g[pal_caddr] <= reg_din;
+			2'd3: pal_b[pal_caddr] <= reg_din;
 			default: ;
 		endcase
 	end
 	cr_q <= pal_r[pal_caddr];
 	cg_q <= pal_g[pal_caddr];
 	cb_q <= pal_b[pal_caddr];
-	pr_q <= pal_r[{pix_bank, pix_idx}];
-	pg_q <= pal_g[{pix_bank, pix_idx}];
-	pb_q <= pal_b[{pix_bank, pix_idx}];
+	pr_q <= pal_r[pal_paddr];
+	pg_q <= pal_g[pal_paddr];
+	pb_q <= pal_b[pal_paddr];
 end
 
 always_comb begin
 	case (pal_addr[9:8])
-		2'd1:    pal_dout = {3'b000, cr_q};
-		2'd2:    pal_dout = {4'h0, cg_q};
-		default: pal_dout = {4'h0, cb_q};
+		2'd1:    pal_dout = vic4_mode ? cr_q : {3'b000, cr_q[4:0]};
+		2'd2:    pal_dout = vic4_mode ? cg_q : {4'h0, cg_q[3:0]};
+		default: pal_dout = vic4_mode ? cb_q : {4'h0, cb_q[3:0]};
 	endcase
 end
 
@@ -464,9 +520,19 @@ always_ff @(posedge clk) begin
 			else vc <= vc + 9'd1;
 		end
 		// raster compare one pixel after the line counter changed
-		if (hx == {10'(X_BLANK0), 1'b1} && vc == rcmp) irq_raster_set <= 1'b1;
+		if (rsrc && hx == {10'(X_BLANK0), 1'b1} && vc == rcmp[8:0]) irq_raster_set <= 1'b1;
+		// or on a physical raster (two per line): when it starts
+		ph_ras_q <= ph_ras;
+		if (!rsrc && ph_ras != ph_ras_q && {1'b0, ph_ras} == rcmp) irq_raster_set <= 1'b1;
 	end
 end
+
+// physical raster ($D052/53): yphys of the line, plus one in its second half
+// (the line counter changes at X_BLANK0, so that half starts htotal earlier)
+wire        ph_half = (hx >= {10'(X_BLANK0), 1'b0} - {1'b0, htotal}) && (hx < {10'(X_BLANK0), 1'b0});
+wire [12:0] ph_raw  = yphys(vc, ntsc) + {12'd0, ph_half};
+wire [12:0] ph_tot  = {3'd0, vtotal, 1'b0};
+assign      ph_ras  = ph_raw[12] ? 10'(ph_raw + ph_tot) : (ph_raw >= ph_tot) ? 10'(ph_raw - ph_tot) : ph_raw[9:0];
 
 // blanking / sync (registered together with the pixel)
 logic hbl_i, vbl_i, hs_i, vs_i;
@@ -498,7 +564,7 @@ wire [12:0] py_cur  = yphys(vc, ntsc) + {12'd0, field};
 wire [13:0] sdbw    = {sdbdrwd_hi, sdbdrwd};
 wire [13:0] bx_l    = sdbw + (csel ? 14'd0 : 14'd14);
 wire [13:0] bx_r    = 14'd800 - sdbw - (csel ? 14'd0 : 14'd18);
-wire [13:0] phx     = {3'd0, hx} + 14'd32;
+assign      phx     = {3'd0, hx} + 14'd32;
 wire        vborder = !den || py_cur[12] || py_cur[11:0] < tbdrpos || py_cur[11:0] >= bbdrpos;
 wire        hborder = phx < bx_l || phx >= bx_r;
 
@@ -712,7 +778,12 @@ end
 // byte 1 bits 7-5 (and colour byte 0 bit 2 for NCM) trim pixels off the
 // right; colour byte 0 bits 7 / 6 flip the glyph.  A full-colour or NCM cell
 // takes its whole foreground byte from colour byte 1 when ATTR is off (and any
-// cell does in multicolour mode).
+// cell does in multicolour mode).  With ATTR, REVERSE (colour byte 1 bit 5)
+// shows the foreground colour in a full-colour / NCM glyph's empty pixels.
+// Colour byte 0 bit 5 makes the glyph an alpha mask: each pixel value is the
+// opacity of the foreground colour over the screen colour ($D021), blended
+// when the compositor is on ($D054.7).  CHRXSCL ($D05A) scales the line
+// horizontally as it is read out (120ths of a pixel per physical pixel).
 //
 // Line L is drawn while line L-1 is shown, after the sprite fetch, into the
 // half of the buffer picked by L[0]; the display reads it back pixel by pixel
@@ -721,7 +792,8 @@ end
 // right edge).  Cells that do not fit in the line time are not drawn.
 
 wire        rrb_mode  = chr16 && !bmm && !bpm;
-wire [10:0] rr_width  = h640 ? 11'd640 : 11'd320;
+// cells past the visible width are skipped (CHRXSCL above 120 shows more)
+wire [10:0] rr_width  = (dispregs[3] > 8'd120) ? 11'd1024 : h640 ? 11'd640 : 11'd320;
 
 // the line being drawn: two lines ahead of vc at line_start (vc is still the
 // old line), whose text row is an_prow from "display window"
@@ -769,7 +841,7 @@ logic        rr_zq;
 always_ff @(posedge clk) rr_zq <= (rr_vaddr[18:11] == 8'h3F);
 
 // line buffer writer
-logic        w_act, w_fcm, w_ncm, w_hflip, w_rom, w_trans, w_bank, w_alt;
+logic        w_act, w_fcm, w_ncm, w_hflip, w_rom, w_trans, w_bank, w_alt, w_rev, w_amask;
 logic  [3:0] w_i;
 logic  [4:0] w_n;             // pixels to write
 logic  [7:0] w_bits, w_col;
@@ -777,7 +849,7 @@ logic  [7:0] w_buf [8];       // NCM: the glyph bytes, which arrive faster than 
 logic [10:0] w_x;
 logic        lb_we;
 logic [10:0] lb_waddr;
-logic  [9:0] lb_wdata;       // {alternate palette, foreground, colour}
+logic [18:0] lb_wdata;       // {alpha, alternate palette, foreground, opaque, colour}
 
 // VIC-III attributes of a one-byte glyph (colour byte 1): REVERSE, and BOLD,
 // which adds 16 to the colour, or with REVERSE (or alone with BOLDISALT)
@@ -851,12 +923,15 @@ always_ff @(posedge clk) begin
 						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b1; w_ncm <= rr_ncm; w_hflip <= rr_c0[6];
 						w_n <= rr_wid; w_x <= rr_x; w_trans <= rr_trans;
 						w_bank <= rr_bank; w_col <= rr_fcol; w_alt <= 1'b0;
+						w_amask <= rr_c0[5];
+						w_rev   <= attr && vram_q[5] && (!vram_q[6] || boldalt) && !rr_c0[5];
 						rr_x <= rr_x + {6'd0, rr_wid};
 					end
 					if (rr_t == 5'd6 && !rr_fcm) begin
 						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b0; w_ncm <= 1'b0; w_hflip <= rr_c0[6];
 						w_n <= rr_wid; w_x <= rr_x; w_trans <= rr_trans;
 						w_bank <= rr_bank; w_col <= mcm ? rr_c1 : {3'h0, rr_bold, rr_c1[3:0]}; w_alt <= rr_alt;
+						w_amask <= 1'b0; w_rev <= 1'b0;
 						w_bits <= (rr_rom ? vrom_q : vram_q) ^ {8{rr_rev}};
 						rr_x <= rr_x + {6'd0, rr_wid};
 					end
@@ -888,15 +963,19 @@ always_ff @(posedge clk) begin
 				nb    = (w_i == 4'd0) ? px : w_buf[w_i[3:1]];
 				nib   = (w_i[0] ^ w_hflip) ? nb[7:4] : nb[3:0];
 				px_on = (nib != 4'h0);
-				lb_wdata <= {w_alt, px_on, (nib == 4'hF) ? w_col : {w_col[7:4], nib}};
+				if (!px_on)      lb_wdata <= {8'hFF, 1'b0, 1'b0, w_rev, w_col};   // empty: background (or REVERSE)
+				else if (w_amask) lb_wdata <= {nib, {4{nib[0]}}, w_alt, nib[3], 1'b1, w_col};
+				else             lb_wdata <= {8'hFF, w_alt, 1'b1, 1'b1, (nib == 4'hF) ? w_col : {w_col[7:4], nib}};
 			end
 			else if (w_fcm) begin
 				px_on = (px != 8'h00);
-				lb_wdata <= {w_alt, px_on, (px == 8'hFF) ? w_col : px};
+				if (!px_on)      lb_wdata <= {8'hFF, 1'b0, 1'b0, w_rev, w_col};
+				else if (w_amask) lb_wdata <= {px, w_alt, px[7], 1'b1, w_col};
+				else             lb_wdata <= {8'hFF, w_alt, 1'b1, 1'b1, (px == 8'hFF) ? w_col : px};
 			end
 			else begin
 				px_on = w_bits[w_hflip ? w_i[2:0] : 3'd7 - w_i[2:0]];
-				lb_wdata <= {w_alt, px_on, w_col};
+				lb_wdata <= {8'hFF, w_alt, px_on, px_on, w_col};
 			end
 			lb_waddr <= {w_bank, w_x[9:0] + {6'd0, w_i}};
 			lb_we    <= (px_on || !w_trans) && (w_x + {7'd0, w_i} < 11'd1024);
@@ -917,7 +996,7 @@ always_ff @(posedge clk) begin
 	if (rr_run && rr_t == 4'd4 && dbg_line == y_first)
 		$display("RRB f%0d c%0d t4 x=%0d c0=%02x ch=%04x spr=%0d", frame, rr_cell, rr_x, vram_q, rr_char, spr_bus);
 	if (lb_we && dbg_line == y_first && lb_waddr[9:0] >= 10'd24 && lb_waddr[9:0] < 10'd40)
-		$display("RRB f%0d w %0d = %03x (cell %0d)", frame, lb_waddr[9:0], lb_wdata, dbg_wcell);
+		$display("RRB f%0d w %0d = %05x (cell %0d)", frame, lb_waddr[9:0], lb_wdata, dbg_wcell);
 	if (w_act && dbg_line == y_first && w_x < 11'd48 && w_x + 11'd8 > 11'd24)
 		$display("RRB f%0d   wr cell %0d x=%0d i=%0d fcm=%0d col=%02x trans=%0d q=%02x zq=%0d bits=%02x va=%05x",
 		         frame, dbg_wcell, w_x, w_i, w_fcm, w_col, w_trans, vram_q, rr_zq, w_bits, vaddr);
@@ -926,30 +1005,41 @@ always_ff @(posedge clk) begin
 end
 `endif
 
-// display side: read one entry per pixel, clear it after its last use
+// display side: read one entry per pixel, clear it after its last use.  The
+// read position moves on by CHRXSCL / 120 entries per physical pixel (half
+// that in 40 column modes), as on the VIC-IV.
 logic [10:0] lb_raddr;
-logic  [9:0] lb_q, rr_px;
+logic [18:0] lb_q, rr_px;
 logic        rr_clr, rr_v;
-wire  [10:0] rr_nx    = hx - gfx_x0;
-wire         rr_valid = rrb_mode && cl_on && (rr_nx < 11'd640);
-wire  [10:0] lb_baddr = ce_pix ? {vc[0], h640 ? rr_nx[9:0] : {1'b0, rr_nx[9:1]}} : lb_raddr;
+logic [10:0] rd_x, rd_nx;     // entry of this pixel, and of the next one
+logic  [8:0] rd_sub, rd_nsub;
+wire   [7:0] rd_step  = h640 ? dispregs[3] : {1'b0, dispregs[3][7:1]};
+always_comb begin
+	if (rd_sub >= 9'd240)      begin rd_nx = rd_x + 11'd2; rd_nsub = rd_sub - 9'd240 + {1'b0, rd_step}; end
+	else if (rd_sub >= 9'd120) begin rd_nx = rd_x + 11'd1; rd_nsub = rd_sub - 9'd120 + {1'b0, rd_step}; end
+	else                       begin rd_nx = rd_x;         rd_nsub = rd_sub + {1'b0, rd_step}; end
+end
+wire         rr_valid = rrb_mode && cl_on && hx >= gfx_x0 && !rd_x[10];
+wire  [10:0] lb_baddr = ce_pix ? {vc[0], rd_x[9:0]} : lb_raddr;
 
-dpram #(11, 10) linebuf (
+dpram #(11, 19) linebuf (
 	.clk(clk),
 	.a_addr(lb_waddr), .a_din(lb_wdata), .a_we(lb_we), .a_q(),
-	.b_addr(lb_baddr), .b_din(10'd0), .b_we(!ce_pix && rr_clr), .b_q(lb_q)
+	.b_addr(lb_baddr), .b_din(19'd0), .b_we(!ce_pix && rr_clr), .b_q(lb_q)
 );
 
 always_ff @(posedge clk) begin
 	if (ce_pix) begin
 		lb_raddr <= lb_baddr;
-		rr_clr   <= rr_valid && (h640 || rr_nx[0]);
+		rr_clr   <= rr_valid && (rd_nx != rd_x);
 		rr_v     <= rr_valid;
+		if (hx == gfx_x0 - 11'd1) begin rd_x <= '0; rd_sub <= {1'b0, rd_step}; end
+		else begin rd_x <= rd_nx; rd_sub <= rd_nsub; end
 	end
 	else begin
 		// the entry read on the ce_pix clk is out now
 		rr_clr <= 1'b0;
-		rr_px  <= rr_v ? lb_q : 10'h000;
+		rr_px  <= rr_v ? lb_q : 19'h0;
 	end
 end
 
@@ -1002,7 +1092,7 @@ always_comb begin
 	gfx_fg  = 1'b0;
 	if (rrb_mode) begin
 		gfx_idx = rr_px[8] ? rr_px[7:0] : col_bg0;
-		gfx_fg  = rr_px[8];
+		gfx_fg  = rr_px[9];
 	end
 	else if (!sh_on) begin
 		gfx_idx = col_bg0;
@@ -1103,7 +1193,12 @@ end
 // The data for the next raster line is fetched during horizontal blanking,
 // then shifted out against the X counter.  Besides the VIC-II formats this
 // handles the VIC-IV 16-colour sprites (16 pixels of 4 bits, 8 bytes per row),
-// 64 pixel wide sprites and the programmable sprite height.
+// 64 pixel wide sprites, the programmable sprite height, H640 sprites ($D054.4:
+// 640-mode pixels, X = {$D05F, $D010, $D00x} in physical pixels), V400 sprites
+// ($D076: Y = {$D078, $D077, $D00x} in physical rows; each field shows its own
+// rows), horizontal tiling ($D04D/4F.7-4: the row repeats to the end of the
+// line), sprite bitplanes ($D049/4B.7-4: the sprite's pixel bits are XORed into
+// the colour index instead of painting) and alpha ($D074/75, with $D054.7).
 logic  [7:0] spr_active;
 logic  [7:0] spr_row [8];
 logic  [7:0] spr_yflop;
@@ -1118,6 +1213,21 @@ logic  [7:0] spr_ptr;
 
 wire [7:0] spr_wide = (spr16 | sprx64) & {8{vic4_mode}};     // 8 bytes per row
 wire [7:0] spr_c16  = spr16 & {8{vic4_mode}};
+wire       spr_h640 = ctrl_c[4] && vic4_mode;
+wire [7:0] spr_v4   = sprv400 & {8{vic4_mode}};
+wire [7:0] spr_tile = sprtilen & {8{vic4_mode}};
+wire [7:0] spr_bpm  = sprbpmen & {8{vic4_mode}};
+wire       alphen   = ctrl_c[7] && vic4_mode;
+
+// V400 sprites: physical row of the next line in this field, and each sprite's
+// row in it
+wire [9:0] spr_yf = 10'({vc + 9'd1, field} - (ntsc ? 10'd14 : 10'd0));
+logic [9:0] spr_vrow [8];
+always_comb
+	for (int i = 0; i < 8; i++) begin
+		spr_vrow[i] = spr_yf - {sprymsb2[i], sprymsb[i], spr_y[i]};
+		if (spr_yexp[i]) spr_vrow[i] = {1'b0, spr_vrow[i][9:1]};
+	end
 
 // fetch FSM: runs in horizontal blanking, up to 13 steps per sprite
 logic  [2:0] sf_n;
@@ -1141,7 +1251,13 @@ always_ff @(posedge clk) begin
 		if (ce_pix && line_start) begin
 			// evaluate sprites for the new line (vc+1)
 			for (int i = 0; i < 8; i++) begin
-				if (spr_active[i]) begin
+				if (spr_v4[i]) begin
+					// row computed from the physical row
+					spr_active[i] <= spr_en[i] && !(spr_yf < {sprymsb2[i], sprymsb[i], spr_y[i]}) &&
+					                 spr_vrow[i] < ((sprhgten[i] && vic4_mode) ? {2'd0, sprhght} : 10'd21);
+					spr_row[i]    <= spr_vrow[i][7:0];
+				end
+				else if (spr_active[i]) begin
 					if (!spr_yexp[i] || spr_yflop[i]) begin
 						if (spr_row[i] == ((sprhgten[i] && vic4_mode) ? sprhght - 8'd1 : 8'd20)) spr_active[i] <= 1'b0;
 						else spr_row[i] <= spr_row[i] + 8'd1;
@@ -1179,19 +1295,22 @@ always_ff @(posedge clk) begin
 	end
 end
 
-// sprite shifters (320-mode pixels)
+// sprite shifters (320-mode pixels, or 640-mode pixels for H640 sprites)
 wire lores_tick = ce_pix && hx[0];
+wire spr_tick   = spr_h640 ? ce_pix : lores_tick;
 always_ff @(posedge clk) begin
 	if (reset) begin
 		spr_shifting <= '0;
 	end
-	else if (lores_tick) begin
+	else if (spr_tick) begin
 		for (int i = 0; i < 8; i++) begin
+			logic start;
+			start = spr_h640 ? (phx == {4'd0, sprxmsb2[i], spr_x[i]}) : (x[8:0] == spr_x[i] && x < 10'd512);
 			if (x == 10'(X_BLANK0)) begin
 				spr_shifting[i] <= 1'b0;
 				spr_pix[i] <= 2'b00;
 			end
-			else if (spr_active[i] && !spr_shifting[i] && x[8:0] == spr_x[i] && x < 10'd512) begin
+			else if (spr_active[i] && !spr_shifting[i] && start) begin
 				spr_shifting[i] <= 1'b1;
 				spr_sh[i]     <= spr_data[i];
 				spr_xflop[i]  <= 1'b0;
@@ -1199,6 +1318,15 @@ always_ff @(posedge clk) begin
 				spr_left[i]   <= spr_c16[i] ? 6'd15 : (sprx64[i] && vic4_mode) ? 6'd63 : 6'd23;
 				spr_pix[i]    <= spr_mc[i] ? spr_data[i][63:62] : {spr_data[i][63], 1'b0};
 				spr_pix16[i]  <= spr_data[i][63:60];
+			end
+			else if (spr_shifting[i] && spr_left[i] == 6'd0 && spr_tile[i] && (!spr_xexp[i] || spr_xflop[i])) begin
+				// tiling: start the row again
+				spr_sh[i]     <= spr_data[i];
+				spr_mcflop[i] <= 1'b0;
+				spr_left[i]   <= spr_c16[i] ? 6'd15 : (sprx64[i] && vic4_mode) ? 6'd63 : 6'd23;
+				spr_pix[i]    <= spr_mc[i] ? spr_data[i][63:62] : {spr_data[i][63], 1'b0};
+				spr_pix16[i]  <= spr_data[i][63:60];
+				spr_xflop[i]  <= ~spr_xflop[i];
 			end
 			else if (spr_shifting[i]) begin
 				if (!spr_xexp[i] || spr_xflop[i]) begin
@@ -1226,17 +1354,30 @@ end
 logic       spr_any, spr_front;
 logic [7:0] spr_idx;
 logic [7:0] spr_hit;
+logic [2:0] spr_num;          // the sprite whose pixel is shown
+logic [7:0] spr_bpx;          // sprite bitplane bits XORed into the colour index
 always_comb begin
-	spr_any = 1'b0; spr_front = 1'b0; spr_idx = 8'd0;
+	spr_any = 1'b0; spr_front = 1'b0; spr_idx = 8'd0; spr_num = 3'd0; spr_bpx = 8'd0;
 	// a 16-colour pixel is transparent when it equals the sprite's colour register
 	for (int i = 0; i < 8; i++)
 		spr_hit[i] = spr_shifting[i] && (spr_c16[i] ? (spr_pix16[i] != spr_col[i][3:0]) : (spr_pix[i] != 2'b00));
+	// bitplane sprites (not 16-colour ones) flip index bit i, or bits 2(i%4)
+	// and 2(i%4)+1 for multicolour sprites
+	for (int i = 0; i < 8; i++)
+		if (spr_shifting[i] && spr_bpm[i] && !spr_c16[i]) begin
+			if (spr_mc[i]) begin
+				spr_bpx[(i % 4) * 2]     = spr_bpx[(i % 4) * 2]     ^ spr_pix[i][0];
+				spr_bpx[(i % 4) * 2 + 1] = spr_bpx[(i % 4) * 2 + 1] ^ spr_pix[i][1];
+			end
+			else spr_bpx[i] = spr_bpx[i] ^ spr_pix[i][1];
+		end
 	for (int i = 7; i >= 0; i--) begin
-		if (spr_hit[i]) begin
+		if (spr_hit[i] && !(spr_bpm[i] && !spr_c16[i])) begin
 			spr_any   = 1'b1;
 			spr_front = ~spr_pri[i];
+			spr_num   = 3'(i);
 			// each 16-colour sprite has its own block of 16 palette entries
-			if (spr_c16[i]) spr_idx = {1'b0, 3'(i), spr_pix16[i]};
+			if (spr_c16[i]) spr_idx = {spr_bpm[i], 3'(i), spr_pix16[i]};
 			else begin
 				case (spr_pix[i])
 					2'b01:   spr_idx = spr_mc0;
@@ -1270,13 +1411,22 @@ always_ff @(posedge clk) if (ce_pix) bord_q <= vborder || hborder;
 
 // palette banks: BTPALSEL for the border and graphics, ABTPALSEL for cells
 // with the alternate palette, SPRPALSEL for sprites
-wire gfx_alt = rrb_mode ? rr_px[9] : (sh_on && !bpm && sh_alt);
-logic [7:0] idx_c;
-logic [1:0] bank_c;
+// with the compositor on ($D054.7), alpha-mask glyphs and alpha sprites are
+// blended with the screen colour ($D021): the alternate bank's entry for
+// characters, the sprite bank's for sprites
+wire gfx_alt = rrb_mode ? rr_px[10] : (sh_on && !bpm && sh_alt);
+wire [7:0] gfx_alpha = (rrb_mode && rr_px[8]) ? rr_px[18:11] : 8'hFF;
+logic [7:0] idx_c, alpha_c;
+logic [1:0] bank_c, abank_c;
 always_comb begin
+	alpha_c = 8'hFF; abank_c = palsel[1:0];
 	if (bord_q) begin idx_c = col_border; bank_c = palsel[5:4]; end
-	else if (spr_any && (spr_front || !gfx_fg)) begin idx_c = spr_idx; bank_c = palsel[3:2]; end
-	else begin idx_c = gfx_idx; bank_c = gfx_alt ? palsel[1:0] : palsel[5:4]; end
+	else if (spr_any && (spr_front || !gfx_fg)) begin
+		idx_c = spr_idx ^ spr_bpx; bank_c = palsel[3:2]; abank_c = palsel[3:2];
+		if (spralphen[spr_num]) alpha_c = spralpha;
+	end
+	else begin idx_c = gfx_idx ^ spr_bpx; bank_c = gfx_alt ? palsel[1:0] : palsel[5:4]; alpha_c = gfx_alpha; end
+	if (!alphen) alpha_c = 8'hFF;
 end
 
 logic hbl_q, vbl_q, hs_q, vs_q;
@@ -1284,16 +1434,58 @@ logic hbl_q, vbl_q, hs_q, vs_q;
 // pixels leave at the 640-pixel rate, or every clk in 1280 mode
 assign pix_ce = ce_pix || h1280;
 logic [7:0] pix_idx_q;      // pix_idx one clk later, lined up with the palette RAM output
-always_ff @(posedge clk) pix_idx_q <= pix_idx;
+logic [7:0] pix_alpha, pix_alpha_q;
+logic [7:0] bg_r, bg_g, bg_b; // the blend colour: screen colour in pix_abank
+always_ff @(posedge clk) begin
+	pix_idx_q <= pix_idx;
+	pix_alpha_q <= pix_alpha;
+	// the palette port reads the blend colour on the ce_pix clk (the pixel's
+	// entry is read on the other one); it is out one clk later
+	if (!ce_pix && !h1280) begin
+		if (col_bg0[7:4] == 4'd0 && !palram) begin
+			logic [11:0] c;
+			c = rom_pal(col_bg0[3:0]);
+			bg_r <= {2{c[11:8]}}; bg_g <= {2{c[7:4]}}; bg_b <= {2{c[3:0]}};
+		end
+		else begin
+			bg_r <= {pr_q[3:0], pr_q[7:4]}; bg_g <= {pg_q[3:0], pg_q[7:4]}; bg_b <= {pb_q[3:0], pb_q[7:4]};
+		end
+	end
+end
+
+function automatic [7:0] blend(input logic [7:0] f, input logic [7:0] bg, input logic [7:0] a);
+	logic [8:0] a1;
+	logic [16:0] m;
+	a1 = {1'b0, a} + {8'd0, a[7]};          // 0..256
+	m  = {8'd0, f} * a1 + {8'd0, bg} * (9'd256 - a1);
+	blend = m[15:8];
+endfunction
 
 always_ff @(posedge clk) begin
 	if (pix_ce) begin
+		logic [7:0] fr, fg, fb;
 		pix_idx <= idx_c;
 		pix_bank <= bank_c;
+		pix_alpha <= alpha_c;
+		pix_abank <= abank_c;
 		hbl_q <= hbl_i; vbl_q <= vbl_i; hs_q <= hs_i; vs_q <= vs_i;
 		// the palette RAM outputs (pr_q..) now hold the entry for pix_idx_q
-		if (pix_idx_q[7:4] == 4'd0 && !palram) {r, g, b} <= rom_pal(pix_idx_q[3:0]);
-		else begin r <= pr_q[3:0]; g <= pg_q; b <= pb_q; end
+		if (pix_idx_q[7:4] == 4'd0 && !palram) begin
+			logic [11:0] c;
+			c = rom_pal(pix_idx_q[3:0]);
+			fr = {2{c[11:8]}}; fg = {2{c[7:4]}}; fb = {2{c[3:0]}};
+		end
+		else begin
+			fr = {pr_q[3:0], vic4_mode ? pr_q[7:4] : pr_q[3:0]};
+			fg = {pg_q[3:0], vic4_mode ? pg_q[7:4] : pg_q[3:0]};
+			fb = {pb_q[3:0], vic4_mode ? pb_q[7:4] : pb_q[3:0]};
+		end
+		if (pix_alpha_q == 8'hFF) begin r <= fr; g <= fg; b <= fb; end
+		else begin
+			r <= blend(fr, bg_r, pix_alpha_q);
+			g <= blend(fg, bg_g, pix_alpha_q);
+			b <= blend(fb, bg_b, pix_alpha_q);
+		end
 		hblank <= hbl_q; vblank <= vbl_q; hsync <= hs_q; vsync <= vs_q;
 	end
 end

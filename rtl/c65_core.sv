@@ -52,7 +52,7 @@ module c65_core (
 
 	// video
 	output logic        ce_pix,
-	output logic  [3:0] r, g, b,
+	output logic  [7:0] r, g, b,
 	output logic        hsync, vsync, hblank, vblank,
 	output logic        field,            // interlaced modes: which field this frame carries
 

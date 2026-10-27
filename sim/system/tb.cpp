@@ -71,7 +71,7 @@ static void video_tick() {
 	if (!hbl && !vbl) {
 		if (cap_x < MAXW && cap_y < MAXH) {
 			unsigned char *p = &fb[(cap_y * MAXW + cap_x) * 3];
-			p[0] = top->r * 17; p[1] = top->g * 17; p[2] = top->b * 17;
+			p[0] = top->r; p[1] = top->g; p[2] = top->b;
 			idxfb[cap_y * MAXW + cap_x] = top->rootp->c65_core__DOT__vic__DOT__pix_idx;
 		}
 		cap_x++;
@@ -399,8 +399,9 @@ static void dump_screen(FILE *f) {
 	bool h640 = ctrl_b & 0x80;
 	int cols = h640 ? 80 : 40;
 	int base = (bank << 14) | (h640 ? ((vm & 0xE) << 10) : (vm << 10));
-	fprintf(f, "--- screen @%04X %d cols (D031=%02X D030=%02X vic3=%d) frame %ld\n", base, cols, ctrl_b,
-		(int)r->c65_core__DOT__ctrl_a, (int)r->c65_core__DOT__vic3_mode, frame_no);
+	fprintf(f, "--- screen @%04X %d cols (D031=%02X D030=%02X vic3=%d D05A=%02X D054=%02X) frame %ld\n", base, cols, ctrl_b,
+		(int)r->c65_core__DOT__ctrl_a, (int)r->c65_core__DOT__vic3_mode,
+		(int)r->c65_core__DOT__vic__DOT__dispregs[3], (int)r->c65_core__DOT__vic__DOT__ctrl_c, frame_no);
 	for (int y = 0; y < 25; y++) {
 		std::string line;
 		for (int x = 0; x < cols; x++) line += sc2ascii(mem[(base + y * cols + x) & 0x1FFFF]);

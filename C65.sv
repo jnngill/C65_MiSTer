@@ -362,7 +362,7 @@ end
 
 // ------------------------------------------------------------------ core
 wire        ce_pix;
-wire  [3:0] r, g, b;
+wire  [7:0] r, g, b;
 wire        hsync, vsync, hblank, vblank, field;
 
 // 400 line pictures are sent as two alternating fields; the scaler weaves them
@@ -530,7 +530,7 @@ assign AUDIO_R = audio_r[17:2];
 assign CLK_VIDEO = clk64;
 
 reg        ce_pix64;
-reg  [3:0] r64, g64, b64;
+reg  [7:0] r64, g64, b64;
 reg        hs64, vs64, hbl64, vbl64;
 
 // ce_pix marks each new pixel (every second clk_sys, or every clk_sys in the
@@ -552,7 +552,7 @@ wire [1:0] scale = status[7:6];
 wire       scandoubler = (scale != 0) || forced_scandoubler;
 assign     VGA_SL = scale;
 
-video_mixer #(.LINE_LENGTH(1056), .HALF_DEPTH(1), .GAMMA(1)) video_mixer
+video_mixer #(.LINE_LENGTH(1056), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
 	.CE_PIXEL(CE_PIXEL),

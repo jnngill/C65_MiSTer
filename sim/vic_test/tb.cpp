@@ -2,9 +2,10 @@
 //
 // usage: victest.exe <dumpdir> <regs.txt> <frames> <out.ppm> [lb.bin]
 //   regs.txt: lines "<hex reg> <hex value>" written in order (reg $00-$7F;
-//   2F knock values included), after which the VIC runs <frames> frames.
+//   2F knock values included; reg $1xxx writes palette port xxx, i.e.
+//   {gun, index} as at $D100-$D3FF), after which the VIC runs <frames> frames.
 //   out.ppm gets the palette index of every pixel of the last frame (grey),
-//   lb.bin the line buffer contents at the end.
+//   out.ppm.rgb.ppm its colours, lb.bin the line buffer contents at the end.
 #include "Vvic3.h"
 #include "Vvic3___024root.h"
 #include <cstdio>
@@ -61,26 +62,31 @@ int main(int argc, char **argv) {
 	FILE *rf = fopen(argv[2], "r");
 	unsigned r, v;
 	while (rf && fscanf(rf, "%x %x", &r, &v) == 2) {
-		top->reg_addr = r; top->reg_din = v; top->reg_we = 1;
+		if (r >= 0x1000) { top->pal_addr = r & 0x3FF; top->reg_din = v; top->pal_we = 1; }
+		else { top->reg_addr = r; top->reg_din = v; top->reg_we = 1; }
 		top->clk = 0; top->eval(); top->clk = 1; top->eval(); clk++;
-		top->reg_we = 0;
+		top->reg_we = 0; top->pal_we = 0;
 		for (int i = 0; i < 4; i++) tick();
 	}
 	if (rf) fclose(rf);
 
 	int frames = atoi(argv[3]);
 	const int W = 1100, H = 320;
-	std::vector<unsigned char> fb(W * H, 0);
+	std::vector<unsigned char> fb(W * H, 0), rgb(W * H * 3, 0);
 	int x = 0, y = 0, fr = 0;
 	bool phb = false, pvb = false;
 	while (fr < frames) {
 		tick();
 		if (!top->pix_ce) continue;
 		bool hb = top->hblank, vb = top->vblank;
-		if (!hb && !vb && x < W && y < H) fb[y * W + x] = top->rootp->vic3__DOT__pix_idx;
+		if (!hb && !vb && x < W && y < H) {
+			fb[y * W + x] = top->rootp->vic3__DOT__pix_idx;
+			unsigned char *p = &rgb[(y * W + x) * 3];
+			p[0] = top->r; p[1] = top->g; p[2] = top->b;
+		}
 		if (!hb && !vb) x++;
 		if (hb && !phb) { if (!vb) y++; x = 0; }
-		if (vb && !pvb) { fr++; if (fr < frames) { y = 0; std::fill(fb.begin(), fb.end(), 0); } }
+		if (vb && !pvb) { fr++; if (fr < frames) { y = 0; std::fill(fb.begin(), fb.end(), 0); std::fill(rgb.begin(), rgb.end(), 0); } }
 		phb = hb; pvb = vb;
 	}
 	FILE *o = fopen(argv[4], "wb");
@@ -88,10 +94,14 @@ int main(int argc, char **argv) {
 	for (int j = 0; j < 290; j++)
 		for (int i = 0; i < 832; i++) { unsigned char g = fb[j * W + i]; fputc(g, o); fputc(g, o); fputc(g, o); }
 	fclose(o);
+	o = fopen((std::string(argv[4]) + ".rgb.ppm").c_str(), "wb");
+	fprintf(o, "P6\n%d %d\n255\n", 832, 290);
+	for (int j = 0; j < 290; j++) fwrite(&rgb[j * W * 3], 1, 832 * 3, o);
+	fclose(o);
 	if (argc > 5) {
 		FILE *l = fopen(argv[5], "wb");
 		auto &m = top->rootp->vic3__DOT__linebuf__DOT__mem;
-		for (int i = 0; i < 2048; i++) { unsigned short e = m[i]; fputc(e & 255, l); fputc(e >> 8, l); }
+		for (int i = 0; i < 2048; i++) { unsigned e = m[i]; fputc(e & 255, l); fputc((e >> 8) & 255, l); fputc(e >> 16, l); }
 		fclose(l);
 	}
 	printf("done, %llu clk\n", clk);
