@@ -939,8 +939,17 @@ f011 fdc (
 );
 
 // ------------------------------------------------------------------ SIDs
+function automatic [17:0] mix2(input logic [17:0] a, input logic [17:0] b);
+	logic signed [18:0] t;
+	t = $signed({a[17], a}) + $signed({b[17], b});
+	mix2 = (t > 19'sh1FFFF) ? 18'h1FFFF : (t < -19'sh20000) ? 18'h20000 : t[17:0];
+endfunction
 logic [7:0] sid_dout;
 logic [17:0] sid_l, sid_r;
+// SIDs: $D400 (right) and $D420 (left) as on the C65; with the MEGA65
+// extensions also $D440 (left) and $D460 (right), otherwise those mirror
+// the first two
+wire  [1:0] sid_n = m65_ext ? io_addr[6:5] : {1'b0, io_addr[5]};
 
 `ifdef C65_NO_SID
 // simulation stub: only the POT registers ($19 / $1A) answer
@@ -948,15 +957,19 @@ assign sid_dout = (io_addr[4:0] == 5'h19) ? pot_x : (io_addr[4:0] == 5'h1A) ? po
 assign sid_l = '0;
 assign sid_r = '0;
 `else
-sid_top #(.MULTI_FILTERS(1), .DUAL(1)) sid (
+logic [17:0] sid_c2, sid_c3, sid_a, sid_b;
+sid_top #(.MULTI_FILTERS(1), .DUAL(1), .QUAD(1)) sid (
 	.reset(reset), .clk(clk), .ce_1m(phi2_n),
-	.cs({slow_cs && io_sid && io_addr[5], slow_cs && io_sid && !io_addr[5]}),
+	.cs({4{slow_cs && io_sid}} & (4'b0001 << sid_n)),
 	.we(bus_we), .addr(io_addr[4:0]), .data_in(bus_dout), .data_out(sid_dout),
-	.fc_offset_l(13'd0), .pot_x_l(pot_x), .pot_y_l(pot_y), .ext_in_l(18'd0), .audio_l(sid_r),
-	.fc_offset_r(13'd0), .pot_x_r(pot_x), .pot_y_r(pot_y), .ext_in_r(18'd0), .audio_r(sid_l),
-	.filter_en(2'b11), .mode(2'b11), .cfg(4'd0),
+	.fc_offset_l(13'd0), .pot_x_l(pot_x), .pot_y_l(pot_y), .ext_in_l(18'd0), .audio_l(sid_a),
+	.fc_offset_r(13'd0), .pot_x_r(pot_x), .pot_y_r(pot_y), .ext_in_r(18'd0), .audio_r(sid_b),
+	.audio_c2(sid_c2), .audio_c3(sid_c3),
+	.filter_en(4'b1111), .mode(4'b1111), .cfg(8'd0),
 	.ld_clk(clk), .ld_addr(12'd0), .ld_data(16'd0), .ld_wr(1'b0)
 );
+assign sid_r = mix2(sid_a, m65_ext ? sid_c3 : 18'd0);
+assign sid_l = mix2(sid_b, m65_ext ? sid_c2 : 18'd0);
 `endif
 
 // ------------------------------------------------------------------ MEGA65 extras

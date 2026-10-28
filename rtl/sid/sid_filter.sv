@@ -18,6 +18,9 @@
 // ----------------------------------------------------------------------------
 
 module sid_filter
+#(
+	parameter N = 2               // chips sharing the filter, each with its own state
+)
 (
 	input               clk,
 	input         [2:0] state,
@@ -82,14 +85,19 @@ reg signed  [17:0] b;
 wire signed [33:0] m = a * b;
 wire signed [33:0] o = s ? (c - m) : (c + m);
 
-// Filter states for two SID chips, updated as follows:
+// Filter states for N SID chips (at least two slots), rotated as each
+// chip's turn comes: q[0] holds the current chip's state, its new value
+// goes in at q[D-1].  Updated as follows:
 // vlp = vlp - w0*vbp
 // vbp = vbp - w0*vhp
 // vhp = 1/Q*vbp - vlp - vi
 // Widened to 18 bits (+2 fractional bits) to cut low-cutoff LP quant noise.
-reg signed [17:0] vlp, vlp2, vlp_next;
-reg signed [17:0] vbp, vbp2, vbp_next;
-reg signed [17:0] vhp, vhp2, vhp_next;
+localparam D = (N < 2) ? 2 : N;
+reg signed [17:0] vlp_q[D], vbp_q[D], vhp_q[D];
+wire signed [17:0] vlp = vlp_q[0], vlp2 = vlp_q[D-1];
+wire signed [17:0] vbp = vbp_q[0], vbp2 = vbp_q[D-1];
+wire signed [17:0] vhp = vhp_q[0];
+reg signed [17:0] vlp_next, vbp_next, vhp_next;
 reg signed [18:0] dv;
 
 // Filtered-tap mix and its compressed form. tmix_s / center_s are registered
@@ -166,7 +174,8 @@ always @(posedge clk) begin
 			end
 		3:	begin
 				// Result for vlp ready. See calculation of vlp_next above.
-				{ vlp, vlp2 } <= { vlp2, vlp_next };
+				for (int k = 0; k < D - 1; k++) vlp_q[k] <= vlp_q[k+1];
+				vlp_q[D-1] <= vlp_next;
 
 				// vbp = vbp - w0*vhp
 				// We first calculate -w0*vhp
@@ -177,7 +186,8 @@ always @(posedge clk) begin
 			end
 		4:	begin
 				// Result for vbp ready. See calculation of vbp_next above.
-				{ vbp, vbp2 } <= { vbp2, vbp_next };
+				for (int k = 0; k < D - 1; k++) vbp_q[k] <= vbp_q[k+1];
+				vbp_q[D-1] <= vbp_next;
 
 				// vhp = 1/Q*vbp - vlp - vi
 				c <= -(34'(vlp2) + 34'(vi)) << 10;
@@ -187,7 +197,8 @@ always @(posedge clk) begin
 			end
 		5: begin
 				// Result for vbp ready. See calculation of vhp_next above.
-				{ vhp, vhp2 } <= { vhp2, vhp_next };
+				for (int k = 0; k < D - 1; k++) vhp_q[k] <= vhp_q[k+1];
+				vhp_q[D-1] <= vhp_next;
 				// Snapshot the raw tap mix + center; compress() runs on these
 				// next cycle (state 6), out of this SVF MAC cycle.
 				tmix_s   <= tmix;

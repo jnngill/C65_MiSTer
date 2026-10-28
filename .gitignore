@@ -61,3 +61,5 @@ sim/vic_test/victest.exe
 sim/vic_test/victest.pdb
 term/*.o
 term/*.map
+sim/sid_test/build_*/
+sim/sid_test/out_*.txt

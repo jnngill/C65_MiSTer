@@ -2,7 +2,8 @@
 module sid_top 
 #(
 	parameter MULTI_FILTERS = 1, 
-	parameter DUAL = 1
+	parameter DUAL = 1,
+	parameter QUAD = 0            // four chips (MEGA65): chips 2 and 3 come out on audio_c2 / audio_c3
 )
 (
 	input         reset,
@@ -27,6 +28,8 @@ module sid_top
 	input   [7:0] pot_y_r,     // not used if DUAL is 0
 	input  [17:0] ext_in_r,    // not used if DUAL is 0
 	output [17:0] audio_r,
+	output [17:0] audio_c2,      // QUAD only
+	output [17:0] audio_c3,
 
 	input [N-1:0] filter_en,
 	input [N-1:0] mode,
@@ -38,7 +41,7 @@ module sid_top
 	input         ld_wr
 );
 
-localparam N = DUAL ? 2 : 1;
+localparam N = QUAD ? 4 : DUAL ? 2 : 1;
 
 // Internal Signals
 reg  [15:0] Voice_1_Freq[N];
@@ -223,7 +226,9 @@ generate
 endgenerate
 
 wire [15:0] F0;
-wire n = DUAL && state[3];
+// the shared tables and filter take turns: 8 clk per chip (four chips need
+// 32 clk per ce_1m)
+wire [1:0] n = QUAD ? state[4:3] : {1'b0, DUAL && state[3]};
 
 sid_tables #(MULTI_FILTERS) sid_tables
 (
@@ -251,39 +256,30 @@ wire  [7:0] f_p_t_out;
 wire  [7:0] f_ps__out;
 wire  [7:0] f_pst_out;
 reg  [11:0] f_acc_t;
-reg   [3:0] state;
+reg   [4:0] state;            // counts to 15 (31 with QUAD) after each ce_1m, then holds
 
 always @(posedge clk) begin
-	reg [2:0] v;
-	if(~&state) state <= state + 1'd1;
+	reg [3:0] v;
+	if(QUAD ? ~&state : ~&state[3:0]) state <= state + 1'd1;
 	if(ce_1m) state <= 0;
 
-	case(state)
-		1,3,5,7,9,11: begin
-			f_acc_t <= acc_t[state[3:1]];
-			v <= state[3:1];
-		end
-	endcase
+	// one table lookup per voice at the odd states 1 .. 6N-1, result two later
+	if(state[0] && state < 5'(6*N)) begin
+		f_acc_t <= acc_t[state[4:1]];
+		v <= state[4:1];
+	end
 
-	case(state)
-		3,5,7: begin
-			_st_out[v] <= f__st_out;
-			p_t_out[v] <= f_p_t_out;
-			ps__out[v] <= f_ps__out;
-			pst_out[v] <= f_pst_out;
-		end
-		9,11,13: if(DUAL) begin
-			_st_out[v] <= f__st_out;
-			p_t_out[v] <= f_p_t_out;
-			ps__out[v] <= f_ps__out;
-			pst_out[v] <= f_pst_out;
-		end
-	endcase
+	if(state[0] && state >= 5'd3 && state <= 5'(6*N+1)) begin
+		_st_out[v] <= f__st_out;
+		p_t_out[v] <= f_p_t_out;
+		ps__out[v] <= f_ps__out;
+		pst_out[v] <= f_pst_out;
+	end
 end
 
 wire [17:0] faudio;
 
-sid_filter sid_filter
+sid_filter #(.N(N)) sid_filter
 (
 	.clk(clk),
 	.state(state[2:0]),
@@ -295,26 +291,35 @@ sid_filter sid_filter
 	.voice1(voice_1[n]),
 	.voice2(voice_2[n]),
 	.voice3(voice_3[n]),
-	.ext_in(22'(signed'({n ? ext_in_r : ext_in_l, 3'b000}))),
+	.ext_in(22'(signed'({(n != 0) ? ext_in_r : ext_in_l, 3'b000}))),
 
 	.audio(faudio)
 );
 
 always @(posedge clk) begin
-	reg [17:0] audio0;
+	reg [17:0] audio_s[N];
 	// faudio is two states later than upstream (was 6) because sid_filter
-	// pipelines the compressor across filter-states 5-7 to close timing; the
-	// first-pass result lands at state 8 and the DUAL slot at 15 (was 14).
-	if(state == 8)  audio0 <= faudio;
-	if(state == 15) begin
-		audio[n] <= faudio;
-		audio[0] <= audio0;
+	// pipelines the compressor across filter-states 5-7 to close timing: chip
+	// c's result lands at state 8c+8, the last chip's while the counter holds
+	// at 15; with QUAD the counter never holds (32 clk per ce_1m), so chip 3's
+	// result is taken at state 0 of the next cycle.  All outputs change together.
+	for (int c = 0; c < N - 1; c++) if(state == 5'(8*c+8)) audio_s[c] = faudio;
+	if(state == (QUAD ? 5'd0 : 5'(8*N-1))) begin
+		for (int c = 0; c < N - 1; c++) audio[c] <= audio_s[c];
+		audio[N-1] <= faudio;
 	end
 end
 
-assign data_out = cs[0] ? bus_data[0] : bus_data[N-1];
+logic [7:0] data_mux;
+always_comb begin
+	data_mux = bus_data[N-1];
+	for (int c = N - 1; c >= 0; c--) if(cs[c]) data_mux = bus_data[c];
+end
+assign data_out = data_mux;
 
-assign audio_l = audio[0];
-assign audio_r = audio[N-1];
+assign audio_l  = audio[0];
+assign audio_r  = audio[(N > 1) ? 1 : 0];
+assign audio_c2 = audio[(N > 2) ? 2 : 0];
+assign audio_c3 = audio[(N > 3) ? 3 : 0];
 
 endmodule
