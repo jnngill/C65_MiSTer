@@ -23,8 +23,11 @@
  *
  * As in dos.asm, mkfile makes a file of a given size in one contiguous piece
  * (8.3 name, current directory) and writefile overwrites its sectors in turn;
- * files do not grow.  Disk images attach to the F011 when they are D81 sized
- * (819200 bytes) and in one piece; a name without a dot also finds NAME.D81.
+ * files do not grow.  Disk images attach to the F011 when they are in one
+ * piece and D81 (819200 bytes), D64 (174848, or 175531 with error bytes),
+ * D71 (349696 / 351062) or D65 (5570560) sized; the type goes to $D68A bit
+ * 6 / 7 (D64) and $D68B bit 6 / 7 (D65, both for a D71) as on the MEGA65.  A
+ * name without a dot also finds NAME.D81.
  */
 
 #define R(a)    (*(volatile unsigned char *)(a))
@@ -37,6 +40,7 @@
 #define H_STATE R(0xD674)
 #define SDC_CMD R(0xD680)
 #define F_IMG   R(0xD68B)
+#define F_D64   R(0xD68A)
 #define SECBUF  ((unsigned char *)0xDE00)
 
 #define E_INVALID_ADDRESS   0x10
@@ -701,7 +705,7 @@ static void do_rmfile(void)
 static void do_attach(u8 d)
 {
 	u32 c, n;
-	u8 r;
+	u8 r, t;
 	if (namelen == 0) { fail(E_FILE_NOT_FOUND); return; }
 	if (!find_file()) {
 		/* MOUNT "NAME" finds NAME.D81 too */
@@ -715,10 +719,15 @@ static void do_attach(u8 d)
 	}
 	if (mode != MODE_FAT32) { fail(E_NOT_IMPLEMENTED); return; }
 	if (de.attr & 0x10) { fail(E_IS_A_DIRECTORY); return; }
-	if (de.length != D81_SIZE) { fail(E_WRONG_LENGTH); return; }
+	/* type: 0 D81, 1 D64, 2 D65, 3 D71 */
+	if (de.length == D81_SIZE) t = 0;
+	else if (de.length == 174848UL || de.length == 175531UL) t = 1;
+	else if (de.length == 349696UL || de.length == 351062UL) t = 3;
+	else if (de.length == 5570560UL) t = 2;
+	else { fail(E_WRONG_LENGTH); return; }
 	/* the image must be in one piece: the F011 reads it by sector number */
 	c = de.cluster;
-	for (n = ((D81_SIZE / 512) >> spc_shift) - 1; n; n--) {
+	for (n = ((((de.length + 511) >> 9) + (1 << spc_shift) - 1) >> spc_shift) - 1; n; n--) {
 		if (next_cluster(c) != c + 1) { fail(E_FRAGMENTED); return; }
 		c++;
 	}
@@ -732,8 +741,9 @@ static void do_attach(u8 d)
 	r = d ? 0x90 : 0x8C;
 	R(0xD600 + r) = (u8)c; R(0xD601 + r) = (u8)(c >> 8); R(0xD602 + r) = (u8)(c >> 16); R(0xD603 + r) = (u8)(c >> 24);
 	r = (H_STATE & 0x02) ? 0x03 : 0x07;           /* read only SD card: not write enabled */
-	if (d) F_IMG = (F_IMG & 0xC7) | (r << 3);
-	else   F_IMG = (F_IMG & 0xF8) | r;
+	if (d) F_IMG = (F_IMG & 0x47) | (r << 3) | ((t & 2) << 6);
+	else   F_IMG = (F_IMG & 0xB8) | r | ((t & 2) << 5);
+	F_D64 = (F_D64 & (d ? 0x40 : 0x80)) | ((t & 1) << (d ? 7 : 6));
 	ok();
 }
 
@@ -806,16 +816,16 @@ static void dos(u8 fn)
 	case 0x3C: cwd_cluster = root_cluster; ok(); break;                         /* cdrootdir */
 	case 0x40: do_attach(0); break;                                             /* d81attach0 */
 	case 0x46: do_attach(1); break;                                             /* d81attach1 */
-	case 0x42: F_IMG &= 0xC0; ok(); break;                                      /* d81detach */
+	case 0x42: F_IMG = 0; F_D64 = 0; ok(); break;                               /* d81detach */
 	case 0x44:                                                                  /* d81write_en */
 		if ((F_IMG & 0x03) == 0x03 && !(H_STATE & 0x02)) { F_IMG |= 0x04; ok(); }
 		else fail(E_NO_SUCH_DISK);
 		break;
 	case 0x4A:                                                                  /* attach: X bit 7 detach (bit 1 both), bit 0 drive */
 		if (H_X & 0x80) {
-			if (H_X & 0x02) F_IMG &= 0xC0;
-			else if (H_X & 0x01) F_IMG &= 0xC7;
-			else F_IMG &= 0xF8;
+			if (H_X & 0x02) { F_IMG = 0; F_D64 = 0; }
+			else if (H_X & 0x01) { F_IMG &= 0x47; F_D64 &= 0x40; }
+			else { F_IMG &= 0xB8; F_D64 &= 0x80; }
 			ok();
 		}
 		else do_attach(H_X & 0x01);

@@ -482,6 +482,7 @@ m65_hyp hypm (
 logic [7:0]  sdc_dout;
 logic        sdc_sel, sdc_mapped, sdc_present, sdc_ro;
 logic        d0_img, d0_ok, d0_wen, d1_img, d1_ok, d1_wen;
+logic        d0_d64, d0_d65, d1_d64, d1_d65;
 logic [31:0] d0_start, d1_start, sdc_size, sdc_lba, f3_lba;
 logic        sdc_rd, sdc_wr, f3_rd, f3_wr;
 logic        d689_7;            // $D689 bit 7: $DE00 shows the SD (1) or F011 (0) buffer
@@ -491,6 +492,7 @@ m65_sdc sdc (
 	.reg_addr(io_addr[7:0]), .reg_we(io_wr && io_uart && gs_mode && sdc_sel), .reg_din(bus_dout),
 	.reg_dout(sdc_dout), .reg_sel(sdc_sel), .mapped(sdc_mapped),
 	.d0_img(d0_img), .d0_ok(d0_ok), .d0_wen(d0_wen), .d0_start(d0_start),
+	.d0_d64(d0_d64), .d0_d65(d0_d65), .d1_d64(d1_d64), .d1_d65(d1_d65),
 	.d1_img(d1_img), .d1_ok(d1_ok), .d1_wen(d1_wen), .d1_start(d1_start), .osd_mounted(img_mounted),
 	.img_mounted(sd3_mounted), .img_readonly(img_readonly), .img_size(img_size), .img_big(sd3_big),
 	.present(sdc_present), .ro(sdc_ro), .size(sdc_size),
@@ -930,6 +932,7 @@ f011 fdc (
 	.dir_sel(sel_fdcbuf || io_fdb), .dir_addr(sel_fdcbuf ? mem_addr[8:0] : io_addr[8:0]),
 	.dir_we(bus_ce && bus_we && (sel_fdcbuf || io_fdb)), .dir_q(fdcbuf_q),
 	.img0_sd(d0_img), .img0_ok(d0_ok), .img0_wen(d0_wen), .img0_start(d0_start),
+	.img0_d64(d0_d64), .img0_d65(d0_d65), .img1_d64(d1_d64), .img1_d65(d1_d65),
 	.img1_sd(d1_img), .img1_ok(d1_ok), .img1_wen(d1_wen), .img1_start(d1_start),
 	.sd3_lba(f3_lba), .sd3_rd(f3_rd), .sd3_wr(f3_wr), .sd3_ack(sd3_ack && sd3_f011),
 	.img_mounted(img_mounted), .img_readonly(img_readonly), .img_size(img_size),
@@ -974,11 +977,13 @@ assign sid_l = mix2(sid_b, m65_ext ? sid_c2 : 18'd0);
 
 // ------------------------------------------------------------------ MEGA65 extras
 logic [7:0] math_dout, rtc_dout, aud_dout;
+logic       aud_irq_n;
 logic signed [15:0] aud_l, aud_r;
 
 m65_audio audio_dma (
 	.clk(clk), .reset(reset),
 	.reg_addr(io_addr[6:0]), .reg_we(io_wr && io_aud), .reg_din(bus_dout), .reg_dout(aud_dout),
+	.reg_re(io_rd && io_aud), .irq_n(aud_irq_n),
 	.fetch_req(aud_req), .fetch_addr(aud_addr), .fetch_gnt(aud_gnt),
 	.fetch_q((aud_sel == 2'd0) ? ram_q : (aud_sel == 2'd1) ? rom_q : ram2_q),
 	.out_l(aud_l), .out_r(aud_r)
@@ -1064,7 +1069,7 @@ end
 assign dma_reg_we = io_wr && io_dma && (io_addr[7:3] == 5'd0) && ((io_addr[2:0] != 3'd5 && io_addr[2:0] != 3'd7) || gs_mode);
 assign dbg_op     = bus_din;
 
-assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n & ser_irq_n;
+assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n & ser_irq_n & aud_irq_n;
 assign nmi_n = cia2_irq_n & restore_n;
 
 endmodule

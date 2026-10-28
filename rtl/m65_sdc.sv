@@ -37,6 +37,8 @@ module m65_sdc (
 	output logic [31:0] d0_start,
 	output logic        d1_img, d1_ok, d1_wen,
 	output logic [31:0] d1_start,
+	output logic        d0_d64, d0_d65,  // image types: $D68A bit 6 / 7 (D64), $D68B bit 6 / 7 (D65; both: D71)
+	output logic        d1_d64, d1_d65,
 	input  logic  [1:0] osd_mounted,   // a disk mounted on drive 0 / 1 in the OSD
 
 	input  logic        img_mounted,   // slot 3
@@ -55,6 +57,7 @@ module m65_sdc (
 
 logic [31:0] sector;
 logic  [7:0] flags;
+logic  [1:0] d64;              // $D68A bits 7-6
 logic        busy, err, ack_seen;
 
 assign d0_img   = flags[0];
@@ -63,7 +66,11 @@ assign d0_wen   = flags[2];
 assign d1_img   = flags[3];
 assign d1_ok    = flags[4];
 assign d1_wen   = flags[5];
-assign reg_sel  = (reg_addr >= 8'h80 && reg_addr <= 8'h84) || (reg_addr >= 8'h8B && reg_addr <= 8'h93);
+assign d0_d65   = flags[6];
+assign d1_d65   = flags[7];
+assign d0_d64   = d64[0];
+assign d1_d64   = d64[1];
+assign reg_sel  = (reg_addr >= 8'h80 && reg_addr <= 8'h84) || (reg_addr >= 8'h8A && reg_addr <= 8'h93);
 
 always_ff @(posedge clk) begin
 	if (img_mounted) begin
@@ -95,6 +102,7 @@ always_ff @(posedge clk) begin
 			8'h82: sector[15:8]  <= reg_din;
 			8'h83: sector[23:16] <= reg_din;
 			8'h84: sector[31:24] <= reg_din;
+			8'h8A: d64 <= reg_din[7:6];
 			8'h8B: flags <= reg_din;
 			8'h8C: d0_start[7:0]   <= reg_din;
 			8'h8D: d0_start[15:8]  <= reg_din;
@@ -114,9 +122,9 @@ always_ff @(posedge clk) begin
 	end
 
 	// a new card, or a disk chosen in the OSD, replaces the attached images
-	if (img_mounted)    flags[5:0] <= '0;
-	if (osd_mounted[0]) flags[2:0] <= '0;
-	if (osd_mounted[1]) flags[5:3] <= '0;
+	if (img_mounted)    begin flags <= '0; d64 <= '0; end
+	if (osd_mounted[0]) begin flags[2:0] <= '0; flags[6] <= 1'b0; d64[0] <= 1'b0; end
+	if (osd_mounted[1]) begin flags[5:3] <= '0; flags[7] <= 1'b0; d64[1] <= 1'b0; end
 end
 
 always_comb begin
@@ -127,6 +135,7 @@ always_comb begin
 		8'h82: reg_dout = sector[15:8];
 		8'h83: reg_dout = sector[23:16];
 		8'h84: reg_dout = sector[31:24];
+		8'h8A: reg_dout = {d64, 6'd0};
 		8'h8B: reg_dout = flags;
 		8'h8C: reg_dout = d0_start[7:0];
 		8'h8D: reg_dout = d0_start[15:8];

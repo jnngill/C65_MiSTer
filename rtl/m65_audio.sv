@@ -12,10 +12,18 @@
 // the left, 2 and 3 on the right; $D71C-$D71F add each channel to the other
 // side as well.
 //
-// Samples are read from chip RAM only (24-bit addresses below $60000): the
-// core lends this unit one bus clock per byte (fetch_req -> fetch_gnt, with
-// the byte on fetch_q the clock after the grant).  Audio DMA interrupts are
-// not implemented.
+// Samples are read from the first 16 MB as on the MEGA65 (whose audio DMA
+// addresses are 24 bits, so attic RAM is out of reach); here that is chip
+// RAM and the ROM area below $60000.  The core lends this unit one bus clock
+// per byte (fetch_req -> fetch_gnt, with the byte on fetch_q the clock after
+// the grant).  Sine mode ($D72x bit 4) plays the MEGA65's 32-step sine table,
+// one step per sample period, instead of reading memory.
+//
+// Interrupts ($D713 / $D714-$D717): an enabled channel raises its flag once
+// its current address (low 16 bits) reaches top - offset * 256; that clears
+// its enable, so each arming gives one interrupt.  The MEGA65 pulses its IRQ
+// for the event; here irq_n is held low until $D713 is read or written (or for
+// at most ~2 ms), so the CPU sees it at its next instruction.
 //
 // clk is the ~31.5 MHz system clock; the counters advance by 1.28125 x the
 // frequency per clk, matching 40.5 MHz to 0.3%.
@@ -27,7 +35,9 @@ module m65_audio (
 	input  logic  [6:0] reg_addr,      // $D700 + reg_addr, only $11-$5F are used here
 	input  logic        reg_we,
 	input  logic  [7:0] reg_din,
+	input  logic        reg_re,
 	output logic  [7:0] reg_dout,
+	output logic        irq_n,
 
 	output logic        fetch_req,
 	output logic [23:0] fetch_addr,
@@ -49,7 +59,22 @@ logic  [3:0] cur_set;          // current address written by the program
 logic [23:0] tmg     [4];
 logic signed [15:0] smp [4];
 logic  [3:0] pend;             // a sample is due
-logic  [7:0] r711, r712, r713;
+logic  [7:0] r711, r712;
+logic  [3:0] irqenb, irqflg;   // $D713: [7:4] flags of channels 0-3, [3:0] enables of channels 0-3 (bit 3 = channel 0)
+logic  [7:0] irqofs [4];       // $D714-$D717
+logic        irq_act;
+logic [15:0] irq_tmo;
+
+// the MEGA65's sine table: 32 signed steps
+function automatic [7:0] sine(input logic [4:0] i);
+	case (i[3:0])
+		4'd0: sine = 8'd0;   4'd1: sine = 8'd24;  4'd2: sine = 8'd48;  4'd3: sine = 8'd70;
+		4'd4: sine = 8'd89;  4'd5: sine = 8'd105; 4'd6: sine = 8'd117; 4'd7: sine = 8'd124;
+		4'd8: sine = 8'd127; 4'd9: sine = 8'd124; 4'd10: sine = 8'd117; 4'd11: sine = 8'd105;
+		4'd12: sine = 8'd89; 4'd13: sine = 8'd70; 4'd14: sine = 8'd48; default: sine = 8'd24;
+	endcase
+	if (i[4]) sine = (i[3:0] == 4'd0) ? 8'd0 : (i[3:0] == 4'd8) ? 8'h81 : 8'(-$signed(sine) - 8'sd1);
+endfunction
 
 // fetch sequencer
 logic  [1:0] f_ch;
@@ -65,7 +90,9 @@ endfunction
 
 always_ff @(posedge clk) begin
 	if (reset) begin
-		auden <= 1'b0; r711 <= '0; r712 <= '0; r713 <= '0; pend <= '0; cur_set <= '0;
+		auden <= 1'b0; r711 <= '0; r712 <= '0; pend <= '0; cur_set <= '0;
+		irqenb <= '0; irqflg <= '0; irq_act <= 1'b0; irq_tmo <= '0;
+		for (int i = 0; i < 4; i++) irqofs[i] <= '0;
 		f_busy <= 1'b0; f_hi <= 1'b0; f_wait <= 1'b0; fetch_req <= 1'b0;
 		for (int i = 0; i < 4; i++) begin
 			ctl[i] <= '0; base[i] <= '0; freq[i] <= '0; top[i] <= '0; vol[i] <= '0; xvol[i] <= '0;
@@ -79,9 +106,27 @@ always_ff @(posedge clk) begin
 			t = {1'b0, tmg[i]} + {1'b0, freq[i]} + {3'b0, freq[i][23:2]} + {6'b0, freq[i][23:5]};
 			if (auden && ctl[i][7]) begin
 				tmg[i] <= t[23:0];
-				if (t[24]) pend[i] <= 1'b1;
+				if (t[24]) begin
+					if (ctl[i][4]) begin
+						// sine mode: next table step, no memory read
+						smp[i] <= {sine(cur[i][4:0]), sine(cur[i][4:0])};
+						cur[i] <= cur[i] + 24'd1;
+					end
+					else pend[i] <= 1'b1;
+				end
 			end
 		end
+
+		// interrupts: one per arming, when the address nears the top
+		if (irq_act) irq_tmo <= irq_tmo + 16'd1;
+		if (&irq_tmo) irq_act <= 1'b0;
+		for (int i = 0; i < 4; i++)
+			if (irqenb[3-i] && ctl[i][7] && cur[i][15:0] >= {top[i][15:8] - irqofs[i], 8'h00}) begin
+				irqflg[3-i] <= 1'b1;
+				irqenb[3-i] <= 1'b0;
+				irq_act <= 1'b1; irq_tmo <= '0;
+			end
+		if (reg_re && reg_addr == 7'h13) irq_act <= 1'b0;
 
 		// fetch one byte at a time from the pending channels
 		if (!f_busy) begin
@@ -125,7 +170,8 @@ always_ff @(posedge clk) begin
 			case (reg_addr)
 				7'h11: begin r711 <= reg_din; auden <= reg_din[7]; end
 				7'h12: r712 <= reg_din;
-				7'h13: r713 <= reg_din;
+				7'h13: begin irqflg <= reg_din[7:4]; irqenb <= reg_din[3:0]; irq_act <= 1'b0; end
+				7'h14, 7'h15, 7'h16, 7'h17: irqofs[reg_addr[1:0]] <= reg_din;
 				7'h1C: xvol[0] <= reg_din;
 				7'h1D: xvol[1] <= reg_din;
 				7'h1E: xvol[2] <= reg_din;
@@ -173,7 +219,8 @@ always_comb begin
 	case (reg_addr)
 		7'h11: reg_dout = {auden, r711[6:0]};
 		7'h12: reg_dout = r712;
-		7'h13: reg_dout = r713;
+		7'h13: reg_dout = {irqflg, irqenb};
+		7'h14, 7'h15, 7'h16, 7'h17: reg_dout = irqofs[reg_addr[1:0]];
 		7'h1C: reg_dout = xvol[0];
 		7'h1D: reg_dout = xvol[1];
 		7'h1E: reg_dout = xvol[2];
@@ -226,5 +273,7 @@ always_ff @(posedge clk) begin
 		m_i <= m_i + 3'd1;
 	end
 end
+
+assign irq_n = !irq_act;
 
 endmodule

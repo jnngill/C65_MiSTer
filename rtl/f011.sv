@@ -22,7 +22,13 @@
 // When the MEGA65 hypervisor attaches a .D81 from the SD card ($D68B bit 0 /
 // bit 3: img0_sd / img1_sd), that drive uses the image instead: its sectors
 // are read and written through the SD card slot (sd3_*), starting at SD
-// sector img0_start / img1_start.
+// sector img0_start / img1_start.  Such an image can also be a D64 / D71
+// ($D68A bit 6 / 7: img*_d64) or a D65 ($D68B bit 6 / 7: img*_d65; both set
+// is a D71).  As on the MEGA65 the controller keeps the 1581 numbering and
+// only limits it to the image's size; the ROM's DOS does the 1541 / 1571
+// layout.  A D65 has 64 sectors per track:
+//
+//   block = track * 128 + (sector - 1) + (side ? 10 : 0)
 
 module f011 (
 	input  logic        clk,
@@ -57,6 +63,8 @@ module f011 (
 	input  logic        img1_ok,
 	input  logic        img1_wen,
 	input  logic [31:0] img1_start,
+	input  logic        img0_d64, img0_d65,   // image types (both clear: D81)
+	input  logic        img1_d64, img1_d65,
 	output logic [31:0] sd3_lba,
 	output logic        sd3_rd,
 	output logic        sd3_wr,
@@ -126,8 +134,16 @@ dpram #(9, 8) sector_buf (
 	.b_q(buf_disk_q)
 );
 
-wire [10:0] block     = {4'd0, track[6:0]} * 11'd20 + {7'd0, sector[3:0]} - 11'd1 + (side[0] ? 11'd10 : 11'd0);
-wire        chs_valid = (track < 8'd80) && (sector >= 8'd1) && (sector <= 8'd10) && (side < 8'd2);
+// image type of the selected drive (drives without an SD card image are D81)
+wire        t_d64     = (port == 2'd2) ? img0_d64 : (port == 2'd3) ? img1_d64 : 1'b0;
+wire        t_d65     = (port == 2'd2) ? img0_d65 : (port == 2'd3) ? img1_d65 : 1'b0;
+wire  [6:0] p_sec     = 7'({1'b0, sector[5:0]} - 7'd1 + (side[0] ? 7'd10 : 7'd0));
+wire [13:0] block     = (t_d65 && !t_d64) ? {track[6:0], 7'd0} + {7'd0, p_sec}
+                                          : 14'({7'd0, track[6:0]} * 14'd20 + {7'd0, p_sec});
+wire        chs_d81   = (track < 8'd80) && (sector >= 8'd1) && (sector <= 8'd10) && (side < 8'd2);
+wire        chs_valid = (t_d65 && !t_d64) ? (track < 8'd85) && (sector >= 8'd1) && (p_sec < 7'd64) && (side < 8'd2)
+                      : t_d64 ? chs_d81 && (block < (t_d65 ? 14'd683 : 14'd342))
+                      : chs_d81;
 // write track: control bit 3 set selects side 0
 wire [10:0] fmt_block = {4'd0, head} * 11'd20 + {7'd0, fmt_n} + (control[3] ? 11'd0 : 11'd10);
 
@@ -197,7 +213,7 @@ always_ff @(posedge clk) begin
 					else if (reg_din[7]) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid && !ro) begin
-							sd_lba <= {20'd0, block, 1'b0}; rq_wr[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_WRITE;
+							sd_lba <= {17'd0, block, 1'b0}; rq_wr[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_WRITE;
 							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
@@ -205,7 +221,7 @@ always_ff @(posedge clk) begin
 					else if (reg_din[6]) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid) begin
-							sd_lba <= {20'd0, block, 1'b0}; rq_rd[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_READ;
+							sd_lba <= {17'd0, block, 1'b0}; rq_rd[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_READ;
 							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end

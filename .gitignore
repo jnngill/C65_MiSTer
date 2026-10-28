@@ -63,3 +63,4 @@ term/*.o
 term/*.map
 sim/sid_test/build_*/
 sim/sid_test/out_*.txt
+sim/aud_test/build/
