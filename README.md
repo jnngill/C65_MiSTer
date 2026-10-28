@@ -22,7 +22,7 @@ It does not turn the core into a MEGA65.
 ROMs, software, keyboards and controllers and report what works and what
 doesn't (see [Feedback and problems](#feedback-and-problems)). This is not a
 MEGA65, even with the MEGA65 Extensions option on: MEGA65 games and demos
-that need Ethernet or the full 40 MHz will not run. For C64 games the MiSTer
+that need Ethernet or the full 40 MHz (the core tops out at about 24 MHz) will not run. For C64 games the MiSTer
 C64 core is the better choice than `GO64`, and `GO64` can load it (see
 [GO64 / GO128: the MiSTer C64 and C128 cores](#go64--go128-the-mister-c64-and-c128-cores)).
 
@@ -109,7 +109,7 @@ both settings (C65 software does not use it).
 | VIC-IV physical raster: position (`$D052` / `$D053`, `$D050` / `$D051` for X), raster compare in physical rasters (`$D079` / `$D07A`, FNRSTCMP), PAL / NTSC readable at `$D06F` bit 7 | done |
 | Other VIC-IV registers (16-colour bitplanes `$D071`, sprite Y adjust `$D072`, raster height / alpha delay `$D073`, X raster compare `$D050/51`, PALEMU / SMTH video filters, the `$D06F` video mode bits) | stored and read back, no effect |
 | Real-time clock (`$FFD7110`), read only, set from the MiSTer's clock | done |
-| Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed, 16 MHz |
+| Speed switch (65 / 64 written to address 0; S-BASIC `FAST` / `SLOW`) | done: "40 MHz" selects the core's top speed (about 24 MHz, see the next row) |
 | Hypervisor mode (`$D640-$D67F` traps and register save area, 16K hypervisor RAM at `$8000-$BFFF`) running the core's own hypervisor DOS (`rtl/hyppo`, see *MEGA65 SD card* below) | done. Only the DOS trap (`$D640`) is implemented; the others fail with "not implemented" |
 | SD card controller (`$D680-$D684`, sector buffer at `$FFD6E00` and mapped at `$DE00`), backed by a FAT32 image in *Mount SD Card / Data File (MEGA65)* | done |
 | Hypervisor DOS calls: version, drives, setname, findfile / findfirst / findnext (`*` and `?`, long file names), opendir / readdir / closedir, chdir / cdrootdir, openfile / readfile / closefile / closeall, loadfile (and into attic RAM), mkfile / writefile / rmfile, geterrorcode, disk image attach (D81, D64, D71, D65) / detach / write enable (drives 0 and 1) | done in simulation (every call), the FAT32 result checked with Linux `fsck.vfat`; `MOUNT`, `DIR`, `LOAD`, Space Commander's 2.7 MB data file and writing files (mkfile, writefile, rmfile; checked with `fsck.vfat`) confirmed on hardware. As in the MEGA65's own DOS, mkfile makes a file of a fixed size (8.3 name) and writefile fills it, files do not grow; there are no folder creation or rename calls |
@@ -119,7 +119,8 @@ both settings (C65 software does not use it).
 | Keyboard: matrix peek (`$D613` / `$D614`), modifier keys (`$D611`), cursor left / up (`$D60F`), and the typing queue: oldest key as ASCII (`$D610`) and PETSCII (`$D619`), its modifiers (`$D60A`), 8 keys with repeat | done, confirmed on hardware (the Open ROMs read `$D611` for SHIFT; BASIC 65 920422 types through `$D619`) |
 | Four SIDs: with the MEGA65 extensions on, `$D440` (left) and `$D460` (right) are two more SIDs, sharing the waveform tables and filter with the first two (without the extensions they mirror `$D400` / `$D420`, as on a C65). The MEGA65 itself puts `$D400` / `$D420` on one side and `$D440` / `$D460` on the other; here `$D400` / `$D420` keep the C65's right / left, so the extra pair is split the other way | done, tested in simulation (each chip matches the original two-chip SID sample for sample) |
 | Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects, Little Mega People's samples). A sample can be started from the current address (`$D72A-$D72C`) as well as the base address. Samples come from the first 16 MB as on the MEGA65 (its 24-bit sample addresses cannot reach attic RAM). Audio DMA interrupts (`$D713`, offsets `$D714-$D717`: one interrupt per arming as the address nears the top) and sine mode (`$D72x` bit 4) tested in simulation |
-| Ethernet, a true 40 MHz | not implemented. The CPU's top speed is 16 MHz |
+| CPU top speed | about 24 MHz equivalent (1.5x the old 16 MHz): at the top speed, sequential reads of chip RAM, ROM and the extra chip RAM (opcode and operand fetches, stack pulls) and writes to chip RAM take one clock instead of two. Confirmed on hardware. A true 40 MHz would need a redesigned CPU: its internal paths and the RAM to CPU paths are too long for a faster clock |
+| Ethernet | not implemented |
 | Attic RAM: 8 MB at `$8000000`, through far pointers and DMA | done, confirmed on hardware (S-BASIC `EDMA` fill and copy back); kept in the SDRAM module, so it needs one (it does not depend on the *Expansion RAM* option) |
 | Enhanced DMA jobs (`$D705`): megabyte options, list format, transparency (`$06`/`$07`, `$86`), source / destination step rates in 1/256 steps (`$82`-`$85`) (S-BASIC `EDMA`) | done, confirmed on hardware (copy, fill, transparency, source and destination step rates). Other options (line drawing, spiral mode) are ignored |
 | Inline DMA jobs (`$D707`): the enhanced job list follows the `STA $D707` instruction and the CPU carries on after it | done, confirmed on hardware (Little Mega People). The list is read from bank 0 at the CPU's address, so the code must not be in a `MAP`ped block |
@@ -174,7 +175,7 @@ and each SID on its own side of the stereo mix.
 
 Also checked on hardware: the PAL / NTSC switch (312 and 263 line frames),
 all four keyboard layouts (US, UK, DE, Positional give the expected
-characters for the same keys) and the 3.5 / 8 / 16 MHz OSD speeds with the
+characters for the same keys) and the 3.5 / 8 / 16 MHz (now Max) OSD speeds with the
 stock ROM's `FAST`.
 
 Also confirmed on hardware by hand: real US and UK keyboards (symbols, graphics
@@ -418,7 +419,7 @@ uploads and VT100. Building it needs [cc65](https://cc65.github.io)
 | Aspect Ratio, Stereo Mix | | standard MiSTer settings |
 | Scandoubler Fx | None, CRT 25%, CRT 50%, CRT 75% | scanlines for analogue output with the scandoubler. The HQ2x filter is not included: it took about 58 of the FPGA's memory blocks, which now hold the 32K colour RAM and the G64 track buffer |
 | Keyboard Layout | US, UK, DE, Positional | see below |
-| CPU Speed | 3.5 MHz, 8 MHz, 16 MHz | speed of the C65 FAST mode; 3.5 MHz is a real C65. MEGA65-style ROMs switch to 16 MHz by themselves when they ask for full speed (S-BASIC 65 does at start; `SLOW` / `FAST` change it) |
+| CPU Speed | 3.5 MHz, 8 MHz, Max (~24 MHz) | speed of the C65 FAST mode; 3.5 MHz is a real C65. MEGA65-style ROMs switch to the top speed by themselves when they ask for full speed (S-BASIC 65 does at start; `SLOW` / `FAST` change it) |
 | Expansion RAM | 4MB, Off | the C65 RAM expansion, kept in the MiSTer SDRAM module; without a module the machine reports no expansion |
 | Mouse | Port 2, Port 1, Off | a Commodore 1351 on that control port. S-BASIC 65's `MOUSE ON` uses port 2; on the stock ROM name the port, e.g. `MOUSE ON,2` |
 | DMA Revision | F018B, F018A | F018B for ROMs from mid 1991 on, F018A for older ones |

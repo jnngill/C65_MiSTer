@@ -8,7 +8,7 @@ module c65_core (
 	input  logic        reset_in,
 	input  logic        ntsc,
 	input  logic        dma_f018b,
-	input  logic  [1:0] turbo,            // CPU speed in FAST mode: 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
+	input  logic  [1:0] turbo,            // CPU speed in FAST mode: 0 = 3.5 MHz, 1 = 8 MHz, 2 = top speed (~24 MHz equivalent)
 
 	// ROM image loader (128K, used while the machine is held in reset)
 	input  logic [16:0] ld_addr,
@@ -317,12 +317,22 @@ always_comb begin
 end
 
 wire        ram_sel  = sel_ram || io_cram;
-wire [16:0] ram_addr = io_cram ? {6'b111111, io_addr[10:0]} : mem_addr;   // colour RAM = $1F800
+logic [16:0] spec_mem;     // mem_addr, or the speculated next read (see "bus cycle")
+wire [16:0] ram_addr = io_cram ? {6'b111111, io_addr[10:0]} : spec_mem;   // colour RAM = $1F800
 wire        slow_dev = io_sid || io_cia1 || io_cia2;
 
 // ------------------------------------------------------------------ bus cycle
 // One access per cycle.  FAST: 9 clk (3.5 MHz) or 4 / 2 clk with turbo, slow: one
 // full 1 MHz phase.
+//
+// At the top speed a CPU read of chip RAM, ROM or the extra chip RAM can take
+// a single clk: on a read's data clk those RAMs are given the address after
+// it (mem_addr + 1), and when the CPU's next access is a read of exactly that
+// address in the same RAM, its data is already out and that clk is the data
+// clk (spec_hit).  Opcode / operand fetches and stack pulls mostly run this
+// way.  Writes to chip RAM need no read latency, so at the top speed they
+// (CPU and DMA alike) always take one clk (wr_fast).  Anything else takes the
+// usual two.
 // CIA / SID accesses are stretched to cover exactly one phi2 period.
 // program loader state (see below)
 logic        prg_pause, prg_we, prg_was;
@@ -339,14 +349,15 @@ wire         aud_gnt;
 typedef enum logic [1:0] { C_RUN, C_SYNC, C_SLOW, C_XRAM } cyc_t;
 cyc_t       cyc_state;
 logic [3:0] cyc;
-logic       bus_ce;
+logic       bus_ce_r;            // data clk of a scheduled access
+wire        bus_ce;              // ... or of a speculated read (spec_hit)
 logic       slow_cs;
-logic       force_fast;          // MEGA65 "40 MHz" request: run at the core's top speed (16 MHz)
+logic       force_fast;          // MEGA65 "40 MHz" request: run at the core's top speed (~24 MHz)
 wire        fast = ctrl_b[6] || force_fast;
 wire  [3:0] fast_len = force_fast ? 4'd0 : (turbo == 2'd0) ? 4'd7 : (turbo == 2'd1) ? 4'd2 : 4'd0;
 
 always_ff @(posedge clk) begin
-	bus_ce <= 1'b0;
+	bus_ce_r <= 1'b0;
 	if (reset) begin
 		cyc_state <= C_RUN; cyc <= '0; slow_cs <= 1'b0;
 	end
@@ -365,20 +376,42 @@ always_ff @(posedge clk) begin
 					if (cyc >= 4'd1) cyc_state <= C_XRAM;
 				end
 				else if (fast ? (cyc >= fast_len) : (cyc >= 4'd3 && ph == 5'd30)) begin
-					bus_ce <= 1'b1; cyc <= '0;
+					bus_ce_r <= 1'b1; cyc <= '0;
 				end
 			end
 			C_SYNC: if (ph == 5'd31) begin cyc_state <= C_SLOW; slow_cs <= 1'b1; end
 			C_SLOW: if (ph == 5'd31) begin
 				// the device sees phi2_n on this edge; its read data is valid next clk
-				bus_ce <= 1'b1; cyc <= '0; cyc_state <= C_RUN;
+				bus_ce_r <= 1'b1; cyc <= '0; cyc_state <= C_RUN;
 			end
-			C_XRAM: if (xram_ack) begin bus_ce <= 1'b1; cyc <= '0; cyc_state <= C_RUN; end
+			C_XRAM: if (xram_ack) begin bus_ce_r <= 1'b1; cyc <= '0; cyc_state <= C_RUN; end
 		endcase
 	end
 end
 
 assign aud_gnt = aud_req && cyc_state == C_RUN && !bus_ce && !prg_we && !ld_wr;
+
+// speculated reads (see above).  spec_kind: 1 chip RAM, 2 ROM, 3 extra chip RAM
+wire       fast_top  = fast && fast_len == 4'd0;
+wire [1:0] cur_kind  = (sel_ram && !io_cram) ? 2'd1 : sel_rom ? 2'd2 : sel_ram2 ? 2'd3 : 2'd0;
+logic       spec_ok;
+logic [16:0] spec_addr;
+logic  [1:0] spec_kind;
+wire        spec_hit = spec_ok && !bus_ce_r && cyc_state == C_RUN && fast_top && !dma_busy && !cpu_we &&
+                       !aud_req && !(dma_setup || prg_pause || hyp_busy || dma_resume) &&
+                       cur_kind != 2'd0 && cur_kind == spec_kind && mem_addr == spec_addr;
+wire        wr_fast  = !bus_ce_r && cyc_state == C_RUN && fast_top && bus_we &&
+                       ((sel_ram && !io_cram) || sel_ram2) &&
+                       !aud_req && !(dma_setup || prg_pause || hyp_busy || dma_resume);
+assign      bus_ce   = bus_ce_r || spec_hit || wr_fast;
+// this clk is a CPU read's data clk: the RAMs fetch the next address
+wire        spec_now = bus_ce && !bus_we && !dma_busy && fast_top && cur_kind != 2'd0 && !prg_we && !ld_wr && !rs_wr;
+assign      spec_mem = spec_now ? mem_addr + 17'd1 : mem_addr;
+always_ff @(posedge clk) begin
+	spec_ok   <= spec_now && !reset;
+	spec_addr <= mem_addr + 17'd1;
+	spec_kind <= cur_kind;
+end
 always_ff @(posedge clk) aud_sel <= aud_addr[18:17];
 
 assign xram_req  = (cyc_state == C_XRAM);
@@ -524,7 +557,7 @@ logic        wom_loaded;
 // $40000-$5FFFF: the extra chip RAM MEGA65 ROMs expect (graphics, sprites)
 dpram #(17, 8) ram2 (
 	.clk(clk),
-	.a_addr(aud_gnt ? aud_addr[16:0] : mem_addr), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
+	.a_addr(aud_gnt ? aud_addr[16:0] : spec_mem), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
 	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram2_q)
 );
 
@@ -566,7 +599,7 @@ dpram #(17, 8) ram (
 
 dpram #(17, 8) rom (
 	.clk(clk),
-	.a_addr(ld_wr ? ld_addr : rs_wr ? rrom_addr : aud_gnt ? aud_addr[16:0] : mem_addr),
+	.a_addr(ld_wr ? ld_addr : rs_wr ? rrom_addr : aud_gnt ? aud_addr[16:0] : spec_mem),
 	.a_din(ld_wr ? ld_data : rs_wr ? rs_data : bus_dout), .a_we(ld_wr || rs_wr || rom_wr), .a_q(rom_q),
 	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vrom1_q)
 );

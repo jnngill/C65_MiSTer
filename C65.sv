@@ -56,7 +56,7 @@ localparam CONF_STR = {
 	"O[7:6],Scandoubler Fx,None,CRT 25%,CRT 50%,CRT 75%;",
 	"O[9:8],Stereo Mix,None,25%,50%,100%;",
 	"O[11:10],Keyboard Layout,US,UK,DE,Positional;",
-	"O[13:12],CPU Speed,3.5 MHz,8 MHz,16 MHz;",
+	"O[13:12],CPU Speed,3.5 MHz,8 MHz,Max (~24 MHz);",
 	"O[14],Expansion RAM,4MB (needs SDRAM),Off;",
 	"O[16:15],Mouse,Port 2,Port 1,Off;",
 	"O[3],DMA Revision,F018B,F018A;",
