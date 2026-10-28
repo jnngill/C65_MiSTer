@@ -293,7 +293,8 @@ Tested on hardware:
   the disk ("MOVING IN..."); the guestbook, the house, gameplay, SID sound
   and the sampled voices and effects are correct.
 - **MEGA-Python** 0.8.0 (a Python 3.15 subset, with BASIC 65 920422):
-  `RUN"MEGA-PYTHON"`. It does not start under S-BASIC 65.
+  `RUN"MEGA-PYTHON"`, or mount the disk in *Mount Drive 8* and reset: it
+  boots by itself. It does not start under S-BASIC 65.
 - **Pascal65** (with BASIC 65 920422): `DLOAD"PASCAL65"` and `RUN` (after a
   plain `LOAD` it cannot load its ASM.LIB and stops at a BRK); compiling
   and running the BUBBLES demo works. Its messages are mixed case, so if
