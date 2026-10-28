@@ -295,6 +295,8 @@ Tested on hardware:
 - **MEGA-Python** 0.8.0 (a Python 3.15 subset, with BASIC 65 920422):
   `RUN"MEGA-PYTHON"`. With the disk in *Mount Drive 8* when the core
   starts, it boots by itself. It does not start under S-BASIC 65.
+- **`sample.d81`** (plays music held in attic RAM): works with both S-BASIC 65
+  and BASIC 65 920422.
 - **Pascal65** (with BASIC 65 920422): `DLOAD"PASCAL65"` and `RUN` (after a
   plain `LOAD` it cannot load its ASM.LIB and stops at a BRK); compiling
   and running the BUBBLES demo works. Its messages are mixed case, so if
