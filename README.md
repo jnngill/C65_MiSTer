@@ -319,8 +319,8 @@ controller's sector buffer at `$FFD6C00`.
 MEGA65 network programs run with the `c65_net` helper installed (see
 [Networking](#networking-mega65-ethernet)). Tested on hardware with BASIC 65
 920423: the **MEGA65 BBS Client** 1.4 (`RUN"BBS"`: DHCP, then telnet BBSes),
-**SSH**, **SFTP** (upload and download; listing a directory is slow, the
-CPU decrypts and parses it at about 24 MHz) and **NTP** from the MEGA65
+**SSH**, **SFTP** (upload and download work; listing a directory is slow) and
+**NTP** from the MEGA65
 `net-tools.d81` disk.
 
 ### GO64 / GO128: the MiSTer C64 and C128 cores
