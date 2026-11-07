@@ -33,6 +33,7 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <unordered_map>
 #include <map>
 #include <algorithm>
 #include <cctype>
@@ -380,6 +381,65 @@ static void xram_tick() {
 	if (xram_cnt > 6) xram_cnt = 6;
 }
 
+// ---- DDR3 model and the ARM-side network daemon (scripts/mister/c65_net) ----
+// The core's Ethernet area is DDR word 0x7FE0000 on (ARM 0x3FF00000), see rtl/m65_eth.sv.
+static std::unordered_map<unsigned, unsigned long long> ddr;
+static int ddr_rd_cnt = -1; static unsigned ddr_rd_addr;
+static bool eth_on = false; static long eth_poll = 0;
+static std::deque<std::vector<unsigned char>> eth_rxq;   // frames waiting for the core
+static FILE *eth_txlog = nullptr;
+static unsigned char ddr_byte(unsigned a) { return (ddr[0x7FE0000 + (a >> 3)] >> ((a & 7) * 8)) & 0xFF; }
+static void ddr_put(unsigned a, unsigned char v) {
+	auto &w = ddr[0x7FE0000 + (a >> 3)];
+	w = (w & ~(0xFFull << ((a & 7) * 8))) | ((unsigned long long)v << ((a & 7) * 8));
+}
+static unsigned crc32(const unsigned char *d, size_t n) {
+	unsigned c = 0xFFFFFFFF;
+	for (size_t i = 0; i < n; i++) { c ^= d[i]; for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320 & -(c & 1)); }
+	return ~c;
+}
+static void ddr_tick() {
+	top->eth_ddr_busy = 0; top->eth_ddr_dout_ready = 0;
+	if (ddr_rd_cnt >= 0 && --ddr_rd_cnt < 0) { top->eth_ddr_dout = ddr[ddr_rd_addr]; top->eth_ddr_dout_ready = 1; }
+	if (top->eth_ddr_rd) { ddr_rd_addr = top->eth_ddr_addr; ddr_rd_cnt = 8; }
+	if (top->eth_ddr_we) {
+		auto &w = ddr[top->eth_ddr_addr];
+		for (int k = 0; k < 8; k++) if ((top->eth_ddr_be >> k) & 1)
+			w = (w & ~(0xFFull << (k * 8))) | (top->eth_ddr_din & (0xFFull << (k * 8)));
+	}
+	// the daemon: every ~0.5 ms, as the real one polls
+	if (!eth_on || ++eth_poll < 16000) return;
+	eth_poll = 0;
+	ddr_put(10, 0xA5);
+	if (ddr_byte(0) != 0xE7 || !(ddr_byte(7) & 1)) return;
+	unsigned char rx_req = ddr_byte(2), rx_slot = ddr_byte(3), tx_seq = ddr_byte(4);
+	unsigned tx_len = ddr_byte(5) | ((ddr_byte(6) & 0x0F) << 8);
+	if (tx_seq != ddr_byte(9)) {
+		if (eth_txlog) { fprintf(eth_txlog, "TX %u:", tx_len); for (unsigned i = 0; i < tx_len && i < 2048; i++) fprintf(eth_txlog, " %02x", ddr_byte(0x800 + i)); fprintf(eth_txlog, "\n"); fflush(eth_txlog); }
+		fprintf(stderr, "ETH TX %u bytes\n", tx_len);
+		// answer an ARP request as a router at its target address would (MAC 00:11:22:33:44:55)
+		if (tx_len >= 42 && ddr_byte(0x80C) == 8 && ddr_byte(0x80D) == 6 && ddr_byte(0x815) == 1) {
+			std::vector<unsigned char> r(42);
+			for (int i = 0; i < 6; i++) { r[i] = ddr_byte(0x806 + i); r[6 + i] = 0x11 * i; r[22 + i] = 0x11 * i; r[32 + i] = ddr_byte(0x806 + i); }
+			r[12] = 8; r[13] = 6; r[14] = 0; r[15] = 1; r[16] = 8; r[17] = 0; r[18] = 6; r[19] = 4; r[20] = 0; r[21] = 2;
+			for (int i = 0; i < 4; i++) { r[28 + i] = ddr_byte(0x826 + i); r[38 + i] = ddr_byte(0x81C + i); }
+			eth_rxq.push_back(r);
+		}
+		ddr_put(9, tx_seq);
+	}
+	if (rx_req != ddr_byte(8) && !eth_rxq.empty()) {
+		auto fr = eth_rxq.front(); eth_rxq.pop_front();
+		unsigned crc = crc32(fr.data(), fr.size());
+		for (int k = 0; k < 4; k++) fr.push_back((crc >> (8 * k)) & 0xFF);
+		unsigned base = 0x1000 + rx_slot * 0x800, n = fr.size();
+		bool bc = fr[0] == 0xFF && fr[1] == 0xFF && fr[2] == 0xFF && fr[3] == 0xFF && fr[4] == 0xFF && fr[5] == 0xFF;
+		ddr_put(base, n & 0xFF); ddr_put(base + 1, ((n >> 8) & 7) | (bc ? 0x20 : 0x40));
+		for (unsigned i = 0; i < n; i++) ddr_put(base + 2 + i, fr[i]);
+		ddr_put(8, rx_req);
+		fprintf(stderr, "ETH RX %u bytes into buffer %u\n", n, rx_slot);
+	}
+}
+
 // ---- text screen dump ------------------------------------------------
 static char sc2ascii(unsigned char c) {
 	c &= 0x7F;
@@ -480,6 +540,17 @@ int main(int argc, char **argv) {
 		else if (a == "-mouse" && i + 3 < argc) { mouse_port = atoi(argv[++i]); mouse_from = atol(argv[++i]); mouse_to = atol(argv[++i]); }
 		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
 		else if (a == "-f018a") f018b = false;
+		else if (a == "-eth" && i + 1 < argc) {
+			// frames for the core, one per line in hex; the core's frames go to <outdir>/eth_tx.txt
+			eth_on = true;
+			FILE *f = fopen(argv[++i], "r"); char buf[8192];
+			while (f && fgets(buf, sizeof buf, f)) {
+				std::vector<unsigned char> fr; char *q = buf; unsigned v; int n;
+				while (sscanf(q, "%2x%n", &v, &n) == 1) { fr.push_back(v); q += n; while (*q == ' ') q++; }
+				if (!fr.empty()) eth_rxq.push_back(fr);
+			}
+			if (f) fclose(f);
+		}
 	}
 
 	std::vector<unsigned char> rom(131072, 0xFF);
@@ -490,6 +561,7 @@ int main(int argc, char **argv) {
 	fprintf(stderr, "ROM: %zu bytes\n", got);
 
 	top = new Vc65_core;
+	if (eth_on) eth_txlog = fopen((outdir + "/eth_tx.txt").c_str(), "w");
 	top->ntsc = ntsc; top->dma_f018b = f018b; top->turbo = turbo;
 	top->reset_in = 1; top->ld_wr = 0; top->ps2_key = 0; top->rom_backup = 1; top->rrom_ack = 0;
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
@@ -545,6 +617,7 @@ int main(int argc, char **argv) {
 			else { top->prg_dl = 0; prg_busy = false; printf("prg loaded: %zu bytes, frame %ld\n", prg.size(), frame_no); }
 		}
 		xram_tick();
+		ddr_tick();
 		// ROM backup copy (restored after a reset once $20000-$3FFFF was written)
 		{
 			static int rr = 0;

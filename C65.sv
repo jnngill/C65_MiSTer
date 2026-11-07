@@ -380,16 +380,26 @@ wire [1:0] core_req;
 reg        req_we = 1'b0;
 reg  [7:0] req_tgt, req_seq = 8'd0;
 
+// The DDR port is shared with the MEGA65 Ethernet controller (its buffers at
+// 0x3FF00000, see rtl/m65_eth.sv); the switch request takes it between two of
+// the controller's accesses, which meanwhile sees the port busy.
+wire [28:0] eth_ddr_addr;
+wire        eth_ddr_rd, eth_ddr_we;
+wire [63:0] eth_ddr_din;
+wire  [7:0] eth_ddr_be;
+reg         sw_own = 1'b0;
+
 assign DDRAM_CLK      = clk_sys;
 assign DDRAM_BURSTCNT = 8'd1;
-assign DDRAM_ADDR     = 29'h7FFFF00;
-assign DDRAM_BE       = 8'hFF;
-assign DDRAM_RD       = 1'b0;
-assign DDRAM_WE       = req_we;
-assign DDRAM_DIN      = {8'h00, req_seq, req_tgt, "O", "G", "5", "6", "C"};
+assign DDRAM_ADDR     = sw_own ? 29'h7FFFF00 : eth_ddr_addr;
+assign DDRAM_BE       = sw_own ? 8'hFF : eth_ddr_be;
+assign DDRAM_RD       = !sw_own && eth_ddr_rd;
+assign DDRAM_WE       = sw_own || eth_ddr_we;
+assign DDRAM_DIN      = sw_own ? {8'h00, req_seq, req_tgt, "O", "G", "5", "6", "C"} : eth_ddr_din;
 
 always @(posedge clk_sys) begin
-	if (req_we && !DDRAM_BUSY) req_we <= 1'b0;
+	if (!sw_own && req_we && !eth_ddr_rd && !eth_ddr_we) sw_own <= 1'b1;
+	if (sw_own && !DDRAM_BUSY) begin sw_own <= 1'b0; req_we <= 1'b0; end
 	if (core_req != 2'd0 && !req_we) begin
 		req_tgt <= (core_req == 2'd1) ? 8'd64 : 8'd128;
 		req_seq <= req_seq + 1'd1;
@@ -517,6 +527,10 @@ c65_core core
 	.xram_din(xram_din),
 	.xram_dout(xram_dout),
 	.xram_ack(xram_ack),
+
+	.eth_ddr_addr(eth_ddr_addr), .eth_ddr_rd(eth_ddr_rd), .eth_ddr_we(eth_ddr_we),
+	.eth_ddr_din(eth_ddr_din), .eth_ddr_be(eth_ddr_be), .eth_ddr_busy(DDRAM_BUSY || sw_own),
+	.eth_ddr_dout(DDRAM_DOUT), .eth_ddr_dout_ready(DDRAM_DOUT_READY),
 
 	.dbg_pc(), .dbg_sync(), .dbg_op(), .dbg_a(), .dbg_x(), .dbg_y(), .dbg_z(), .dbg_b(), .dbg_p(), .dbg_sp()
 );

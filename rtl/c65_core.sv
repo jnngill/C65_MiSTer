@@ -103,6 +103,16 @@ module c65_core (
 	input  logic  [7:0] xram_dout,        // valid from xram_ack until the next request
 	input  logic        xram_ack,
 
+	// MEGA65 Ethernet: its buffers and the ARM daemon's handshake live in DDR3 (rtl/m65_eth.sv)
+	output logic [28:0] eth_ddr_addr,
+	output logic        eth_ddr_rd,
+	output logic        eth_ddr_we,
+	output logic [63:0] eth_ddr_din,
+	output logic  [7:0] eth_ddr_be,
+	input  logic        eth_ddr_busy,
+	input  logic [63:0] eth_ddr_dout,
+	input  logic        eth_ddr_dout_ready,
+
 	// debug
 	output logic [15:0] dbg_pc,
 	output logic        dbg_sync,
@@ -205,7 +215,7 @@ logic        vic3_mode;
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
 
-logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2, sel_sdbuf, sel_romw, sel_fdcbuf, sel_hram;
+logic        sel_ram, sel_ram2, sel_wom, sel_rom, sel_io, sel_port, sel_xram, sel_rtc, sel_cram2, sel_sdbuf, sel_romw, sel_fdcbuf, sel_hram, sel_eth;
 // a DMA address with the I/O flag only means I/O inside $D000-$DFFF; elsewhere it is plain memory
 wire         dma_is_io = dma_io && (dma_addr[15:12] == 4'hD);
 logic [23:0] xaddr;
@@ -216,7 +226,7 @@ always_comb begin
 	logic [27:0] fa;       // flat 28-bit address: 45GS02 far pointer or DMA
 	logic        flat;
 	sel_ram = 1'b0; sel_ram2 = 1'b0; sel_cram2 = 1'b0; sel_sdbuf = 1'b0; sel_fdcbuf = 1'b0; sel_hram = 1'b0; sel_wom = 1'b0; sel_rom = 1'b0; sel_io = 1'b0; sel_port = 1'b0;
-	sel_xram = 1'b0; sel_rtc = 1'b0; sel_romw = 1'b0;
+	sel_xram = 1'b0; sel_rtc = 1'b0; sel_romw = 1'b0; sel_eth = 1'b0;
 	mem_addr = '0;
 	io_addr  = dma_busy ? dma_addr[11:0] : cpu_far ? cpu_faddr[11:0] : cpu_addr[11:0];
 	pa    = {3'd0, cpu_paddr};
@@ -244,6 +254,7 @@ always_comb begin
 		else if (fa[27:9] == 19'h7FEB7)  begin sel_sdbuf = 1'b1; mem_addr = {8'd0, fa[8:0]}; end   // $FFD6E00 SD sector buffer
 		else if (fa[27:9] == 19'h7FEB6)  begin sel_fdcbuf = 1'b1; mem_addr = {8'd0, fa[8:0]}; end  // $FFD6C00 F011 sector buffer
 		else if (fa[27:14] == 14'h3FFE)  begin sel_hram = 1'b1; mem_addr = {3'd0, fa[13:0]}; end   // $FFF8000 hypervisor RAM
+		else if (fa[27:11] == 17'h1FFBD) sel_eth = gs_mode;          // $FFDE800 Ethernet RX (read) / TX (write) buffer
 	end
 	else if (hyp && !dma_busy && cpu_addr[15:14] == 2'b10) begin
 		// hypervisor mode: $8000-$BFFF is the hypervisor's RAM ...
@@ -372,7 +383,7 @@ always_ff @(posedge clk) begin
 				if (slow_dev) begin
 					if (cyc >= 4'd1) cyc_state <= C_SYNC;
 				end
-				else if (sel_xram) begin
+				else if (sel_xram || sel_eth) begin
 					if (cyc >= 4'd1) cyc_state <= C_XRAM;
 				end
 				else if (fast ? (cyc >= fast_len) : (cyc >= 4'd3 && ph == 5'd30)) begin
@@ -384,7 +395,7 @@ always_ff @(posedge clk) begin
 				// the device sees phi2_n on this edge; its read data is valid next clk
 				bus_ce_r <= 1'b1; cyc <= '0; cyc_state <= C_RUN;
 			end
-			C_XRAM: if (xram_ack) begin bus_ce_r <= 1'b1; cyc <= '0; cyc_state <= C_RUN; end
+			C_XRAM: if (sel_eth ? eth_buf_ack : xram_ack) begin bus_ce_r <= 1'b1; cyc <= '0; cyc_state <= C_RUN; end
 		endcase
 	end
 end
@@ -414,7 +425,7 @@ always_ff @(posedge clk) begin
 end
 always_ff @(posedge clk) aud_sel <= aud_addr[18:17];
 
-assign xram_req  = (cyc_state == C_XRAM);
+assign xram_req  = (cyc_state == C_XRAM) && !sel_eth;
 assign xram_we   = bus_we;
 assign xram_addr = xaddr;
 assign xram_din  = bus_dout;
@@ -941,7 +952,7 @@ always_comb begin
 		8'h11:   uart_dout = {1'b0, ~capslock_n, kb_matrix[64], kb_matrix[66], kb_matrix[61], kb_matrix[58], kb_matrix[52], kb_matrix[15]};
 		8'h14:   uart_dout = {4'd0, kms};
 		8'h89:   uart_dout = {d689_7, 7'd0};
-		default: uart_dout = sdc_sel ? sdc_dout : 8'h00;
+		default: uart_dout = sdc_sel ? sdc_dout : (io_addr[7:4] == 4'hE) ? eth_dout : 8'h00;
 	endcase
 end
 
@@ -1062,6 +1073,21 @@ always @(posedge clk) begin
 end
 `endif
 
+// ------------------------------------------------------------------ MEGA65 Ethernet ($D6E0-$D6EF, $FFDE800)
+logic [7:0] eth_dout, eth_buf_dout;
+logic       eth_buf_ack, eth_irq_n;
+wire  [10:0] fa_eth = dma_busy ? dma_addr[10:0] : cpu_faddr[10:0];
+m65_eth eth (
+	.clk(clk), .reset(reset),
+	.reg_addr(io_addr[3:0]), .reg_we(io_wr && io_uart && gs_mode && io_addr[7:4] == 4'hE),
+	.reg_din(bus_dout), .reg_dout(eth_dout),
+	.buf_req(cyc_state == C_XRAM && sel_eth), .buf_we(bus_we), .buf_addr(fa_eth),
+	.buf_din(bus_dout), .buf_dout(eth_buf_dout), .buf_ack(eth_buf_ack),
+	.irq_n(eth_irq_n),
+	.ddr_addr(eth_ddr_addr), .ddr_rd(eth_ddr_rd), .ddr_we(eth_ddr_we), .ddr_din(eth_ddr_din), .ddr_be(eth_ddr_be),
+	.ddr_busy(eth_ddr_busy), .ddr_dout(eth_ddr_dout), .ddr_dout_ready(eth_ddr_dout_ready)
+);
+
 // ------------------------------------------------------------------ read mux / interrupts
 logic [7:0] io_dout;
 always_comb begin
@@ -1091,6 +1117,7 @@ always_comb begin
 	else if (sel_hram) bus_din = hram_q;
 	else if (sel_wom)  bus_din = wom_q;
 	else if (sel_xram) bus_din = xram_dout;
+	else if (sel_eth)  bus_din = eth_buf_dout;
 	else if (sel_rtc)  bus_din = rtc_dout;
 	else if (sel_rom)  bus_din = rom_q;
 	else if (sel_port) bus_din = cpu_addr[0] ? port_val : port_ddr;
@@ -1102,7 +1129,7 @@ end
 assign dma_reg_we = io_wr && io_dma && (io_addr[7:3] == 5'd0) && ((io_addr[2:0] != 3'd5 && io_addr[2:0] != 3'd7) || gs_mode);
 assign dbg_op     = bus_din;
 
-assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n & ser_irq_n & aud_irq_n;
+assign irq_n = vic_irq_n & cia1_irq_n & fdc_irq_n & ser_irq_n & aud_irq_n & eth_irq_n;
 assign nmi_n = cia2_irq_n & restore_n;
 
 endmodule
