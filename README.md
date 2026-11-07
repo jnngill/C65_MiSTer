@@ -123,7 +123,7 @@ both settings (C65 software does not use it).
 | Four SIDs: with the MEGA65 extensions on, `$D440` (left) and `$D460` (right) are two more SIDs, sharing the waveform tables and filter with the first two (without the extensions they mirror `$D400` / `$D420`, as on a C65). The MEGA65 itself puts `$D400` / `$D420` on one side and `$D440` / `$D460` on the other; here `$D400` / `$D420` keep the C65's right / left, so the extra pair is split the other way | done, tested in simulation (each chip matches the original two-chip SID sample for sample) |
 | Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects, Little Mega People's samples). A sample can be started from the current address (`$D72A-$D72C`) as well as the base address. Samples come from the first 16 MB as on the MEGA65 (its 24-bit sample addresses cannot reach attic RAM). Audio DMA interrupts (`$D713`, offsets `$D714-$D717`: one interrupt per arming as the address nears the top) and sine mode (`$D72x` bit 4) tested in simulation |
 | CPU top speed | about 24 MHz equivalent (1.5x the old 16 MHz): at the top speed, sequential reads of chip RAM, ROM and the extra chip RAM (opcode and operand fetches, stack pulls) and writes to chip RAM take one clock instead of two. Confirmed on hardware. A true 40 MHz would need a redesigned CPU: its internal paths and the RAM to CPU paths are too long for a faster clock |
-| MEGA65 Ethernet (`$D6E0-$D6EF`, RX / TX buffers at `$FFDE800`): four RX buffers with the MEGA65's rotation, free count and interrupts, TX, MAC address, MAC / broadcast / multicast filter, an emulated PHY for the MIIM registers. The buffers are in DDR3, passed to and from the MiSTer's `eth0` by the `c65_net` program (see [Networking](#networking-mega65-ethernet)) | done, confirmed on hardware: DHCP, the MEGA65 BBS Client (telnet BBSes), SSH and NTP from the MEGA65 `net-tools.d81` |
+| MEGA65 Ethernet (`$D6E0-$D6EF`, RX / TX buffers at `$FFDE800`): four RX buffers with the MEGA65's rotation, free count and interrupts, TX, MAC address, MAC / broadcast / multicast filter, an emulated PHY for the MIIM registers. The buffers are in DDR3, passed to and from the MiSTer's `eth0` by the `c65_net` program (see [Networking](#networking-mega65-ethernet)) | done, confirmed on hardware: DHCP, the MEGA65 BBS Client (telnet BBSes), SSH, SFTP (upload and download) and NTP from the MEGA65 `net-tools.d81` |
 | Frame counter (`$D7FA`, counts video frames; MEGA65 programs time their waits with it) | done |
 | Attic RAM: 8 MB at `$8000000`, through far pointers and DMA | done, confirmed on hardware (S-BASIC `EDMA` fill and copy back); kept in the SDRAM module, so it needs one (it does not depend on the *Expansion RAM* option) |
 | Enhanced DMA jobs (`$D705`): megabyte options, list format, transparency (`$06`/`$07`, `$86`), source / destination step rates in 1/256 steps (`$82`-`$85`) (S-BASIC `EDMA`) | done, confirmed on hardware (copy, fill, transparency, source and destination step rates). Other options (line drawing, spiral mode) are ignored |
@@ -319,7 +319,9 @@ controller's sector buffer at `$FFD6C00`.
 MEGA65 network programs run with the `c65_net` helper installed (see
 [Networking](#networking-mega65-ethernet)). Tested on hardware with BASIC 65
 920423: the **MEGA65 BBS Client** 1.4 (`RUN"BBS"`: DHCP, then telnet BBSes),
-**SSH** and **NTP** from the MEGA65 `net-tools.d81` disk.
+**SSH**, **SFTP** (upload and download; listing a directory is slow, the
+CPU decrypts and parses it at about 24 MHz) and **NTP** from the MEGA65
+`net-tools.d81` disk.
 
 ### GO64 / GO128: the MiSTer C64 and C128 cores
 
