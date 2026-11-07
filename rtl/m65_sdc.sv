@@ -40,6 +40,9 @@ module m65_sdc (
 	output logic        d0_d64, d0_d65,  // image types: $D68A bit 6 / 7 (D64), $D68B bit 6 / 7 (D65; both: D71)
 	output logic        d1_d64, d1_d65,
 	input  logic  [1:0] osd_mounted,   // a disk mounted on drive 0 / 1 in the OSD
+	input  logic  [1:0] osd_disk,      // ... is in the drive
+	input  logic  [1:0] osd_wen,       // ... and can be written
+	input  logic        hyp,           // the hypervisor is running
 
 	input  logic        img_mounted,   // slot 3
 	input  logic        img_readonly,
@@ -103,7 +106,10 @@ always_ff @(posedge clk) begin
 			8'h83: sector[23:16] <= reg_din;
 			8'h84: sector[31:24] <= reg_din;
 			8'h8A: d64 <= reg_din[7:6];
-			8'h8B: flags <= reg_din;
+			// a program's read-modify-write must not turn an OSD disk (read
+			// back as an image, see below) into an SD card image: only the
+			// hypervisor attaches images
+			8'h8B: flags <= hyp ? reg_din : {reg_din[7:6], reg_din[5:3] & {3{flags[3]}}, reg_din[2:0] & {3{flags[0]}}};
 			8'h8C: d0_start[7:0]   <= reg_din;
 			8'h8D: d0_start[15:8]  <= reg_din;
 			8'h8E: d0_start[23:16] <= reg_din;
@@ -136,7 +142,13 @@ always_comb begin
 		8'h83: reg_dout = sector[23:16];
 		8'h84: reg_dout = sector[31:24];
 		8'h8A: reg_dout = {d64, 6'd0};
-		8'h8B: reg_dout = flags;
+		// a disk mounted in the OSD reads as a disk image, present and (unless
+		// read-only) writable, as on a MEGA65: programs that also drive a
+		// real floppy (which numbers its sides the other way) tell them apart
+		// by bit 0 / 3.  The hypervisor sees the flags as they are.
+		8'h8B: reg_dout = hyp ? flags : {flags[7:6],
+		                   flags[3] ? flags[5:3] : {osd_wen[1], osd_disk[1], osd_disk[1]},
+		                   flags[0] ? flags[2:0] : {osd_wen[0], osd_disk[0], osd_disk[0]}};
 		8'h8C: reg_dout = d0_start[7:0];
 		8'h8D: reg_dout = d0_start[15:8];
 		8'h8E: reg_dout = d0_start[23:16];

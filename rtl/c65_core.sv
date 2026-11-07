@@ -524,6 +524,7 @@ m65_hyp hypm (
 
 // $D680-$D693: SD card controller and the F011 disk image registers
 logic [7:0]  sdc_dout;
+logic [1:0]  osd_disk, osd_wen;     // F011: disks mounted in the OSD
 logic        sdc_sel, sdc_mapped, sdc_present, sdc_ro;
 logic        d0_img, d0_ok, d0_wen, d1_img, d1_ok, d1_wen;
 logic        d0_d64, d0_d65, d1_d64, d1_d65;
@@ -538,6 +539,7 @@ m65_sdc sdc (
 	.d0_img(d0_img), .d0_ok(d0_ok), .d0_wen(d0_wen), .d0_start(d0_start),
 	.d0_d64(d0_d64), .d0_d65(d0_d65), .d1_d64(d1_d64), .d1_d65(d1_d65),
 	.d1_img(d1_img), .d1_ok(d1_ok), .d1_wen(d1_wen), .d1_start(d1_start), .osd_mounted(img_mounted),
+	.osd_disk(osd_disk), .osd_wen(osd_wen), .hyp(hyp),
 	.img_mounted(sd3_mounted), .img_readonly(img_readonly), .img_size(img_size), .img_big(sd3_big),
 	.present(sdc_present), .ro(sdc_ro), .size(sdc_size),
 	.sd_lba(sdc_lba), .sd_rd(sdc_rd), .sd_wr(sdc_wr), .sd_ack(sd3_ack && !sd3_f011)
@@ -980,6 +982,7 @@ f011 fdc (
 	.img1_sd(d1_img), .img1_ok(d1_ok), .img1_wen(d1_wen), .img1_start(d1_start),
 	.sd3_lba(f3_lba), .sd3_rd(f3_rd), .sd3_wr(f3_wr), .sd3_ack(sd3_ack && sd3_f011),
 	.img_mounted(img_mounted), .img_readonly(img_readonly), .img_size(img_size),
+	.osd_disk(osd_disk), .osd_wen(osd_wen),
 	.sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr), .sd_buff_dout(sd_buff_dout), .sd_buff_din(sd_buff_din),
 	.sd_buff_wr(sd_buff_wr), .led(drive_led)
@@ -1021,6 +1024,14 @@ assign sid_l = mix2(sid_b, m65_ext ? sid_c2 : 18'd0);
 
 // ------------------------------------------------------------------ MEGA65 extras
 logic [7:0] math_dout, rtc_dout, aud_dout;
+
+// $D7FA: MEGA65 frame counter (programs time their waits with it)
+logic [7:0] frame_cnt;
+logic       vblank_d;
+always_ff @(posedge clk) begin
+	vblank_d <= vblank;
+	if (vblank && !vblank_d) frame_cnt <= frame_cnt + 8'd1;
+end
 logic       aud_irq_n;
 logic signed [15:0] aud_l, aud_r;
 
@@ -1098,7 +1109,7 @@ always_comb begin
 	else if (io_sid)  io_dout = sid_dout;
 	else if (io_uart) io_dout = uart_dout;
 	else if (io_dma)  io_dout = dma_reg_dout;
-	else if (io_math) io_dout = math_dout;
+	else if (io_math) io_dout = (io_addr[7:0] == 8'hFA) ? frame_cnt : math_dout;
 	else if (io_aud)  io_dout = aud_dout;
 	else if (io_hyp)  io_dout = hyp_dout;
 	else if (io_sdb)  io_dout = sdbuf_q;

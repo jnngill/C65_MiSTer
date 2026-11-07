@@ -49,6 +49,8 @@ module f011 (
 
 	input  logic  [1:0] img_mounted,     // one bit per drive
 	input  logic        img_readonly,
+	output logic  [1:0] osd_disk,        // a disk mounted in the OSD is in drive 0 / 1 ...
+	output logic  [1:0] osd_wen,         // ... and can be written
 	input  logic [31:0] img_size,
 	output logic [31:0] sd_lba,
 	output logic  [1:0] sd_rd,
@@ -91,6 +93,8 @@ logic [24:0] index_cnt;
 logic [15:0] delay;
 
 wire       drv     = control[0];
+assign osd_disk = present;
+assign osd_wen  = present & ~readonly;
 wire       exists  = (control[2:0] == 3'd0) || (control[2:0] == 3'd1 && (present[1] || img1_sd));
 wire [6:0] head    = heads[drv];
 wire       swap    = control[4];
