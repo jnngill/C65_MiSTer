@@ -9,7 +9,7 @@
 //
 // Keys common to all layouts:
 //   F1 F3 F5 F7 = same, F2 F4 F6 F8 = shifted, F9 = F9, F10 = F11, F12 = F13
-//   F11 = RESTORE, Esc = RUN/STOP, End = ESC, Tab = TAB, Alt = ALT, Win = C=
+//   F11 = RESTORE, Esc = ESC, Win+Esc = RUN/STOP, End = ESC, Tab = TAB, Alt = ALT, Win = C=
 //   Insert = pound, PgUp = HELP, PgDn = up arrow, Home = HOME (Shift = CLR)
 //   Scroll Lock = NO SCROLL, Caps Lock = CAPS LOCK, cursor keys = cursor keys
 
@@ -38,6 +38,8 @@ module c65_keyboard (
 localparam logic [6:0] K_NONE   = 7'd127;
 localparam logic [6:0] K_LSHIFT = 7'd15;
 localparam logic [6:0] K_RSHIFT = 7'd52;
+localparam logic [6:0] K_CBM    = 7'd61;
+localparam logic [6:0] K_STOP   = 7'd63;
 
 // {shift handling, key}: handling 0 = leave SHIFT alone, 1 = release it, 2 = press it
 function automatic [8:0] keymap(input logic [1:0] lay, input logic shift, input logic [8:0] code);
@@ -192,8 +194,8 @@ function automatic [8:0] keymap(input logic [1:0] lay, input logic shift, input 
 		{2'd0, 1'b1, 9'h074}: keymap = {2'd1, 7'd19};   // 6 (shift off)
 		{2'd0, 1'b0, 9'h075}: keymap = {2'd1, 7'd27};   // 8 (shift off)
 		{2'd0, 1'b1, 9'h075}: keymap = {2'd1, 7'd27};   // 8 (shift off)
-		{2'd0, 1'b0, 9'h076}: keymap = {2'd0, 7'd63};   // STOP
-		{2'd0, 1'b1, 9'h076}: keymap = {2'd0, 7'd63};   // STOP
+		{2'd0, 1'b0, 9'h076}: keymap = {2'd0, 7'd71};   // ESC
+		{2'd0, 1'b1, 9'h076}: keymap = {2'd0, 7'd71};   // ESC
 		{2'd0, 1'b0, 9'h079}: keymap = {2'd1, 7'd40};   // PLUS (shift off)
 		{2'd0, 1'b1, 9'h079}: keymap = {2'd1, 7'd40};   // PLUS (shift off)
 		{2'd0, 1'b0, 9'h07A}: keymap = {2'd1, 7'd8};   // 3 (shift off)
@@ -391,8 +393,8 @@ function automatic [8:0] keymap(input logic [1:0] lay, input logic shift, input 
 		{2'd1, 1'b1, 9'h074}: keymap = {2'd1, 7'd19};   // 6 (shift off)
 		{2'd1, 1'b0, 9'h075}: keymap = {2'd1, 7'd27};   // 8 (shift off)
 		{2'd1, 1'b1, 9'h075}: keymap = {2'd1, 7'd27};   // 8 (shift off)
-		{2'd1, 1'b0, 9'h076}: keymap = {2'd0, 7'd63};   // STOP
-		{2'd1, 1'b1, 9'h076}: keymap = {2'd0, 7'd63};   // STOP
+		{2'd1, 1'b0, 9'h076}: keymap = {2'd0, 7'd71};   // ESC
+		{2'd1, 1'b1, 9'h076}: keymap = {2'd0, 7'd71};   // ESC
 		{2'd1, 1'b0, 9'h079}: keymap = {2'd1, 7'd40};   // PLUS (shift off)
 		{2'd1, 1'b1, 9'h079}: keymap = {2'd1, 7'd40};   // PLUS (shift off)
 		{2'd1, 1'b0, 9'h07A}: keymap = {2'd1, 7'd8};   // 3 (shift off)
@@ -590,8 +592,8 @@ function automatic [8:0] keymap(input logic [1:0] lay, input logic shift, input 
 		{2'd2, 1'b1, 9'h074}: keymap = {2'd1, 7'd19};   // 6 (shift off)
 		{2'd2, 1'b0, 9'h075}: keymap = {2'd1, 7'd27};   // 8 (shift off)
 		{2'd2, 1'b1, 9'h075}: keymap = {2'd1, 7'd27};   // 8 (shift off)
-		{2'd2, 1'b0, 9'h076}: keymap = {2'd0, 7'd63};   // STOP
-		{2'd2, 1'b1, 9'h076}: keymap = {2'd0, 7'd63};   // STOP
+		{2'd2, 1'b0, 9'h076}: keymap = {2'd0, 7'd71};   // ESC
+		{2'd2, 1'b1, 9'h076}: keymap = {2'd0, 7'd71};   // ESC
 		{2'd2, 1'b0, 9'h079}: keymap = {2'd1, 7'd40};   // PLUS (shift off)
 		{2'd2, 1'b1, 9'h079}: keymap = {2'd1, 7'd40};   // PLUS (shift off)
 		{2'd2, 1'b0, 9'h07A}: keymap = {2'd1, 7'd8};   // 3 (shift off)
@@ -787,8 +789,8 @@ function automatic [8:0] keymap(input logic [1:0] lay, input logic shift, input 
 		{2'd3, 1'b1, 9'h074}: keymap = {2'd1, 7'd19};   // 6 (shift off)
 		{2'd3, 1'b0, 9'h075}: keymap = {2'd1, 7'd27};   // 8 (shift off)
 		{2'd3, 1'b1, 9'h075}: keymap = {2'd1, 7'd27};   // 8 (shift off)
-		{2'd3, 1'b0, 9'h076}: keymap = {2'd0, 7'd63};   // STOP
-		{2'd3, 1'b1, 9'h076}: keymap = {2'd0, 7'd63};   // STOP
+		{2'd3, 1'b0, 9'h076}: keymap = {2'd0, 7'd71};   // ESC
+		{2'd3, 1'b1, 9'h076}: keymap = {2'd0, 7'd71};   // ESC
 		{2'd3, 1'b0, 9'h079}: keymap = {2'd1, 7'd40};   // PLUS (shift off)
 		{2'd3, 1'b1, 9'h079}: keymap = {2'd1, 7'd40};   // PLUS (shift off)
 		{2'd3, 1'b0, 9'h07A}: keymap = {2'd1, 7'd8};   // 3 (shift off)
@@ -851,13 +853,17 @@ logic        caps;
 // the SHIFT change (longer than one scan), and on release the SHIFT override
 // is kept for ~2 ms after the key has gone.
 logic [71:0] hold;        // pressed, not yet visible
+logic        win_stop;    // RUN/STOP from Win+Esc: C= is hidden while it is held
 logic        lin_off, lin_on;
 logic [16:0] hold_cnt, lin_cnt;
 
 assign capslock_n = ~caps;
 
 wire       host_shift = keys[K_LSHIFT] | keys[K_RSHIFT];
-wire [8:0] m_now = keymap(layout, host_shift, ps2_key[8:0]);
+// Esc is the C65 ESC key (as BBSes and MEGA65 programs expect); with a
+// Windows key (C=) held it is RUN/STOP
+wire       esc_stop   = ps2_key[8:0] == 9'h076 && keys[K_CBM];
+wire [8:0] m_now = esc_stop ? {2'd0, K_STOP} : keymap(layout, host_shift, ps2_key[8:0]);
 wire [8:0] m_s0  = keymap(layout, 1'b0, ps2_key[8:0]);
 wire [8:0] m_s1  = keymap(layout, 1'b1, ps2_key[8:0]);
 
@@ -866,7 +872,7 @@ always_ff @(posedge clk) begin
 	key_event <= 1'b0;
 	if (reset) begin
 		keys <= '0; f_on <= '0; f_off <= '0; restore_n <= 1'b1; caps <= 1'b0; crsr_left <= 1'b0; crsr_up <= 1'b0;
-		hold <= '0; lin_off <= 1'b0; lin_on <= 1'b0; hold_cnt <= '0; lin_cnt <= '0;
+		hold <= '0; lin_off <= 1'b0; lin_on <= 1'b0; hold_cnt <= '0; lin_cnt <= '0; win_stop <= 1'b0;
 	end
 	else begin
 		if (hold_cnt != 0) hold_cnt <= hold_cnt - 1'd1; else hold <= '0;
@@ -874,12 +880,13 @@ always_ff @(posedge clk) begin
 		if (ps2_stb != ps2_key[10]) begin
 		if (ps2_key[9]) begin
 			if (m_now[6:0] != K_NONE) begin
+				if (esc_stop) win_stop <= 1'b1;
 				keys[m_now[6:0]]  <= 1'b1;
 				key_event <= 1'b1;
 				key_index <= m_now[6:0];
 				key_shift <= (m_now[8:7] == 2'd2) || (m_now[8:7] == 2'd0 && host_shift);
 				key_ctrl  <= keys[58];
-				key_mega  <= keys[61];
+				key_mega  <= keys[61] && !esc_stop;
 				f_off[m_now[6:0]] <= (m_now[8:7] == 2'd1);
 				f_on[m_now[6:0]]  <= (m_now[8:7] == 2'd2);
 				if (m_now[8:7] != 2'd0) begin hold[m_now[6:0]] <= 1'b1; hold_cnt <= 17'd65535; end
@@ -887,6 +894,7 @@ always_ff @(posedge clk) begin
 		end
 		else begin
 			// the shift state may have changed since the press: release both candidates
+			if (ps2_key[8:0] == 9'h076) begin keys[K_STOP] <= 1'b0; win_stop <= 1'b0; end
 			if (m_s0[6:0] != K_NONE) begin keys[m_s0[6:0]] <= 1'b0; f_off[m_s0[6:0]] <= 1'b0; f_on[m_s0[6:0]] <= 1'b0; hold[m_s0[6:0]] <= 1'b0; end
 			if (m_s1[6:0] != K_NONE) begin keys[m_s1[6:0]] <= 1'b0; f_off[m_s1[6:0]] <= 1'b0; f_on[m_s1[6:0]] <= 1'b0; hold[m_s1[6:0]] <= 1'b0; end
 			if ((m_s0[6:0] != K_NONE && (f_off[m_s0[6:0]] || f_on[m_s0[6:0]])) || (m_s1[6:0] != K_NONE && (f_off[m_s1[6:0]] || f_on[m_s1[6:0]]))) begin
@@ -907,6 +915,7 @@ end
 always_comb begin
 	logic [71:0] k;
 	k = keys & ~hold;
+	if (win_stop) k[K_CBM] = 1'b0;
 	if (|f_off || lin_off) begin k[K_LSHIFT] = 1'b0; k[K_RSHIFT] = 1'b0; end
 	else if (|f_on || lin_on) k[K_RSHIFT] = 1'b1;
 	matrix = k;

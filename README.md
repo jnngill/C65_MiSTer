@@ -22,7 +22,9 @@ It does not turn the core into a MEGA65.
 ROMs, software, keyboards and controllers and report what works and what
 doesn't (see [Feedback and problems](#feedback-and-problems)). This is not a
 MEGA65, even with the MEGA65 Extensions option on: MEGA65 games and demos
-that need Ethernet or the full 40 MHz (the core tops out at about 24 MHz) will not run. For C64 games the MiSTer
+that need the full 40 MHz (the core tops out at about 24 MHz) will not run.
+MEGA65 network programs do work, through the MiSTer's network cable (see
+[Networking](#networking-mega65-ethernet)). For C64 games the MiSTer
 C64 core is the better choice than `GO64`, and `GO64` can load it (see
 [GO64 / GO128: the MiSTer C64 and C128 cores](#go64--go128-the-mister-c64-and-c128-cores)).
 
@@ -67,7 +69,7 @@ and an early F018 DMA chip, and what it does depends on expansion RAM:
 - with **Expansion RAM** off it shows the Workbench and Deluxe Paint
   pictures, which work
 
-To run the pictures by hand, press Esc (RUN/STOP) during the `LOADING`
+To run the pictures by hand, press Win+Esc (RUN/STOP) during the `LOADING`
 lines, then `DLOAD"FB DEMO"`, `DLOAD"DP DEMO"` or `DLOAD"REGINA DEMO"` and
 `RUN`. The disk needs a stock C65 ROM; its programs do not run under
 S-BASIC 65.
@@ -114,13 +116,15 @@ both settings (C65 software does not use it).
 | SD card controller (`$D680-$D684`, sector buffer at `$FFD6E00` and mapped at `$DE00`), backed by a FAT32 image in *Mount SD Card / Data File (MEGA65)* | done |
 | Hypervisor DOS calls: version, drives, setname, findfile / findfirst / findnext (`*` and `?`, long file names), opendir / readdir / closedir, chdir / cdrootdir, openfile / readfile / closefile / closeall, loadfile (and into attic RAM), mkfile / writefile / rmfile, geterrorcode, disk image attach (D81, D64, D71, D65) / detach / write enable (drives 0 and 1) | done in simulation (every call), the FAT32 result checked with Linux `fsck.vfat`; `MOUNT`, `DIR`, `LOAD`, Space Commander's 2.7 MB data file and writing files (mkfile, writefile, rmfile; checked with `fsck.vfat`) confirmed on hardware. As in the MEGA65's own DOS, mkfile makes a file of a fixed size (8.3 name) and writefile fills it, files do not grow; there are no folder creation or rename calls |
 | F011 disk images on the SD card (`$D68B-$D693`): drive 0 / 1 reads and writes an attached `.D81`, `.D64`, `.D71` or `.D65` straight from the card (`MOUNT "GAME.D64"`); the image type is flagged in `$D68A` / `$D68B` as on the MEGA65, and the ROM's DOS does the 1541 / 1571 layout | D81 confirmed on hardware (drive 0). D64 and D71 tested in simulation with BASIC 65 920422 (`MOUNT`, `DIR`, `DLOAD`, `RUN`). S-BASIC 65's DOS only knows the D81 layout: a D64 mounts but `DIR` gives `74,DRIVE NOT READY` |
+| A disk mounted in the OSD reads as a disk image in `$D68B` (image, present, write enabled unless read-only), as an attached image does on a MEGA65; programs that also drive a real floppy (which numbers its sides the other way) check this bit. The hypervisor sees the flags as they are | done, confirmed on hardware (the MEGA65 BBS Client loads its MEGANET module this way) |
 | F011 sector buffer mapped flat at `$FFD6C00-$FFD6DFF` (the BASIC 65 DOS reads and writes sectors there) | done, confirmed on hardware with BASIC 65 920422 (`DIR`, `SAVE`, `LOAD`) |
 | Writable `$20000-$3FFFF` (far pointer and DMA writes, as on the MEGA65 where this is RAM) | done. A copy of the ROM is kept in the SDRAM module and put back at the next reset, so S-BASIC returns without reloading the core |
 | Keyboard: matrix peek (`$D613` / `$D614`), modifier keys (`$D611`), cursor left / up (`$D60F`), and the typing queue: oldest key as ASCII (`$D610`) and PETSCII (`$D619`), its modifiers (`$D60A`), 8 keys with repeat | done, confirmed on hardware (the Open ROMs read `$D611` for SHIFT; BASIC 65 920422 types through `$D619`) |
 | Four SIDs: with the MEGA65 extensions on, `$D440` (left) and `$D460` (right) are two more SIDs, sharing the waveform tables and filter with the first two (without the extensions they mirror `$D400` / `$D420`, as on a C65). The MEGA65 itself puts `$D400` / `$D420` on one side and `$D440` / `$D460` on the other; here `$D400` / `$D420` keep the C65's right / left, so the extra pair is split the other way | done, tested in simulation (each chip matches the original two-chip SID sample for sample) |
 | Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects, Little Mega People's samples). A sample can be started from the current address (`$D72A-$D72C`) as well as the base address. Samples come from the first 16 MB as on the MEGA65 (its 24-bit sample addresses cannot reach attic RAM). Audio DMA interrupts (`$D713`, offsets `$D714-$D717`: one interrupt per arming as the address nears the top) and sine mode (`$D72x` bit 4) tested in simulation |
 | CPU top speed | about 24 MHz equivalent (1.5x the old 16 MHz): at the top speed, sequential reads of chip RAM, ROM and the extra chip RAM (opcode and operand fetches, stack pulls) and writes to chip RAM take one clock instead of two. Confirmed on hardware. A true 40 MHz would need a redesigned CPU: its internal paths and the RAM to CPU paths are too long for a faster clock |
-| Ethernet | not implemented |
+| MEGA65 Ethernet (`$D6E0-$D6EF`, RX / TX buffers at `$FFDE800`): four RX buffers with the MEGA65's rotation, free count and interrupts, TX, MAC address, MAC / broadcast / multicast filter, an emulated PHY for the MIIM registers. The buffers are in DDR3, passed to and from the MiSTer's `eth0` by the `c65_net` program (see [Networking](#networking-mega65-ethernet)) | done, confirmed on hardware: DHCP, the MEGA65 BBS Client (telnet BBSes) and SSH from the MEGA65 `net-tools.d81` |
+| Frame counter (`$D7FA`, counts video frames; MEGA65 programs time their waits with it) | done |
 | Attic RAM: 8 MB at `$8000000`, through far pointers and DMA | done, confirmed on hardware (S-BASIC `EDMA` fill and copy back); kept in the SDRAM module, so it needs one (it does not depend on the *Expansion RAM* option) |
 | Enhanced DMA jobs (`$D705`): megabyte options, list format, transparency (`$06`/`$07`, `$86`), source / destination step rates in 1/256 steps (`$82`-`$85`) (S-BASIC `EDMA`) | done, confirmed on hardware (copy, fill, transparency, source and destination step rates). Other options (line drawing, spiral mode) are ignored |
 | Inline DMA jobs (`$D707`): the enhanced job list follows the `STA $D707` instruction and the CPU carries on after it | done, confirmed on hardware (Little Mega People). The list is read from bank 0 at the CPU's address, so the code must not be in a `MAP`ped block |
@@ -197,6 +201,7 @@ newest dated `.rbf` is the one to use) and on the
 | `c65_sd_image.sh` (optional, builds the MEGA65 SD card image; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
 | `c65_core_switch.sh` (optional, lets `GO64` / `GO128` load the MiSTer C64 / C128 cores; release, or `scripts/mister/`) | `/media/fat/Scripts/`, then run it once |
 | `go.d81` (optional, `GO128` and `GO64` programs; release, or `disks/`) | `/media/fat/games/C65/` |
+| `c65_net.sh` and `c65_net` (optional, MEGA65 networking; release, or `scripts/mister/`) | `/media/fat/Scripts/`, then run `c65_net.sh` once |
 
 1. Create the folder `/media/fat/games/C65/`.
 2. Copy the `.rbf` to `/media/fat/_Computer/`.
@@ -311,8 +316,10 @@ takes typing. Its DOS reads and writes `.D81` disks (`DIR`, `LOAD`, `SAVE`,
 confirmed on hardware) through the MEGA65's flat view of the floppy
 controller's sector buffer at `$FFD6C00`.
 
-The MEGA65 network programs (BBS, IRC, SSH ...) need the MEGA65 Ethernet
-controller, which the core does not have.
+MEGA65 network programs run with the `c65_net` helper installed (see
+[Networking](#networking-mega65-ethernet)). Tested on hardware with BASIC 65
+920423: the **MEGA65 BBS Client** 1.4 (`RUN"BBS"`: DHCP, then telnet BBSes)
+and **SSH** from the MEGA65 `net-tools.d81` disk.
 
 ### GO64 / GO128: the MiSTer C64 and C128 cores
 
@@ -375,6 +382,43 @@ Programs, and BASIC 65 saving to an attached `.D81`, write into the image,
 not into the files in the `SD` folder: running the script again replaces
 those changes, so copy anything you want to keep out of the image first (on
 the MiSTer: `mount -o loop` it, as the script does).
+
+### Networking (MEGA65 Ethernet)
+
+With *MEGA65 Extensions* on, the core has the MEGA65's Ethernet controller,
+so MEGA65 network programs (the BBS client, SSH, IRC, FTP, Gopher ... on the
+MEGA65 `net-tools.d81` disk) can reach your network and the internet.
+
+The DE10-Nano's FPGA has no network port of its own. The core keeps its
+network buffers in the board's DDR3 memory, and a small program on the
+MiSTer, `c65_net`, passes the frames to and from the MiSTer's wired network
+port (`eth0`). It has to be running for the network to work:
+
+1. Copy `c65_net.sh` and `c65_net` (release, or `scripts/mister/`) to
+   `/media/fat/Scripts`.
+2. Run `c65_net.sh` once from the Scripts menu. It copies both to
+   `/media/fat/linux`, adds one line to `/media/fat/linux/user-startup.sh` so
+   `c65_net` starts at every boot (anything already there is left alone),
+   and starts it.
+
+Running it again restarts it; `c65_net.sh remove`, from a terminal, takes it
+out again. `c65_net` only does anything while the C65 core is loaded.
+
+- **A network cable is needed.** Wi-Fi does not work for this (access points
+  drop frames from a second MAC address). Another wired interface can be
+  chosen with `NET_IF=...` in `/media/fat/linux/c65_net.conf`.
+- The C65 is a machine of its own on your network, with the MEGA65's MAC
+  address `02:47:53:65:65:65` (unless a program sets another), so it gets its
+  own address from your router's DHCP. Nothing needs setting up on the
+  router or on the MiSTer.
+- The MiSTer's own Linux cannot reach the C65 this way (frames sent out of
+  `eth0` do not come back in); other machines on your network and the
+  internet can.
+- While `c65_net` runs, `eth0` is in promiscuous mode, so that it sees the
+  frames for the C65.
+
+Keys: in the network programs **Esc** is ESC (what BBSes ask for) and
+**Win+Esc** is RUN/STOP (the BBS client's way back to its menu).
 
 ### C65TERM: a telnet BBS terminal
 
@@ -477,11 +521,12 @@ the C65 gets. "Positional" maps keys by their place on a C64/C65 keyboard.
 
 | Host key | C65 key |
 |----------|---------|
-| Esc | RUN/STOP |
+| Esc | ESC |
+| Win+Esc | RUN/STOP (C= is not pressed) |
 | F11 | RESTORE |
 | F1 F3 F5 F7 / F2 F4 F6 F8 | F1 F3 F5 F7 / shifted |
 | F9, F10, F12 | F9, F11, F13 |
-| End | ESC |
+| End | ESC (as Esc) |
 | Tab, Alt, Win | TAB, ALT, C= |
 | PgUp | HELP |
 | PgDn | up arrow |
@@ -512,6 +557,10 @@ compiler; paths are set at the top of the scripts.
     sim/system/build/tb.exe roms/911210.bin sim/out 560 \
         -keys sim/system/keys_disk.txt -d81 blank.d81
 
+`-eth frames.txt` adds DDR3 and a stand-in for `c65_net`: it gives the core
+the frames in the file (one per line, in hex), writes the core's frames to
+`eth_tx.txt` in the output folder, and answers ARP requests.
+
 The testbench prints the text screen and writes `final.ppm`
 (`scripts/ppm2png.py` converts it). `scripts/dis4510.py` is a small 4510
 disassembler for poking at ROMs.
@@ -526,6 +575,8 @@ disassembler for poking at ROMs.
     rtl/f011.sv           floppy controller
     rtl/m65_math.sv       MEGA65 multiplier / divider
     rtl/m65_rtc.sv        MEGA65 real-time clock registers
+    rtl/m65_eth.sv        MEGA65 Ethernet controller (buffers in DDR3)
+    scripts/mister/       helpers that run on the MiSTer (c65_net.c: the network bridge)
     rtl/sdram.v           SDRAM controller (expansion RAM), from the MiSTer C64 core
     rtl/c65_keyboard.sv   generated by scripts/gen_keyboard.py
     rtl/mos6526_8520.v, rtl/sid/, rtl/pll*, sys/   from MiSTer C64/C128 cores
@@ -556,11 +607,11 @@ headers, and are used under those licences:
 
 The MEGA65 features (VIC-IV, four SIDs, audio DMA, the SD card controller,
 the hypervisor and its DOS, the F011 disk images, the math unit, enhanced
-DMA) are this project's own code. They were written from the MEGA65's
+DMA, Ethernet) are this project's own code. They were written from the MEGA65's
 open-source FPGA design, [MEGA65/mega65-core](https://github.com/MEGA65/mega65-core)
 (VHDL under LGPL-3.0-or-later): `viciv.vhdl`, `sprite.vhdl`, `bitplane(s).vhdl`,
-`multisid.vhdl`, `audio_mixer.vhdl`, `gs4510.vhdl`, `sdcardio.vhdl` and
-`iomapper.vhdl` were the reference for register layouts and behaviour, and
+`multisid.vhdl`, `audio_mixer.vhdl`, `gs4510.vhdl`, `sdcardio.vhdl`,
+`ethernet.vhdl` and `iomapper.vhdl` were the reference for register layouts and behaviour, and
 the hypervisor DOS uses the function numbers, register conventions, error
 codes and directory entry layout of `src/hyppo/dos.asm`. Apart from the
 generated opcode map above, no MEGA65 source code is included.

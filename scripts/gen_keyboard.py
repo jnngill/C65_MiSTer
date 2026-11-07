@@ -50,7 +50,7 @@ COMMON = {
     0x29: ("SPACE", ASIS), 0x5A: ("RETURN", ASIS), 0x15A: ("RETURN", ASIS), 0x66: ("DEL", ASIS),
     0x171: ("DEL", ASIS), 0x12: ("LSHIFT", ASIS), 0x59: ("RSHIFT", ASIS), 0x14: ("CTRL", ASIS),
     0x114: ("CTRL", ASIS), 0x11F: ("CBM", ASIS), 0x127: ("CBM", ASIS), 0x11: ("ALT", ASIS), 0x111: ("ALT", ASIS),
-    0x0D: ("TAB", ASIS), 0x76: ("STOP", ASIS), 0x169: ("ESC", ASIS), 0x16C: ("HOME", ASIS),
+    0x0D: ("TAB", ASIS), 0x76: ("ESC", ASIS), 0x169: ("ESC", ASIS), 0x16C: ("HOME", ASIS),
     0x170: ("POUND", ASIS), 0x17D: ("HELP", ASIS), 0x17A: ("UPARROW", ASIS), 0x7E: ("NOSCROLL", ASIS),
     0x174: ("RIGHT", ASIS), 0x172: ("DOWN", ASIS), 0x16B: ("RIGHT", ON), 0x175: ("DOWN", ON),
     0x05: ("F1", ASIS), 0x04: ("F3", ASIS), 0x03: ("F5", ASIS), 0x83: ("F7", ASIS),
@@ -126,7 +126,7 @@ HEADER = '''// PS/2 (MiSTer hps_io ps2_key) to C65 keyboard matrix.
 //
 // Keys common to all layouts:
 //   F1 F3 F5 F7 = same, F2 F4 F6 F8 = shifted, F9 = F9, F10 = F11, F12 = F13
-//   F11 = RESTORE, Esc = RUN/STOP, End = ESC, Tab = TAB, Alt = ALT, Win = C=
+//   F11 = RESTORE, Esc = ESC, Win+Esc = RUN/STOP, End = ESC, Tab = TAB, Alt = ALT, Win = C=
 //   Insert = pound, PgUp = HELP, PgDn = up arrow, Home = HOME (Shift = CLR)
 //   Scroll Lock = NO SCROLL, Caps Lock = CAPS LOCK, cursor keys = cursor keys
 
@@ -155,6 +155,8 @@ module c65_keyboard (
 localparam logic [6:0] K_NONE   = 7'd127;
 localparam logic [6:0] K_LSHIFT = 7'd%d;
 localparam logic [6:0] K_RSHIFT = 7'd%d;
+localparam logic [6:0] K_CBM    = 7'd%d;
+localparam logic [6:0] K_STOP   = 7'd%d;
 
 // {shift handling, key}: handling 0 = leave SHIFT alone, 1 = release it, 2 = press it
 function automatic [8:0] keymap(input logic [1:0] lay, input logic shift, input logic [8:0] code);
@@ -178,13 +180,17 @@ logic        caps;
 // the SHIFT change (longer than one scan), and on release the SHIFT override
 // is kept for ~2 ms after the key has gone.
 logic [71:0] hold;        // pressed, not yet visible
+logic        win_stop;    // RUN/STOP from Win+Esc: C= is hidden while it is held
 logic        lin_off, lin_on;
 logic [16:0] hold_cnt, lin_cnt;
 
 assign capslock_n = ~caps;
 
 wire       host_shift = keys[K_LSHIFT] | keys[K_RSHIFT];
-wire [8:0] m_now = keymap(layout, host_shift, ps2_key[8:0]);
+// Esc is the C65 ESC key (as BBSes and MEGA65 programs expect); with a
+// Windows key (C=) held it is RUN/STOP
+wire       esc_stop   = ps2_key[8:0] == 9'h076 && keys[K_CBM];
+wire [8:0] m_now = esc_stop ? {2'd0, K_STOP} : keymap(layout, host_shift, ps2_key[8:0]);
 wire [8:0] m_s0  = keymap(layout, 1'b0, ps2_key[8:0]);
 wire [8:0] m_s1  = keymap(layout, 1'b1, ps2_key[8:0]);
 
@@ -193,7 +199,7 @@ always_ff @(posedge clk) begin
 	key_event <= 1'b0;
 	if (reset) begin
 		keys <= '0; f_on <= '0; f_off <= '0; restore_n <= 1'b1; caps <= 1'b0; crsr_left <= 1'b0; crsr_up <= 1'b0;
-		hold <= '0; lin_off <= 1'b0; lin_on <= 1'b0; hold_cnt <= '0; lin_cnt <= '0;
+		hold <= '0; lin_off <= 1'b0; lin_on <= 1'b0; hold_cnt <= '0; lin_cnt <= '0; win_stop <= 1'b0;
 	end
 	else begin
 		if (hold_cnt != 0) hold_cnt <= hold_cnt - 1'd1; else hold <= '0;
@@ -201,12 +207,13 @@ always_ff @(posedge clk) begin
 		if (ps2_stb != ps2_key[10]) begin
 		if (ps2_key[9]) begin
 			if (m_now[6:0] != K_NONE) begin
+				if (esc_stop) win_stop <= 1'b1;
 				keys[m_now[6:0]]  <= 1'b1;
 				key_event <= 1'b1;
 				key_index <= m_now[6:0];
 				key_shift <= (m_now[8:7] == 2'd2) || (m_now[8:7] == 2'd0 && host_shift);
 				key_ctrl  <= keys[58];
-				key_mega  <= keys[61];
+				key_mega  <= keys[61] && !esc_stop;
 				f_off[m_now[6:0]] <= (m_now[8:7] == 2'd1);
 				f_on[m_now[6:0]]  <= (m_now[8:7] == 2'd2);
 				if (m_now[8:7] != 2'd0) begin hold[m_now[6:0]] <= 1'b1; hold_cnt <= 17'd65535; end
@@ -214,6 +221,7 @@ always_ff @(posedge clk) begin
 		end
 		else begin
 			// the shift state may have changed since the press: release both candidates
+			if (ps2_key[8:0] == 9'h076) begin keys[K_STOP] <= 1'b0; win_stop <= 1'b0; end
 			if (m_s0[6:0] != K_NONE) begin keys[m_s0[6:0]] <= 1'b0; f_off[m_s0[6:0]] <= 1'b0; f_on[m_s0[6:0]] <= 1'b0; hold[m_s0[6:0]] <= 1'b0; end
 			if (m_s1[6:0] != K_NONE) begin keys[m_s1[6:0]] <= 1'b0; f_off[m_s1[6:0]] <= 1'b0; f_on[m_s1[6:0]] <= 1'b0; hold[m_s1[6:0]] <= 1'b0; end
 			if ((m_s0[6:0] != K_NONE && (f_off[m_s0[6:0]] || f_on[m_s0[6:0]])) || (m_s1[6:0] != K_NONE && (f_off[m_s1[6:0]] || f_on[m_s1[6:0]]))) begin
@@ -234,6 +242,7 @@ end
 always_comb begin
 	logic [71:0] k;
 	k = keys & ~hold;
+	if (win_stop) k[K_CBM] = 1'b0;
 	if (|f_off || lin_off) begin k[K_LSHIFT] = 1'b0; k[K_RSHIFT] = 1'b0; end
 	else if (|f_on || lin_on) k[K_RSHIFT] = 1'b1;
 	matrix = k;
@@ -255,7 +264,7 @@ endmodule
 
 def main():
     names = {v: k for k, v in KEY.items()}
-    out = [HEADER % (KEY["LSHIFT"], KEY["RSHIFT"])]
+    out = [HEADER % (KEY["LSHIFT"], KEY["RSHIFT"], KEY["CBM"], KEY["STOP"])]
     for li, lay in enumerate(("US", "UK", "DE", "POS")):
         out.append("\t\t// ---- layout %d: %s\n" % (li, lay))
         t = build(lay)
