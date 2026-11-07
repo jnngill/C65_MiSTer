@@ -1065,11 +1065,13 @@ m65_math math (
 
 `ifdef IO_DEBUG
 always @(posedge clk) begin
+	if (bus_ce && sel_port && bus_we)
+		$display("PORT wr $%01x = %02x  PC=%04x  hyp=%0d dma=%0d", cpu_addr[0], bus_dout, dbg_pc, hyp, dma_busy);
 	if (bus_ce && ser_sel)
 		$display("SER  %s $D60%01x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[3:0], bus_we ? bus_dout : ser_dout, dbg_pc);
 	if (bus_ce && io_hyp)
 		$display("HYP  %s $D6%02x = %02x  PC=%04x A=%02x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc, dbg_a);
-	if (bus_ce && io_vic && vic_reg >= 7'h40)
+	if (bus_ce && io_vic && (vic_reg >= 7'h40 || vic_reg == 7'h11 || vic_reg == 7'h12))
 		$display("VIC4 %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
 	if (bus_ce && io_fdc)
 		$display("FDC  %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);

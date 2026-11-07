@@ -278,7 +278,13 @@ Relative (REL) files on a `.d64` are skipped.
 
 ### MEGA65 programs
 
-With *MEGA65 Extensions* on and S-BASIC 65 as the ROM, some MEGA65 games run.
+With *MEGA65 Extensions* on, MEGA65 programs run with the MEGA65's own ROM
+(BASIC 65, 920422 or 920423) and some also with S-BASIC 65. Most MEGA65
+software is written for BASIC 65: S-BASIC 65 is a separate BASIC built from an
+older MEGA65 ROM (920300) and stores some commands under other token numbers,
+so a BASIC 65 program can stop with `?SYNTAX ERROR` under it (for example
+`SLEEP`). Use BASIC 65 unless a program asks for S-BASIC 65.
+
 Tested on hardware:
 
 - **Space Commander** (v1.3): mount `space-commander.d81` in *Mount Drive 8*
@@ -302,6 +308,13 @@ Tested on hardware:
   starts, it boots by itself. It does not start under S-BASIC 65.
 - **`sample.d81`** (plays music held in attic RAM): works with both S-BASIC 65
   and BASIC 65 920422.
+- **Xanadu demo** (Syntax Party 2022, with BASIC 65 920423; the disk
+  boots by itself): the BASIC 65 edition runs. The 45GS02 ASM edition hangs
+  at "LOADING" with BASIC 65 920422 / 920423: it switches BASIC out by
+  clearing bit 0 of the CPU port `$01`, which worked with the earlier MEGA65
+  ROMs (they leave `$01` at `$FF`), but these ROMs set `$01` to `$85`, so the
+  I/O area disappears with it. A MEGA65 decodes `$01` the same way, so this
+  is the ROM, not the core; use an earlier MEGA65 ROM for that edition.
 - **Pascal65** (with BASIC 65 920422): `DLOAD"PASCAL65"` and `RUN` (after a
   plain `LOAD` it cannot load its ASM.LIB and stops at a BRK); compiling
   and running the BUBBLES demo works. Its messages are mixed case, so if
