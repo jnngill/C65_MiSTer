@@ -385,40 +385,69 @@ the MiSTer: `mount -o loop` it, as the script does).
 
 ### Networking (MEGA65 Ethernet)
 
-With *MEGA65 Extensions* on, the core has the MEGA65's Ethernet controller,
-so MEGA65 network programs (the BBS client, SSH, IRC, FTP, Gopher ... on the
-MEGA65 `net-tools.d81` disk) can reach your network and the internet.
+MEGA65 network programs (the BBS client, SSH, IRC, FTP, Gopher ... on the
+MEGA65 `net-tools.d81` disk) work on this core and reach your network and the
+internet. It takes a one-time setup on the MiSTer.
 
-The DE10-Nano's FPGA has no network port of its own. The core keeps its
-network buffers in the board's DDR3 memory, and a small program on the
-MiSTer, `c65_net`, passes the frames to and from the MiSTer's wired network
-port (`eth0`). It has to be running for the network to work:
+**Why there is a setup step.** On the DE10-Nano the network port is wired to
+the board's ARM processor (the MiSTer's Linux side), not to the FPGA where the
+core runs. So the core cannot reach the network by itself: a small helper
+program on the MiSTer, `c65_net`, passes the C65's network traffic to and
+from the network port. Once installed it starts by itself at every boot, so
+you do this only once.
 
-1. Copy `c65_net.sh` and `c65_net` (release, or `scripts/mister/`) to
-   `/media/fat/Scripts`.
-2. Run `c65_net.sh` once from the Scripts menu. It copies both to
-   `/media/fat/linux`, adds one line to `/media/fat/linux/user-startup.sh` so
-   `c65_net` starts at every boot (anything already there is left alone),
-   and starts it.
+**You need:**
 
-Running it again restarts it; `c65_net.sh remove`, from a terminal, takes it
-out again. `c65_net` only does anything while the C65 core is loaded.
+- The MiSTer connected to your network **with a cable**. Wi-Fi does not work
+  for this (a Wi-Fi access point drops traffic from a second machine behind
+  the MiSTer).
+- *MEGA65 Extensions* set to *On* in the OSD, and a MEGA65 ROM
+  (BASIC 65, e.g. 920423) as the system ROM.
+- The two files `c65_net.sh` and `c65_net`, from the release (or
+  `scripts/mister/` in this repository).
 
-- **A network cable is needed.** Wi-Fi does not work for this (access points
-  drop frames from a second MAC address). Another wired interface can be
-  chosen with `NET_IF=...` in `/media/fat/linux/c65_net.conf`.
-- The C65 is a machine of its own on your network, with the MEGA65's MAC
-  address `02:47:53:65:65:65` (unless a program sets another), so it gets its
-  own address from your router's DHCP. Nothing needs setting up on the
-  router or on the MiSTer.
-- The MiSTer's own Linux cannot reach the C65 this way (frames sent out of
-  `eth0` do not come back in); other machines on your network and the
-  internet can.
-- While `c65_net` runs, `eth0` is in promiscuous mode, so that it sees the
-  frames for the C65.
+**Setup (once):**
 
-Keys: in the network programs **Esc** is ESC (what BBSes ask for) and
-**Win+Esc** is RUN/STOP (the BBS client's way back to its menu).
+1. Copy `c65_net.sh` and `c65_net` to `/media/fat/Scripts` on the MiSTer's SD
+   card (both files into the same folder).
+2. On the MiSTer, open the Scripts menu (F12, then *Scripts*) and run
+   `c65_net.sh`. It says *C65 network installed and running.*
+
+That is all: it is now running, and it starts again at every boot. (It copies
+itself to `/media/fat/linux` and adds one line to
+`/media/fat/linux/user-startup.sh`; anything already in that file is left as
+it is.) Nothing needs setting up on your router or in the MiSTer's network
+settings.
+
+**Using it:** start the C65 core, mount the program's disk and run it, e.g.
+`RUN"BBS"` from `net-tools.d81`. The program gets an address from your
+router by DHCP the same way a real MEGA65 does; your router lists it as a new
+device with the MAC address `02:47:53:65:65:65` (the MEGA65's). In the network
+programs, **Esc** is ESC (what BBSes ask for, e.g. in a "press ESC" check)
+and **Win+Esc** is RUN/STOP (the BBS client's way back to its menu).
+
+**If it does not work:**
+
+- The program stays at "starting the network" or finds no address: check
+  that `c65_net` is running. Run `c65_net.sh` from the Scripts menu again;
+  it restarts it.
+- The MiSTer is on Wi-Fi: this needs the cable.
+- Your MiSTer uses a wired port other than `eth0`: put `NET_IF=eth1` (the
+  port's name) into `/media/fat/linux/c65_net.conf` and run `c65_net.sh` from
+  the Scripts menu again.
+
+**Good to know:**
+
+- The C65 is a separate machine on your network with its own address. Other
+  computers on your network and the internet can reach it, but the MiSTer's
+  own Linux cannot (traffic the MiSTer sends out of its network port does
+  not come back in to it).
+- `c65_net` does nothing while another core is loaded. While it runs, the
+  MiSTer's network port also listens for the C65's traffic (promiscuous
+  mode); the MiSTer's own networking is not affected.
+- To remove it, run `/media/fat/linux/c65_net.sh remove` in a terminal on
+  the MiSTer (over ssh, for example). It stops `c65_net`, deletes it and
+  takes its line out of `user-startup.sh`.
 
 ### C65TERM: a telnet BBS terminal
 
