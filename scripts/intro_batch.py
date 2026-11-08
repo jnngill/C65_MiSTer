@@ -7,8 +7,14 @@ For each program: boot the ROM with the disk mounted, type RUN "NAME" at
 frame 300, press space at frame 1000 (past most title screens) and save a
 frame every 250 frames.  Writes <outdir>/<disk>/<name>/f*.png, log.txt and
 a contact sheet <outdir>/index.html.
+
+Programs whose final.png already exists are skipped, so an interrupted run
+can be restarted.  Set TB_LIMIT_DAY / TB_LIMIT_NIGHT to cap how many tb.exe
+processes may run on the machine at once (all of them, not just this
+batch's); night is 00:01-07:00.  A file <outdir>/limit holding a number
+overrides both.
 """
-import os, sys, subprocess, concurrent.futures, html, re
+import os, sys, subprocess, concurrent.futures, html, re, threading, time, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TB = os.environ.get('TB') or os.path.join(ROOT, 'sim', 'system', 'build', 'tb.exe')
@@ -52,8 +58,44 @@ def petscii_to_typed(name):
     return s
 
 
+_gate = threading.Lock()
+_outroot = '.'
+
+
+def _limit():
+    try:
+        return int(open(os.path.join(_outroot, 'limit')).read().strip())
+    except Exception:
+        pass
+    now = datetime.datetime.now().time()
+    night = datetime.time(0, 1) <= now < datetime.time(7, 0)
+    return int(os.environ.get('TB_LIMIT_NIGHT' if night else 'TB_LIMIT_DAY', '1000'))
+
+
+def _tb_count():
+    try:
+        out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq tb.exe', '/NH'],
+                             capture_output=True, text=True).stdout
+        return sum(1 for l in out.splitlines() if l.lower().startswith('tb.exe'))
+    except Exception:
+        return 0
+
+
+def _start(cmd, **kw):
+    # wait for a free slot under the machine-wide limit, then start
+    while True:
+        with _gate:
+            if _tb_count() < _limit():
+                p = subprocess.Popen(cmd, **kw)
+                time.sleep(2)   # let tasklist see it before the next check
+                return p
+        time.sleep(15)
+
+
 def run_one(job):
     disk, name, typed, outdir, frames = job
+    if os.path.exists(os.path.join(outdir, 'final.png')):
+        return outdir
     os.makedirs(outdir, exist_ok=True)
     keys = os.path.join(outdir, 'k.txt')
     bs = chr(92)
@@ -62,8 +104,8 @@ def run_one(job):
         f.write('1000  \n')
     log = os.path.join(outdir, 'log.txt')
     with open(log, 'w') as lf:
-        subprocess.run([TB, ROM, outdir, str(frames), '-d81', disk, '-keys', keys, '-shot', '250'],
-                       stdout=lf, stderr=subprocess.STDOUT, timeout=4 * 3600)
+        _start([TB, ROM, outdir, str(frames), '-d81', disk, '-keys', keys, '-shot', '250'],
+               stdout=lf, stderr=subprocess.STDOUT).wait(timeout=4 * 3600)
     for fn in sorted(os.listdir(outdir)):
         if fn.endswith('.ppm'):
             subprocess.run([sys.executable, '-I', os.path.join(ROOT, 'scripts', 'ppm2png.py'),
@@ -77,7 +119,9 @@ def run_one(job):
 
 
 def main():
+    global _outroot
     outroot, frames, jobs = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+    _outroot = outroot
     work = []
     for arg in sys.argv[4:]:
         disk, _, only = arg.partition(':')

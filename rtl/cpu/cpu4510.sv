@@ -91,6 +91,7 @@ always_ff @(posedge clk) if (ce && state == S_OP1) IR_arg <= din;
 
 logic [11:0] map_lo, map_hi;
 logic  [7:0] map_en;
+logic  [7:0] mb_lo, mb_hi;   // MEGA65 MAP megabyte registers (MAP with X / Z = $0F)
 logic        map_inhibit;
 
 // ---------------------------------------------------------------- decode
@@ -194,11 +195,16 @@ always_comb begin
 end
 
 wire [11:0] map_off = addr[15] ? map_hi : map_lo;
+wire  [7:0] map_mb  = addr[15] ? mb_hi : mb_lo;
 assign mapped = map_en[addr[15:13]];
 assign paddr  = mapped ? ({4'd0, addr} + {map_off, 8'd0}) : {4'd0, addr};
 assign sync   = (state == S_FETCH) && !take_int;
-assign far_sel  = ea_far && (state == S_READ || state == S_READ2 || state == S_WRITE || state == S_WRITE2);
-assign far_addr = fea;
+// a MAPped block whose megabyte register is not 0 reaches {MB, offset address}:
+// it goes out as a flat 28 bit access, like a 32 bit pointer
+wire   ea_sel   = ea_far && (state == S_READ || state == S_READ2 || state == S_WRITE || state == S_WRITE2);
+wire   mb_sel   = mapped && map_mb != 8'd0;
+assign far_sel  = ea_sel || mb_sel;
+assign far_addr = ea_sel ? fea : {map_mb, paddr};
 
 assign dbg_pc = PC;
 assign dbg_a  = A;
@@ -455,7 +461,7 @@ always_ff @(posedge clk) begin
 		intr <= INT_NONE;
 		nmi_pend <= 1'b0;
 		nmi_d <= 1'b1;
-		map_lo <= '0; map_hi <= '0; map_en <= '0;
+		map_lo <= '0; map_hi <= '0; map_en <= '0; mb_lo <= '0; mb_hi <= '0;
 		map_inhibit <= 1'b0;
 		neg_cnt <= '0; far_pfx <= 1'b0; q_op <= 1'b0; far_op <= 1'b0; ea_far <= 1'b0; qi <= '0;
 	end
@@ -539,9 +545,12 @@ always_ff @(posedge clk) begin
 						I_CLE: fE <= 1'b0;
 						I_SEE: fE <= 1'b1;
 						I_MAP: begin
-							map_lo <= {X[3:0], A};
-							map_hi <= {Z[3:0], Y};
-							map_en <= {Z[7:4], X[7:4]};
+							// as on the MEGA65, X = $0F (Z = $0F) sets the lower (upper)
+							// megabyte register from A (Y) and leaves that half's map alone
+							if (gs && X == 8'h0F) mb_lo <= A;
+							else begin map_lo <= {X[3:0], A}; map_en[3:0] <= X[7:4]; end
+							if (gs && Z == 8'h0F) mb_hi <= Y;
+							else begin map_hi <= {Z[3:0], Y}; map_en[7:4] <= Z[7:4]; end
 							map_inhibit <= 1'b1;
 						end
 						I_EOM: begin
