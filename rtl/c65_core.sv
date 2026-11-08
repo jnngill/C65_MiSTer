@@ -978,6 +978,14 @@ always_comb begin
 		8'h11:   uart_dout = {1'b0, ~capslock_n, kb_matrix[64], kb_matrix[66], kb_matrix[61], kb_matrix[58], kb_matrix[52], kb_matrix[15]};
 		8'h14:   uart_dout = {4'd0, kms};
 		8'h89:   uart_dout = {d689_7, 7'd0};
+		// $D620-$D627: the POT lines of port 1 (X, Y), port 2 and the two extra
+		// lines read directly, without CIA1 PA6 / PA7 (BASIC 65's JOY() takes a
+		// value below $10 there as a pressed second / third fire button)
+		8'h20:   uart_dout = (mouse_port == 2'd1) ? ~mouse_x : 8'hFF;
+		8'h21:   uart_dout = (mouse_port == 2'd1) ? ~mouse_y : 8'hFF;
+		8'h22:   uart_dout = (mouse_port == 2'd2) ? ~mouse_x : 8'hFF;
+		8'h23:   uart_dout = (mouse_port == 2'd2) ? ~mouse_y : 8'hFF;
+		8'h24, 8'h25, 8'h26, 8'h27: uart_dout = 8'hFF;
 		default: uart_dout = sdc_sel ? sdc_dout : (io_addr[7:4] == 4'hE) ? eth_dout : 8'h00;
 	endcase
 end

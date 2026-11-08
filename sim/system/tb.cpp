@@ -488,6 +488,7 @@ int main(int argc, char **argv) {
 	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, layout = 3, turbo = 0;
 	bool ntsc = false, f018b = true, use_xram = false, stop_brk = false;
 	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
+	int joy_port = 0, joy_val = 0; long joy_from = 0, joy_to = 0;
 	int go64_core = 0;
 	int m65_ext = 1; bool uart_loop = false; std::string modem_path;
 	std::vector<unsigned char> prg; long prg_at = -1; size_t prg_pos = 0; int prg_div = 0; bool prg_busy = false;
@@ -536,6 +537,10 @@ int main(int argc, char **argv) {
 			FILE *f = fopen(argv[++i], "rb");
 			if (f) { prg.resize(65536); prg.resize(fread(prg.data(), 1, prg.size(), f)); fclose(f); }
 			prg_at = atol(argv[++i]);
+		}
+		else if (a == "-joy" && i + 4 < argc) {
+			// -joy <port 1|2> <bits: 1 up 2 down 4 left 8 right 16 fire> <from frame> <to frame>
+			joy_port = atoi(argv[++i]); joy_val = atoi(argv[++i]); joy_from = atol(argv[++i]); joy_to = atol(argv[++i]);
 		}
 		else if (a == "-mouse" && i + 3 < argc) { mouse_port = atoi(argv[++i]); mouse_from = atol(argv[++i]); mouse_to = atol(argv[++i]); }
 		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
@@ -653,6 +658,10 @@ int main(int argc, char **argv) {
 		if (frame_done) {
 			frame_done = false;
 			key_frame();
+			if (joy_port) {
+				int v = (frame_no >= joy_from && frame_no < joy_to) ? joy_val : 0;
+				if (joy_port == 1) top->joy1 = v; else top->joy2 = v;
+			}
 			// scripted mouse: +3 right, +2 up per frame, left button held
 			if (mouse_port && frame_no >= mouse_from && frame_no < mouse_to)
 				top->ps2_mouse = ((top->ps2_mouse ^ 0x1000000) & 0x1000000) | (2 << 16) | (3 << 8) | 0x09;
