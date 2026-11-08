@@ -593,8 +593,16 @@ wire [10:0] gfx_x0_bp = h640 ? 11'd47 + {8'd0, xscroll} : 11'd48 + {7'd0, xscrol
 wire [11:0] tx_hx     = textxpos - 12'd32;
 wire [10:0] gfx_x0_tx = (textxpos < 12'd32 + {7'd0, cell_wf}) ? {6'd0, cell_wf} :
                         (tx_hx > 12'(2 * X_BLANK0 - 1)) ? 11'(2 * X_BLANK0 - 1) : tx_hx[10:0];
-wire [10:0] gfx_x0    = bpm ? gfx_x0_bp : gfx_x0_tx;
-wire [10:0] fetch_x0  = gfx_x0 - {6'd0, cell_wf};              // fetch runs one cell ahead
+wire [10:0] gfx_x0_c  = bpm ? gfx_x0_bp : gfx_x0_tx;
+// taken once per line, at its end: programs that move TEXTXPOS every line
+// (a wave) write it while the beam is in the next line's left border, and a
+// value changing between the fetch and display start points smeared the line
+logic [10:0] gfx_x0, fetch_x0;
+always_ff @(posedge clk)
+	if (hx == {htotal, 1'b0} - 11'd1) begin
+		gfx_x0   <= gfx_x0_c;
+		fetch_x0 <= gfx_x0_c - {6'd0, cell_wf};                 // fetch runs one cell ahead
+	end
 
 // Text rows, VIC-IV style: the first glyph row is at physical row TEXTYPOS,
 // each glyph row lasts CHRYSCL+1 physical rows, DISPROWS+1 text rows are
