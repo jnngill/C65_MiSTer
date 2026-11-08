@@ -18,6 +18,7 @@
 //   -trace <n>       dump the last n instruction PCs at exit
 //   -stop <hexpc>    stop when an instruction at this PC is executed
 //   -after <hexpc>   ...but only once this PC has been executed first
+//   -from <frame>    ...and only from this frame on
 //   -keydelay <n>    extra frames between key events (default 0)
 //   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
 //   -turbo <n>       CPU speed 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
@@ -485,7 +486,7 @@ int main(int argc, char **argv) {
 	setvbuf(stdout, nullptr, _IONBF, 0);
 	std::string outdir = argv[2];
 	long frames = atol(argv[3]);
-	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, layout = 3, turbo = 0;
+	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, from_frame = 0, layout = 3, turbo = 0;
 	bool ntsc = false, f018b = true, use_xram = false, stop_brk = false;
 	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
 	int joy_port = 0, joy_val = 0; long joy_from = 0, joy_to = 0;
@@ -524,6 +525,7 @@ int main(int argc, char **argv) {
 		else if (a == "-stopbrk") stop_brk = true;
 		else if (a == "-watch" && i + 2 < argc) { watch_addr = (int)strtol(argv[++i], nullptr, 16); watch_len = atoi(argv[++i]); }
 		else if (a == "-after" && i + 1 < argc) after_pc = (int)strtol(argv[++i], nullptr, 16);
+		else if (a == "-from" && i + 1 < argc) from_frame = atoi(argv[++i]);
 		else if (a == "-mountat" && i + 1 < argc) mount_frame = atol(argv[++i]);
 		else if (a == "-strict") m65_ext = 0;
 		else if (a == "-go64core") go64_core = 1;
@@ -632,9 +634,9 @@ int main(int argc, char **argv) {
 		}
 		if (top->dbg_sync && top->rootp->c65_core__DOT__cpu_ce) {
 			instrs++;
-			if ((int)top->dbg_pc == after_pc) after_pc = -1;
+			if ((int)top->dbg_pc == after_pc && frame_no >= from_frame) after_pc = -1;
 			if (stop_brk && top->dbg_op == 0) { puts("BRK reached"); frames = frame_no; }
-			if ((int)top->dbg_pc == stop_pc && after_pc < 0) { puts("stop PC reached"); frames = frame_no; }
+			if ((int)top->dbg_pc == stop_pc && after_pc < 0 && frame_no >= from_frame) { puts("stop PC reached"); frames = frame_no; }
 			pchist[top->dbg_pc]++;
 			if (watch_addr >= 0) {
 				for (int w = 0; w < watch_len && w < 64; w++) {

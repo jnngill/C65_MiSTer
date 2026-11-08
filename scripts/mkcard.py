@@ -1,4 +1,4 @@
-# mkcard.py out.img  -- a 64 MB MBR + FAT32 card (4 KB clusters) holding TEST.D64
+# mkcard.py out.img [extra files...]  -- a 64 MB MBR + FAT32 card (4 KB clusters) holding TEST.D64
 # (one BASIC 65 program "HELLO": 10 PRINT "HELLO D64") and TEST.D71 (a copy
 # of the same D64 contents on a 1571-sized image).
 import struct, sys
@@ -45,6 +45,11 @@ def make_d64(nsides=1):
 
 files = [('TEST    D64', make_d64(1)), ('TEST    D71', make_d64(2))]
 assert len(files[0][1]) == 174848 and len(files[1][1]) == 349696
+# extra arguments: host files to add to the root directory (8.3 names)
+import os
+for path in sys.argv[2:]:
+    stem, ext = os.path.splitext(os.path.basename(path).upper())
+    files.append((stem[:8].ljust(8) + ext[1:4].ljust(3), open(path, 'rb').read()))
 
 TOTAL = 64 * 1024 * 1024 // 512
 PSTART = 2048

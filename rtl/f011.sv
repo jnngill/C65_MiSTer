@@ -220,7 +220,9 @@ always_ff @(posedge clk) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid && !ro) begin
 							sd_lba <= {17'd0, block, 1'b0}; rq_wr[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_WRITE;
-							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
+							// as on the MEGA65, a sector always goes out from the start
+							// of the buffer, and the CPU pointer is rewound with it
+							base_ptr <= 9'd0; cpu_ptr <= 9'd0;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
 					end
@@ -228,7 +230,9 @@ always_ff @(posedge clk) begin
 						busy <= 1'b1;
 						if (disk_ok && chs_valid) begin
 							sd_lba <= {17'd0, block, 1'b0}; rq_rd[port] <= 1'b1; xdrv <= drv; xport <= port; ack_seen <= 1'b0; state <= ST_READ;
-							base_ptr <= reg_din[0] ? 9'd0 : cpu_ptr;
+							// as on the MEGA65, a sector always lands at the start of the
+							// buffer (loaders that DMA it out of $FFD6C00 rely on this)
+							base_ptr <= 9'd0;
 						end
 						else begin delay <= 16'd2000; state <= ST_FAIL; end
 					end

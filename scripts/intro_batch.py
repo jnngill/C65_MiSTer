@@ -11,7 +11,7 @@ a contact sheet <outdir>/index.html.
 import os, sys, subprocess, concurrent.futures, html, re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TB = os.path.join(ROOT, 'sim', 'system', 'build', 'tb.exe')
+TB = os.environ.get('TB') or os.path.join(ROOT, 'sim', 'system', 'build', 'tb.exe')
 ROM = os.path.join(ROOT, 'roms', 'mega65_920423.bin')
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 
@@ -85,7 +85,7 @@ def main():
         dname = os.path.splitext(os.path.basename(disk))[0]
         for name, la in d81_programs(disk):
             typed = petscii_to_typed(name)
-            if typed is None or la not in (0x2001, 0x0801) or name.startswith(b'AUTOBOOT'):
+            if typed is None or la not in (0x2001, 0x0801) or b'UTOBOOT.C65' in name:
                 continue
             if want and typed.upper() not in want:
                 continue

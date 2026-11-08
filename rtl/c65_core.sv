@@ -1141,6 +1141,19 @@ always @(posedge clk) if (spec_hit && !reset) begin
 		$display("SPECBAD kind=%0d addr=%05x want=%02x got=%02x PC=%04x cpu_addr=%04x st=%0d", cur_kind, mem_addr, want, got, dbg_pc, cpu_addr, cpu.state);
 end
 `endif
+`ifdef FDCBUF_DEBUG
+logic [9:0] fdbg_n = 0;
+logic fdbg_rd_d;
+logic [8:0] fdbg_a;
+always_ff @(posedge clk) begin
+	fdbg_rd_d <= bus_ce && sel_fdcbuf && !bus_we;
+	fdbg_a <= mem_addr[8:0];
+	if (fdbg_rd_d && fdbg_n < 1000 && (fdbg_a < 9'd8 || fdbg_a > 9'd508)) begin
+		fdbg_n <= fdbg_n + 1'd1;
+		$display("FDCBUF rd %03x = %02x dma=%0d", fdbg_a, fdcbuf_q, dma_busy);
+	end
+end
+`endif
 `ifdef PERF_DEBUG
 // CPU clock accounting (m65_top only): where the clocks go
 longint pf_clk, pf_ce, pf_ins, pf_spec, pf_wrf, pf_slow, pf_xram, pf_dma, pf_hold, pf_wait;
