@@ -83,6 +83,7 @@ logic [19:0] scrnptr;        // VIC-IV $D060-63: screen memory address
 logic [15:0] colptr;         // VIC-IV $D064/65: offset into colour RAM
 logic [19:0] charptr;        // VIC-IV $D068-6A: character set address
 logic        hotreg;         // VIC-IV $D05D.7: VIC-II/III writes recompute the pointers
+logic        hot_pend;       // touched while HOTREG was off: recompute when it is set again
 logic  [7:0] sdbdrwd;        // VIC-IV $D05C / $D05D.0-5: side border width
 logic  [5:0] sdbdrwd_hi;
 logic  [3:0] scrnptr_mb;     // VIC-IV $D063.0-3 (stored only, screen RAM is below 1MB here)
@@ -159,7 +160,7 @@ always_ff @(posedge clk) begin
 		sprptr_adr <= '0; sprptr16 <= 1'b0; bp_bank <= '0;
 		spr16 <= '0; sprx64 <= '0; sprhgten <= '0; sprhght <= 8'd21;
 		ctrl_c <= '0; linestep <= 10'd40; scrnptr <= '0; colptr <= '0; hot_reload <= 1'b1; vic_bank_d <= '0;
-		charptr <= 20'h01000; hotreg <= 1'b1; sdbdrwd <= 8'd80; sdbdrwd_hi <= '0; scrnptr_mb <= '0;
+		charptr <= 20'h01000; hotreg <= 1'b1; hot_pend <= 1'b0; sdbdrwd <= 8'd80; sdbdrwd_hi <= '0; scrnptr_mb <= '0;
 		chrcount_hi <= '0; d063_hi <= '0;
 		dispregs[0] <= 8'd40; dispregs[1] <= 8'd24; dispregs[2] <= 8'd1; dispregs[3] <= 8'd120;
 		tbdrpos <= 12'd104; bbdrpos <= 12'd504; textxpos <= 12'd80; textypos <= 12'd104;
@@ -187,12 +188,14 @@ always_ff @(posedge clk) begin
 		// moves or resizes the screen reloads the extended pointers from it
 		hot_reload <= 1'b0;
 		vic_bank_d <= vic_bank;
-		if (vic_bank_d != vic_bank && hotreg) hot_reload <= 1'b1;
+		if (vic_bank_d != vic_bank) begin if (hotreg) hot_reload <= 1'b1; else hot_pend <= 1'b1; end
 		if (hot_reload) begin
 			scrnptr  <= {4'd0, scr_base};
 			linestep <= {3'd0, n_cols};
 			colptr   <= '0;
-			charptr  <= {4'd0, vic_bank, cb[3:1], 11'd0};
+			// as on the VIC-IV only bits 15-11 are recomputed: a character set
+			// (or bitmap) placed above 64K by $D06A stays there (MEGA65 GEOS)
+			charptr  <= {charptr[19:16], vic_bank, cb[3:1], 11'd0};
 			dispregs[0] <= {1'b0, n_cols};
 			chrcount_hi <= '0;
 			// borders and text position from RSEL / CSEL and the scroll registers,
@@ -209,8 +212,10 @@ always_ff @(posedge clk) begin
 			sprptr16   <= 1'b0;
 		end
 		// with HOTREG cleared ($D05D.7 = 0) only the VIC-IV registers set the pointers
-		if (reg_we && hotreg && (reg_addr == 7'h11 || reg_addr == 7'h16 || reg_addr == 7'h18 || (vic3_mode && reg_addr == 7'h31)))
-			hot_reload <= 1'b1;
+		// (touched while it is cleared: recomputed once it is set again, as on the VIC-IV)
+		if (reg_we && (reg_addr == 7'h11 || reg_addr == 7'h16 || reg_addr == 7'h18 || (vic3_mode && reg_addr == 7'h31))) begin
+			if (hotreg) hot_reload <= 1'b1; else hot_pend <= 1'b1;
+		end
 
 		if (reg_re) begin
 			if (reg_addr == 7'h1E) ss_coll <= '0;
@@ -230,7 +235,7 @@ always_ff @(posedge clk) begin
 				7'h15: spr_en <= reg_din;
 				7'h16: begin res <= reg_din[5]; mcm <= reg_din[4]; csel <= reg_din[3]; xscroll <= reg_din[2:0]; end
 				7'h17: spr_yexp <= reg_din;
-				7'h18: begin vm <= reg_din[7:4]; cb <= reg_din[3:0]; end
+				7'h18: begin vm <= reg_din[7:4]; cb <= reg_din[3:0]; charptr[13:0] <= {reg_din[3:1], 11'd0}; end
 				7'h19: irq_flag <= irq_flag & ~reg_din[3:0];
 				7'h1A: irq_en <= reg_din[3:0];
 				7'h1B: spr_pri <= reg_din;
@@ -284,7 +289,11 @@ always_ff @(posedge clk) begin
 					7'h69: charptr[15:8]  <= reg_din;
 					7'h6A: charptr[19:16] <= reg_din[3:0];
 					7'h5C: sdbdrwd <= reg_din;
-					7'h5D: begin hotreg <= reg_din[7]; sdbdrwd_hi <= reg_din[5:0]; end
+					7'h5D: begin
+						hotreg <= reg_din[7]; sdbdrwd_hi <= reg_din[5:0];
+						hot_pend <= 1'b0;
+						if (reg_din[7] && hot_pend) hot_reload <= 1'b1;
+					end
 					7'h5E: dispregs[0] <= reg_din;
 					7'h7B: dispregs[1] <= reg_din;
 					7'h5B: dispregs[2] <= reg_din;
@@ -584,7 +593,7 @@ wire [9:0] chrcount = {chrcount_hi, dispregs[0]};
 wire [4:0] cell_w   = h640 ? 5'd8 : 5'd16;
 wire [4:0] cell_wf  = h1280 ? 5'd4 : cell_w;                   // fetch cell, in 640-pixels
 // cells per line: CHRCOUNT for text (up to 255 here), else the C65 width
-wire [7:0] n_cols_f = h1280 ? 8'd160 : (!bmm && !bpm) ? ((chrcount > 10'd255) ? 8'd255 : chrcount[7:0]) : {1'b0, n_cols};
+wire [7:0] n_cols_f = h1280 ? 8'd160 : !bpm ? ((chrcount > 10'd255) ? 8'd255 : chrcount[7:0]) : {1'b0, n_cols};
 // first displayed pixel.  Bitplanes: 40 column modes scroll in 320-pixels; in
 // 80 column modes the normal position is XSCROLL = 1 and one step is one
 // 640-pixel.  Text and bitmaps start at TEXTXPOS (which the hot registers set
@@ -610,7 +619,7 @@ always_ff @(posedge clk)
 // physical row, i.e. once per raster line, as in 200 line modes.
 // Two raster lines are tracked: the next one (cl_, used by the in-line fetch)
 // and the one after (al_, drawn ahead by the raster rewrite buffer).
-wire        tr_dbl   = dblrr || bmm;
+wire        tr_dbl   = dblrr;
 wire  [7:0] chryscl  = dispregs[2];
 wire  [8:0] an_line  = (vc + 9'd2 >= vtotal) ? vc + 9'd2 - vtotal : vc + 9'd2;
 wire        an_wrap  = vc + 9'd2 >= vtotal;
@@ -710,7 +719,11 @@ endfunction
 wire [7:0]  chr_code  = ecm ? {2'b00, f_scr[5:0]} : f_scr;
 // glyphs come from CHARPTR (loaded from $D018 / the video bank while HOTREG is set)
 wire [18:0] chr_addr  = charptr[18:0] + (chr16 ? {3'd0, char_num, text_rc} : {8'd0, chr_code, text_rc});
-wire [18:0] bmp_addr  = {3'd0, vic_bank, cb[3], cell_idx[9:0], text_rc};
+// VIC-IV bitmaps use the text row machinery: card = row * LINESTEP + column,
+// 8 bytes each from CHARPTR (on a 16K boundary in H640, else 8K).  The hot
+// registers give the VIC-II layout (video bank + $D018 bit 3, 40 cards a row).
+wire [18:0] bmp_base  = h640 ? {charptr[18:14], 14'd0} : {charptr[18:13], 13'd0};
+wire [18:0] bmp_addr  = bmp_base + {(row_ofs[15:0] + {8'd0, f_col}), text_rc};
 wire [18:0] gfx_addr  = bmm ? bmp_addr : chr_addr;
 // character ROM shadows $1000-$1FFF of video banks 0 and 2 (text modes)
 wire        gfx_rom   = !bmm && (gfx_addr[18:16] == 3'd0) && (gfx_addr[14:12] == 3'b001);
@@ -779,7 +792,7 @@ always_ff @(posedge clk) begin
 		else begin
 			case (f_step)
 				4'd0: vaddr_gfx <= scr_addr;
-				4'd1: vaddr_gfx <= bmm ? 19'h1F800 + {7'd0, cell_idx} : col_addr;   // colour RAM
+				4'd1: vaddr_gfx <= col_addr;   // colour RAM
 				4'd2: begin f_scr <= vram_q; f_fcm <= 1'b0; end
 				4'd3: begin
 					f_col_byte <= vram_q;

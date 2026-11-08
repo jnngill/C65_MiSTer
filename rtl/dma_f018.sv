@@ -238,4 +238,11 @@ always_ff @(posedge clk) begin
 	end
 end
 
+`ifdef IO_DEBUG
+always @(posedge clk) if (state == SETUP && !reset)
+	$display("DMAJOB cmd=%02x cnt=%02x%02x src=%07x dst=%07x b=%0d", list[0], list[2], list[1],
+		{src_mb, 20'd0} | {5'd0, job_b ? sbank[6:4] : 3'd0, sbank[3:0], list[4], list[3]},
+		{dst_mb, 20'd0} | {5'd0, job_b ? dbank[6:4] : 3'd0, dbank[3:0], list[7], list[6]}, job_b);
+`endif
+
 endmodule

@@ -144,7 +144,9 @@ wire        t_d65     = (port == 2'd2) ? img0_d65 : (port == 2'd3) ? img1_d65 : 
 wire  [6:0] p_sec     = 7'({1'b0, sector[5:0]} - 7'd1 + (side[0] ? 7'd10 : 7'd0));
 wire [13:0] block     = (t_d65 && !t_d64) ? {track[6:0], 7'd0} + {7'd0, p_sec}
                                           : 14'({7'd0, track[6:0]} * 14'd20 + {7'd0, p_sec});
-wire        chs_d81   = (track < 8'd80) && (sector >= 8'd1) && (sector <= 8'd10) && (side < 8'd2);
+// as on the MEGA65, sectors 11-20 of side 0 reach the track's second half
+// (loaders that ignore the side register count 1-20)
+wire        chs_d81   = (track < 8'd80) && (sector >= 8'd1) && (sector <= 8'd20) && (p_sec < 7'd20) && (side < 8'd2);
 wire        chs_valid = (t_d65 && !t_d64) ? (track < 8'd85) && (sector >= 8'd1) && (p_sec < 7'd64) && (side < 8'd2)
                       : t_d64 ? chs_d81 && (block < (t_d65 ? 14'd683 : 14'd342))
                       : chs_d81;

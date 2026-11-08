@@ -27,6 +27,11 @@ module cpu4510 (
 	output logic        we,
 	input  logic  [7:0] din,
 	output logic        sync,     // opcode fetch cycle
+	// next-access hint: when this cycle completes, the next bus cycle reads
+	// (or writes) CPU address nxt_va.  Only a hint for the memory system's
+	// read-ahead, which checks it; nxt_ok=0 means "probably the next byte".
+	output logic        nxt_ok,
+	output logic [15:0] nxt_va,
 
 	// MEGA65 hypervisor trap results: load A / X / Y and the carry flag.  Only
 	// pulsed while the bus is held between instructions (state S_FETCH).
@@ -55,7 +60,7 @@ typedef enum logic [4:0] {
 	S_VECLO, S_VECHI, S_FETCH, S_OP1, S_OP2, S_PTRLO, S_PTRHI, S_PTR2, S_PTR3,
 	S_READ, S_READ2, S_WRITE, S_WRITE2, S_BBREL,
 	S_PUSH_PCH, S_PUSH_PCL, S_PUSH_P, S_PUSH_REG, S_PUSH_WLO, S_PUSH_WHI,
-	S_PULL_REG, S_PULL_P, S_PULL_PCL, S_PULL_PCH
+	S_PULL_REG, S_PULL_P, S_PULL_PCL, S_PULL_PCH, S_DUMMY
 } state_t;
 
 localparam logic [1:0] INT_NONE = 2'd0, INT_BRK = 2'd1, INT_IRQ = 2'd2, INT_NMI = 2'd3;
@@ -176,6 +181,7 @@ always_comb begin
 			else      dout = is_store ? store_reg : data;
 		end
 		S_WRITE2:   begin addr = ea; we = 1'b1; dout = datah; end
+		S_DUMMY:    begin addr = ea; we = 1'b1; dout = datah; end   // RMW on $D019: old value first
 		S_PUSH_PCH: begin addr = SP; we = 1'b1; dout = PC[15:8]; end
 		S_PUSH_PCL: begin addr = SP; we = 1'b1; dout = PC[7:0]; end
 		S_PUSH_P:   begin addr = SP; we = 1'b1; dout = P | ((intr == INT_BRK) ? 8'h10 : 8'h00); end
@@ -202,6 +208,55 @@ assign dbg_z  = Z;
 assign dbg_b  = B;
 assign dbg_p  = P;
 assign dbg_sp = SP;
+
+// ---------------------------------------------------------------- next-access hint
+always_comb begin
+	nxt_ok = 1'b0;
+	nxt_va = PC;
+	case (state)
+		S_VECHI: begin nxt_ok = 1'b1; nxt_va = w; end
+		S_FETCH:
+			if (!take_int && f_mode == M_IMPL)
+				case (f_ins)
+					I_PLA, I_PLX, I_PLY, I_PLZ, I_PLP, I_RTI, I_RTS: begin nxt_ok = 1'b1; nxt_va = sp_inc; end
+					default: ;
+				endcase
+		S_OP1:
+			case (mode)
+				M_ZP, M_ZPREL, M_INDY, M_INDZ: begin nxt_ok = 1'b1; nxt_va = {B, din}; end
+				M_ZPX, M_INDX: begin nxt_ok = 1'b1; nxt_va = {B, din + X}; end
+				M_ZPY:    begin nxt_ok = 1'b1; nxt_va = {B, din + Y}; end
+				M_INDSPY: begin nxt_ok = 1'b1; nxt_va = SP + {8'd0, din}; end
+				M_REL:    if (branch_cond) begin nxt_ok = 1'b1; nxt_va = PC + 16'd1 + rel8; end
+				default: ;
+			endcase
+		S_OP2:
+			case (mode)
+				M_ABS:    if (ins != I_JSR) begin nxt_ok = 1'b1; nxt_va = w; end
+				M_ABSX:   begin nxt_ok = 1'b1; nxt_va = w + {8'd0, X}; end
+				M_ABSY:   begin nxt_ok = 1'b1; nxt_va = w + {8'd0, Y}; end
+				M_IND16:  begin nxt_ok = 1'b1; nxt_va = w; end
+				M_IND16X: begin nxt_ok = 1'b1; nxt_va = w + {8'd0, X}; end
+				M_REL16:  if (ins != I_BSR && branch_cond) begin nxt_ok = 1'b1; nxt_va = PC + w; end
+				default: ;
+			endcase
+		S_PTRHI:
+			case (mode)
+				M_INDX:   begin nxt_ok = 1'b1; nxt_va = w; end
+				M_INDZ:   if (!far_ptr) begin nxt_ok = 1'b1; nxt_va = w + ((qmem && ins != I_LDA) ? 16'd0 : {8'd0, Z}); end
+				M_INDY, M_INDSPY: begin nxt_ok = 1'b1; nxt_va = w + {8'd0, Y}; end
+				default:  if (ins != I_JSR) begin nxt_ok = 1'b1; nxt_va = w; end
+			endcase
+		S_READ:   if (mode != M_ZPREL && !qmem && is_alurd) nxt_ok = 1'b1;              // -> fetch at PC
+		S_WRITE:  if (!qmem && !is_word) nxt_ok = 1'b1;
+		S_WRITE2, S_PUSH_REG, S_PUSH_WHI, S_PULL_REG: nxt_ok = 1'b1;
+		S_PULL_P: if (ins != I_RTI) nxt_ok = 1'b1;
+		S_PUSH_PCL: if (intr == INT_NONE) begin nxt_ok = 1'b1; nxt_va = ea; end
+		S_PULL_PCH: begin nxt_ok = 1'b1; nxt_va = (ins == I_RTS) ? w + 16'd1 : w; end
+		S_BBREL:  if (data[IR[6:4]] == IR[7]) begin nxt_ok = 1'b1; nxt_va = PC + 16'd1 + rel8; end
+		default: ;
+	endcase
+end
 
 // ---------------------------------------------------------------- ALU
 // ADC/SBC, binary and decimal (CMOS flag behaviour)
@@ -607,12 +662,17 @@ always_ff @(posedge clk) begin
 			end
 			else begin
 				data <= rmw_res;
+				// as on the MEGA65 (and the 6502), a read-modify-write of $D019
+				// writes the old value back first, so ASL / INC $D019 acknowledge
+				datah <= din;
 				if (rmw_setnz) set_nz(rmw_res);
 				if (rmw_setz)  fZ <= ((din & A) == 8'd0);
 				if (rmw_setc)  fC <= rmw_c;
-				state <= S_WRITE;
+				state <= (ea == 16'hD019 && !ea_far) ? S_DUMMY : S_WRITE;
 			end
 		end
+
+		S_DUMMY: state <= S_WRITE;
 
 		S_READ2: begin
 			if (ins == I_PHW) begin data <= lo; datah <= din; state <= S_PUSH_WLO; end

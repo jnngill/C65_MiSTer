@@ -17,6 +17,8 @@
 //                image was mounted, bit 7 the machine was reset (both cleared
 //                by writing $D674): the hypervisor RAM survives resets, so the
 //                program uses these to start over
+//   $D67D        bit 2 ROMPROT: $20000-$3FFFF write protected (set at reset;
+//                hypervisor call $70 toggles it, as on the MEGA65)
 //   $D67E        the trap number (read only)
 //
 // The hypervisor program itself is software (rtl/hyppo), loaded into the
@@ -43,7 +45,8 @@ module m65_hyp (
 	input  logic [31:0] img_size,
 	input  logic        img_present,
 	input  logic        img_ro,
-	input  logic        img_mounted     // a new image in the SD card slot (one clk)
+	input  logic        img_mounted,    // a new image in the SD card slot (one clk)
+	output logic        rom_prot        // $D67D bit 2
 );
 
 logic [7:0] sv [16];
@@ -61,7 +64,7 @@ always_ff @(posedge clk) begin
 	load <= 1'b0;
 	if (img_mounted) changed <= 1'b1;
 	if (reset) begin
-		hyp <= 1'b0; st <= Y_IDLE; wait1 <= 1'b0; fresh <= 1'b1;
+		hyp <= 1'b0; st <= Y_IDLE; wait1 <= 1'b0; fresh <= 1'b1; rom_prot <= 1'b1;
 	end
 	else begin
 		case (st)
@@ -76,6 +79,7 @@ always_ff @(posedge clk) begin
 				else if (reg_addr == 6'h3F) begin st <= Y_EXIT; wait1 <= 1'b1; end
 				else if (reg_addr < 6'd16) sv[reg_addr[3:0]] <= reg_din;
 				else if (reg_addr == 6'h34) begin fresh <= 1'b0; changed <= 1'b0; end
+				else if (reg_addr == 6'h3D) rom_prot <= reg_din[2];
 			end
 			Y_ENTER: begin
 				if (wait1) wait1 <= 1'b0;
@@ -110,6 +114,7 @@ always_comb begin
 			6'h32: reg_dout = img_size[23:16];
 			6'h33: reg_dout = img_size[31:24];
 			6'h34: reg_dout = {fresh, changed, 4'd0, img_ro, img_present};
+			6'h3D: reg_dout = {5'd0, rom_prot, 2'd0};
 			6'h3E: reg_dout = {2'b00, trap_n};
 			default: ;
 		endcase

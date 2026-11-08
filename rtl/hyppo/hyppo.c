@@ -830,6 +830,8 @@ static void dos(u8 fn)
 		}
 		else do_attach(H_X & 0x01);
 		break;
+	case 0x70:                                                                  /* toggle ROM write protect */
+		R(0xD67D) ^= 0x04; H_A = R(0xD67D); ok(); break;
 	default: fail(E_NOT_IMPLEMENTED); break;
 	}
 }

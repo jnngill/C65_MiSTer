@@ -161,8 +161,11 @@ logic [15:0] cpu_addr;
 logic [19:0] cpu_paddr;
 logic        cpu_mapped, cpu_we, cpu_ce;
 logic        cpu_far;
+logic        cpu_nxt_ok;           // the CPU's guess at its next bus address (read-ahead)
+logic [15:0] cpu_nxt_va;
 logic [27:0] cpu_faddr;
-logic        gs_mode;              // MEGA65 (VIC-IV) I/O was unlocked: 45GS02 extensions on
+logic        gs_mode;
+logic        rom_prot;             // MEGA65 ROMPROT ($D67D bit 2)              // MEGA65 (VIC-IV) I/O was unlocked: 45GS02 extensions on
 logic  [7:0] cpu_dout, bus_din;
 logic        irq_n, nmi_n;
 logic        hyp, hyp_busy, hyp_load;   // MEGA65 hypervisor mode (m65_hyp)
@@ -177,7 +180,7 @@ cpu4510 cpu (
 	.far_sel(cpu_far), .far_addr(cpu_faddr),
 	.addr(cpu_addr), .paddr(cpu_paddr), .mapped(cpu_mapped),
 	.dout(cpu_dout), .we(cpu_we), .din(bus_din),
-	.sync(dbg_sync),
+	.sync(dbg_sync), .nxt_ok(cpu_nxt_ok), .nxt_va(cpu_nxt_va),
 	.hyp_load(1'b0), .hyp_a(8'h00), .hyp_x(8'h00), .hyp_y(8'h00), .hyp_c(1'b0),
 	.pc_load(dma_resume), .pc_val(dma_resume_pc),
 	.reg_load(hyp_load), .reg_a(hyp_a), .reg_x(hyp_x), .reg_y(hyp_y), .reg_z(hyp_z), .reg_b(hyp_b),
@@ -269,7 +272,12 @@ always_comb begin
 		// 1MB address space reached through MAP
 		mem_addr = pa[16:0];
 		if (pa[19:17] == 3'd0)      sel_ram = 1'b1;
-		else if (pa[19:17] == 3'd1) sel_rom = 1'b1;
+		else if (pa[19:17] == 3'd1) begin
+			// the ROM bank: writable through MAP once a program has switched the
+			// MEGA65's ROM write protection off (hypervisor call $70)
+			sel_rom  = !bus_we || rom_prot || !gs_mode;
+			sel_romw = bus_we && gs_mode && !rom_prot;
+		end
 		else if (pa[19:17] == 3'd2) sel_ram2 = 1'b1;
 		else                        sel_xram = xram_present;      // banks 6-15
 	end
@@ -348,7 +356,7 @@ end
 
 wire        ram_sel  = sel_ram || io_cram;
 logic [16:0] spec_mem;     // mem_addr, or the speculated next read (see "bus cycle")
-wire [16:0] ram_addr = io_cram ? {6'b111111, io_addr[10:0]} : spec_mem;   // colour RAM = $1F800
+wire [16:0] ram_addr = io_cram ? {6'b111111, io_addr[10:0]} : (bus_we && sel_ram) ? mem_addr : spec_mem;   // colour RAM = $1F800
 wire        slow_dev = io_sid || io_cia1 || io_cia2;
 
 // ------------------------------------------------------------------ bus cycle
@@ -438,13 +446,37 @@ wire        wr_fast  = !bus_ce_r && cyc_state == C_RUN && fast_top && bus_we &&
                        ((sel_ram && !io_cram) || sel_ram2) &&
                        !aud_req && !(dma_setup || prg_pause || hyp_busy || dma_resume);
 assign      bus_ce   = bus_ce_r || spec_hit || wr_fast;
-// this clk is a CPU read's data clk: the RAMs fetch the next address
-wire        spec_now = bus_ce && !bus_we && !dma_busy && fast_top && cur_kind != 2'd0 && !prg_we && !ld_wr && !rs_wr;
-assign      spec_mem = spec_now ? mem_addr + 17'd1 : mem_addr;
+// Where each 4K block of the CPU's 64K currently lands (bank kind and base),
+// learned from the CPU's own reads.  Only used to guess the next address
+// (a stale entry just misses), so banking changes need no bookkeeping.
+logic  [1:0] blk_kind [16];
+logic [16:0] blk_base [16];
+always_ff @(posedge clk) begin
+	if (reset) for (int i = 0; i < 16; i++) blk_kind[i] <= 2'd0;
+	else if (bus_ce && !bus_we && !dma_busy && !cpu_far && cur_kind != 2'd0) begin
+		blk_kind[cpu_addr[15:12]] <= cur_kind;
+		blk_base[cpu_addr[15:12]] <= mem_addr - {5'd0, cpu_addr[11:0]};
+	end
+end
+wire  [1:0] nxt_kind = blk_kind[cpu_nxt_va[15:12]];
+wire [16:0] nxt_mem  = blk_base[cpu_nxt_va[15:12]] + {5'd0, cpu_nxt_va[11:0]};
+// the bank this clk writes (its RAM port is busy)
+wire  [1:0] wr_kind  = (sel_ram && !io_cram) ? 2'd1 : sel_romw ? 2'd2 : sel_ram2 ? 2'd3 : 2'd0;
+// this clk ends a CPU cycle: the RAMs fetch the next address (the CPU's
+// hint, or the next byte), unless that bank is busy with this clk's write
+wire        spec_base = bus_ce && !dma_busy && fast_top && !prg_we && !ld_wr && !rs_wr;
+`ifdef NO_HINT
+wire        spec_hint = 1'b0 && cpu_nxt_ok && nxt_kind != 2'd0 && !(bus_we && nxt_kind == wr_kind) && !(io_cram && nxt_kind == 2'd1);
+`else
+wire        spec_hint = cpu_nxt_ok && nxt_kind != 2'd0 && !(bus_we && nxt_kind == wr_kind) && !(io_cram && nxt_kind == 2'd1);
+`endif
+wire        spec_now  = spec_base && (bus_we ? spec_hint : (spec_hint || cur_kind != 2'd0));
+wire [16:0] spec_tgt  = spec_hint ? nxt_mem : mem_addr + 17'd1;
+assign      spec_mem  = spec_now ? spec_tgt : mem_addr;
 always_ff @(posedge clk) begin
 	spec_ok   <= spec_now && !reset;
-	spec_addr <= mem_addr + 17'd1;
-	spec_kind <= cur_kind;
+	spec_addr <= spec_tgt;
+	spec_kind <= spec_hint ? nxt_kind : cur_kind;
 end
 always_ff @(posedge clk) aud_sel <= aud_addr[18:17];
 
@@ -542,7 +574,8 @@ m65_hyp hypm (
 	.cpu_sp(dbg_sp), .cpu_pc(dbg_pc),
 	.hyp(hyp), .busy(hyp_busy), .load(hyp_load),
 	.ld_a(hyp_a), .ld_x(hyp_x), .ld_y(hyp_y), .ld_z(hyp_z), .ld_b(hyp_b), .ld_p(hyp_p), .ld_sp(hyp_sp), .ld_pc(hyp_pc),
-	.img_size(sdc_size), .img_present(sdc_present), .img_ro(sdc_ro), .img_mounted(sd3_mounted)
+	.img_size(sdc_size), .img_present(sdc_present), .img_ro(sdc_ro), .img_mounted(sd3_mounted),
+	.rom_prot(rom_prot)
 );
 
 // $D680-$D693: SD card controller and the F011 disk image registers
@@ -593,7 +626,7 @@ logic        wom_loaded;
 // $40000-$5FFFF: the extra chip RAM MEGA65 ROMs expect (graphics, sprites)
 dpram #(17, 8) ram2 (
 	.clk(clk),
-	.a_addr(aud_gnt ? aud_addr[16:0] : spec_mem), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
+	.a_addr(aud_gnt ? aud_addr[16:0] : (bus_we && sel_ram2) ? mem_addr : spec_mem), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
 	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram2_q)
 );
 
@@ -635,7 +668,7 @@ dpram #(17, 8) ram (
 
 dpram #(17, 8) rom (
 	.clk(clk),
-	.a_addr(ld_wr ? ld_addr : rs_wr ? rrom_addr : aud_gnt ? aud_addr[16:0] : spec_mem),
+	.a_addr(ld_wr ? ld_addr : rs_wr ? rrom_addr : aud_gnt ? aud_addr[16:0] : sel_romw ? mem_addr : spec_mem),
 	.a_din(ld_wr ? ld_data : rs_wr ? rs_data : bus_dout), .a_we(ld_wr || rs_wr || rom_wr), .a_q(rom_q),
 	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vrom1_q)
 );
@@ -1095,6 +1128,40 @@ m65_math math (
 	.reg_addr(io_addr[7:0]), .reg_we(io_wr && io_math), .reg_din(bus_dout), .reg_dout(math_dout)
 );
 
+`ifdef SPEC_CHECK
+// a read-ahead hit must deliver what the memory holds now
+always @(posedge clk) if (spec_hit && !reset) begin
+	logic [7:0] want, got;
+	case (cur_kind)
+		2'd1: begin want = ram.mem[mem_addr];  got = ram_q;  end
+		2'd2: begin want = rom.mem[mem_addr];  got = rom_q;  end
+		default: begin want = ram2.mem[mem_addr]; got = ram2_q; end
+	endcase
+	if (want != got)
+		$display("SPECBAD kind=%0d addr=%05x want=%02x got=%02x PC=%04x cpu_addr=%04x st=%0d", cur_kind, mem_addr, want, got, dbg_pc, cpu_addr, cpu.state);
+end
+`endif
+`ifdef PERF_DEBUG
+// CPU clock accounting (m65_top only): where the clocks go
+longint pf_clk, pf_ce, pf_ins, pf_spec, pf_wrf, pf_slow, pf_xram, pf_dma, pf_hold, pf_wait;
+always @(posedge clk) begin
+	if (m65_top && !reset) begin
+		pf_clk++;
+		if (cpu_ce) pf_ce++;
+		if (cpu_ce && dbg_sync) pf_ins++;
+		if (spec_hit && cpu_ce) pf_spec++;
+		if (wr_fast && cpu_ce) pf_wrf++;
+		if (dma_busy) pf_dma++;
+		else if (cyc_state == C_SYNC || cyc_state == C_SLOW) pf_slow++;
+		else if (cyc_state == C_XRAM) pf_xram++;
+		else if (dma_setup || prg_pause || hyp_busy || dma_resume || aud_gnt) pf_hold++;
+		else if (!bus_ce) pf_wait++;
+		if (pf_clk % 64'd4000000 == 0)
+			$display("PERF clk=%0d ce=%0d ins=%0d spec=%0d wrf=%0d slow=%0d xram=%0d dma=%0d hold=%0d wait=%0d  clk/ins=%0.2f",
+				pf_clk, pf_ce, pf_ins, pf_spec, pf_wrf, pf_slow, pf_xram, pf_dma, pf_hold, pf_wait, real'(pf_clk-pf_dma)/real'(pf_ins));
+	end
+end
+`endif
 `ifdef IO_DEBUG
 always @(posedge clk) begin
 	if (bus_ce && sel_port && bus_we)
@@ -1103,7 +1170,7 @@ always @(posedge clk) begin
 		$display("SER  %s $D60%01x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[3:0], bus_we ? bus_dout : ser_dout, dbg_pc);
 	if (bus_ce && io_hyp)
 		$display("HYP  %s $D6%02x = %02x  PC=%04x A=%02x", bus_we ? "wr" : "rd", io_addr[7:0], bus_dout, dbg_pc, dbg_a);
-	if (bus_ce && io_vic && (vic_reg >= 7'h40 || vic_reg == 7'h11 || vic_reg == 7'h12))
+	if (bus_ce && io_vic && (vic_reg >= 7'h40 || vic_reg == 7'h11 || vic_reg == 7'h12 || vic_reg == 7'h20 || vic_reg == 7'h30 || vic_reg == 7'h31))
 		$display("VIC4 %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
 	if (bus_ce && io_fdc)
 		$display("FDC  %s $D0%02x = %02x  PC=%04x", bus_we ? "wr" : "rd", io_addr[7:0], bus_we ? bus_dout : bus_din, dbg_pc);
