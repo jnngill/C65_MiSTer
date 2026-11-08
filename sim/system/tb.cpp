@@ -19,6 +19,7 @@
 //   -stop <hexpc>    stop when an instruction at this PC is executed
 //   -after <hexpc>   ...but only once this PC has been executed first
 //   -from <frame>    ...and only from this frame on
+//   -watchc <hexoff> <n>  report changes to colour RAM above 2K ($FF80800 + off)
 //   -keydelay <n>    extra frames between key events (default 0)
 //   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
 //   -turbo <n>       CPU speed 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
@@ -493,7 +494,7 @@ int main(int argc, char **argv) {
 	int go64_core = 0;
 	int m65_ext = 1; bool uart_loop = false; std::string modem_path;
 	std::vector<unsigned char> prg; long prg_at = -1; size_t prg_pos = 0; int prg_div = 0; bool prg_busy = false;
-	int watch_addr = -1, watch_len = 0; unsigned char watch_old[64] = {0}; bool watch_init = false;
+	int watch_addr = -1, watch_len = 0; bool watch_c = false; unsigned char watch_old[64] = {0}; bool watch_init = false;
 	long mount_frame = 2;
 	for (int i = 4; i < argc; i++) {
 		std::string a = argv[i];
@@ -524,6 +525,7 @@ int main(int argc, char **argv) {
 		else if (a == "-xram") use_xram = true;
 		else if (a == "-stopbrk") stop_brk = true;
 		else if (a == "-watch" && i + 2 < argc) { watch_addr = (int)strtol(argv[++i], nullptr, 16); watch_len = atoi(argv[++i]); }
+		else if (a == "-watchc" && i + 2 < argc) { watch_c = true; watch_addr = (int)strtol(argv[++i], nullptr, 16); watch_len = atoi(argv[++i]); }
 		else if (a == "-after" && i + 1 < argc) after_pc = (int)strtol(argv[++i], nullptr, 16);
 		else if (a == "-from" && i + 1 < argc) from_frame = atoi(argv[++i]);
 		else if (a == "-mountat" && i + 1 < argc) mount_frame = atol(argv[++i]);
@@ -640,7 +642,8 @@ int main(int argc, char **argv) {
 			pchist[top->dbg_pc]++;
 			if (watch_addr >= 0) {
 				for (int w = 0; w < watch_len && w < 64; w++) {
-					unsigned char v = top->rootp->c65_core__DOT__ram__DOT__mem[watch_addr + w];
+					unsigned char v = watch_c ? top->rootp->c65_core__DOT__cram2__DOT__mem[watch_addr + w]
+					                          : top->rootp->c65_core__DOT__ram__DOT__mem[watch_addr + w];
 					if (watch_init && v != watch_old[w])
 						printf("WATCH %05X %02X->%02X PC=%04X frame %d\n", watch_addr + w, watch_old[w], v, top->dbg_pc, frame_no);
 					watch_old[w] = v;

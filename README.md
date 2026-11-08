@@ -331,6 +331,36 @@ Tested on hardware:
   be left with the OSD's Reset: RUN/STOP + RESTORE drops into the monitor,
   which keeps breaking again.
 
+#### MEGA65 Intro Disks 1-4
+
+Every program on the four MEGA65 Intro Disks (`INTRO1.D81`-`INTRO4.D81`
+from the Intro Disk package's `sdcard-files`) was run in simulation with
+BASIC 65 920423. Put the package's `sdcard-files` on the SD card image: the
+menus `MOUNT` their own disk image, and several programs read data files
+from the card. Almost everything starts and looks right. Notes:
+
+- **Need files on the SD card**: MEGAPPLE (Bad Apple) streams `BAFRAMES.BIN`
+  and `BAMUSIC.BIN`; MEGAMOD, MEGAJPG and WAVPLAY look for `.MOD`, `.JPG`
+  and `.WAV` files; GO64 needs `C64.D81`. Without them they show an empty
+  file chooser or stall at their loading bar.
+- **GEOS65**: its AUTOBOOT attaches `GEOSX.D81`, which is not in the
+  package, and flashes the border when it is missing (on any machine).
+- **MEGAMAZE**: its unpacker assumes `$01` = `$37`, but the 920423 KERNAL
+  leaves `$85`, so it overwrites itself (as the Xanadu ASM edition does; the
+  package was tested with ROM 920413).
+- **MEGAPPLE** plays its video in magenta and black: the program writes
+  colour 11 to colour RAM and loads magenta into palette 0 entry 11, and
+  the core follows the MEGA65 VHDL's palette banking, so this appears to be
+  what the program asks for.
+- Fixed while testing: the IFFL-loader demos (MEGAJGLR, MEGAPOLY, MEGATORN)
+  and the Intro Disk #4 menu, which read the directory themselves and DMA
+  the sector out of `$FFD6C00` (the F011 now always fills its buffer from
+  offset 0); LUNAR TAXI 2 and SCORE OR DIE (`$D019` read-modify-write);
+  DUAL SID COMPO (F011 sectors 11-20 of side 0); GEOS's bitmap screen.
+- Open: in the Intro Disk #4 menu some letters of the proportional text
+  are missing; TUTTER shows streaks; RASTER65's bars cover only the top two
+  thirds of the screen in simulation.
+
 The MEGA65's own ROM (**BASIC 65**, e.g. V920422, built from the C65 ROM
 910828 with the patch the MEGA65 team publishes) boots, shows the clock and
 takes typing. Its DOS reads and writes `.D81` disks (`DIR`, `LOAD`, `SAVE`,
