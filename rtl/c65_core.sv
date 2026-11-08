@@ -211,6 +211,10 @@ wire         loram = port_val[0], hiram = port_val[1], charen = port_val[2];
 
 logic  [7:0] ctrl_a, ctrl_b;       // VIC-III $D030 / $D031
 logic        vic3_mode;
+logic [12:0] dat_off;                // C65 DAT (vic3): offset, plane address bits, bank
+logic [23:0] dat_sel;
+logic  [1:0] dat_bank;
+logic        vfast;                  // VIC-IV $D054 bit 6
 
 assign bus_we   = dma_busy ? dma_we   : cpu_we;
 assign bus_dout = dma_busy ? dma_dout : cpu_dout;
@@ -295,6 +299,21 @@ always_comb begin
 		// writes always land in the RAM underneath a ROM
 		if (cpu_we && sel_rom && !cpu_far) begin sel_rom = 1'b0; sel_ram = 1'b1; mem_addr = {1'b0, cpu_addr}; end
 	end
+
+	// C65 DAT: in VIC-III mode $D040-$D047 are windows onto bitplanes 0-7, at
+	// the position in $D03C / $D03D (as on the MEGA65: even planes in the
+	// bank's first 64K, odd ones in the second)
+	if (sel_io && vic3_mode && io_addr[11:3] == 9'h008) begin
+		logic [18:0] da;
+		da = {dat_bank, io_addr[0], dat_sel[io_addr[2:0] * 3 +: 3], dat_off};
+		sel_io = 1'b0; mem_addr = da[16:0];
+		case (da[18:17])
+			2'd0: sel_ram = 1'b1;
+			2'd1: begin sel_rom = !bus_we; sel_romw = bus_we && gs_mode; end
+			2'd2: sel_ram2 = 1'b1;
+			default: ;
+		endcase
+	end
 end
 
 // I/O area decode
@@ -365,7 +384,11 @@ wire        bus_ce;              // ... or of a speculated read (spec_hit)
 logic       slow_cs;
 logic       force_fast;          // MEGA65 "40 MHz" request: run at the core's top speed (~24 MHz)
 wire        fast = ctrl_b[6] || force_fast;
-wire  [3:0] fast_len = force_fast ? 4'd0 : (turbo == 2'd0) ? 4'd7 : (turbo == 2'd1) ? 4'd2 : 4'd0;
+// MEGA65: full speed with POKE 0,65 or with $D031 FAST and $D054 VFAST; FAST
+// alone is the C65's 3.5 MHz (programs time things by it).  A plain C65 runs
+// FAST at the OSD's CPU Speed.
+wire        m65_top  = force_fast || (m65_ext && ctrl_b[6] && vfast);
+wire  [3:0] fast_len = m65_top ? 4'd0 : (m65_ext || turbo == 2'd0) ? 4'd7 : (turbo == 2'd1) ? 4'd2 : 4'd0;
 
 always_ff @(posedge clk) begin
 	bus_ce_r <= 1'b0;
@@ -660,7 +683,8 @@ vic3 vic (
 	.ctrl_a(ctrl_a), .ctrl_b(ctrl_b), .irq_n(vic_irq_n),
 	.vic_bank(vic_bank), .vaddr(vaddr), .vram_q(vram_q), .vrom_q(vrom_q),
 	.r(r), .g(g), .b(b), .hsync(hsync), .vsync(vsync), .hblank(hblank), .vblank(vblank),
-	.field(field), .raster()
+	.field(field), .raster(),
+	.dat_off(dat_off), .dat_sel(dat_sel), .dat_bank(dat_bank), .vfast(vfast)
 );
 
 // ------------------------------------------------------------------ CIAs

@@ -59,6 +59,7 @@ localparam CONF_STR = {
 	"O[13:12],CPU Speed,3.5 MHz,8 MHz,Max (~24 MHz);",
 	"O[14],Expansion RAM,4MB (needs SDRAM),Off;",
 	"O[16:15],Mouse,Port 2,Port 1,Off;",
+	"O[19],Swap Joysticks,No,Yes;",
 	"O[3],DMA Revision,F018B,F018A;",
 	"O[17],MEGA65 Extensions,Off,On;",
 	"O[18],GO64,C64 mode,Load C64 core;",
@@ -484,8 +485,9 @@ c65_core core
 
 	.ps2_key(ps2_key),
 	.kbd_layout(status[11:10]),
-	.joy1(joy_b),
-	.joy2(joy_a),
+	// the first controller is port 2 (as in the C64 core) unless Swap Joysticks is on
+	.joy1(status[19] ? joy_a : joy_b),
+	.joy2(status[19] ? joy_b : joy_a),
 	.ps2_mouse(ps2_mouse),
 	.mouse_port(status[16:15] == 2'd0 ? 2'd2 : status[16:15] == 2'd1 ? 2'd1 : 2'd0),
 	.m65_ext(status[17]),

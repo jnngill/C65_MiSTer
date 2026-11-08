@@ -44,7 +44,14 @@ module vic3 (
 	output logic        pix_ce,        // r, g, b and the syncs were updated on this clk
 	output logic        hsync, vsync, hblank, vblank,
 	output logic        field,         // 400-line (interlaced) modes: 0 = first field, 1 = second
-	output logic  [8:0] raster
+	output logic  [8:0] raster,
+
+	// C65 DAT (bitplane ports $D040-$D047, see c65_core): the byte under the
+	// position in $D03C / $D03D, in the same layout the bitplane display reads
+	output logic [12:0] dat_off,       // offset inside a plane
+	output logic [23:0] dat_sel,       // per plane: address bits 15-13 (as the display picks them)
+	output logic  [1:0] dat_bank,      // $D07C: 128K bank
+	output logic        vfast          // $D054 bit 6: MEGA65 full CPU speed (with $D031 FAST)
 );
 
 // ------------------------------------------------------------------ registers
@@ -196,6 +203,10 @@ always_ff @(posedge clk) begin
 			textxpos <= h640 ? 12'd79 + {9'd0, xscroll} : 12'd80 + {8'd0, xscroll, 1'b0};
 			dispregs[1] <= v400 ? 8'd49 : 8'd24;
 			dispregs[2] <= v400 ? 8'd0 : 8'd1;
+			// sprite pointers: screen + $3F8 (+ $7F8 in 80 column / 400 line
+			// modes), 8-bit pointers, as the MEGA65 reloads $D06C-$D06E
+			sprptr_adr <= {7'd0, vic_bank, vm[3:1], vm[0] || h640 || v400, 10'h3F8};
+			sprptr16   <= 1'b0;
 		end
 		// with HOTREG cleared ($D05D.7 = 0) only the VIC-IV registers set the pointers
 		if (reg_we && hotreg && (reg_addr == 7'h11 || reg_addr == 7'h16 || reg_addr == 7'h18 || (vic3_mode && reg_addr == 7'h31)))
@@ -701,6 +712,17 @@ logic f_rom_sel;
 
 // bitplane byte address: even planes in bank 0, odd planes in bank 1.  Planes
 // are laid out like a VIC-II bitmap (8 bytes per character cell).
+// DAT: x in 8 pixel cells ($D03C bits 6-0), y in lines ($D03C bit 7, $D03D);
+// planes are laid out like a VIC-II bitmap, 40 (80 with H640) cells across
+always_ff @(posedge clk) begin
+	logic [8:0] y;
+	y = {bpx[7], bpy};
+	dat_off <= 13'(({4'd0, y[8:3]} * (h640 ? 10'd640 : 10'd320)) + {10'd0, y[2:0]} + {3'd0, bpx[6:0], 3'b000});
+end
+always_comb for (int i = 0; i < 8; i++) dat_sel[i * 3 +: 3] = (v400 && field) ? bp_addr[i][7:5] : bp_addr[i][3:1];
+assign dat_bank = bp_bank[1:0];
+assign vfast    = ctrl_c[6];
+
 function automatic [18:0] bp_byte_addr(input int n);
 	logic [2:0] sel;
 	logic [15:0] base;
@@ -1236,7 +1258,9 @@ logic        sf_run;
 logic [18:0] spr_vaddr;
 logic        spr_bus;       // sprite fetch owns vaddr
 
-wire [15:0] spr_ptr_addr  = (h640 ? {vic_bank, vm[3:1], 11'h7F8} : {vic_bank, vm, 10'h3F8}) + {13'd0, sf_n};
+// the pointer list is at $D06C-$D06E (set by the program, or from $D018 /
+// $D031 / the bank by the hot registers), as on the MEGA65
+wire [18:0] spr_ptr_addr  = sprptr_adr[18:0] + {16'd0, sf_n};
 wire [18:0] spr_ptr_addr4 = sprptr_adr[18:0] + {15'd0, sf_n, 1'b0};
 wire  [7:0] sf_row        = spr_row[sf_n];
 wire [18:0] spr_row_ofs   = spr_wide[sf_n] ? {8'd0, sf_row, 3'd0} : {9'd0, {sf_row, 1'b0} + {1'b0, sf_row}};
@@ -1277,7 +1301,7 @@ always_ff @(posedge clk) begin
 			sf_step <= sf_step + 4'd1;
 			// address at step n, data two steps later
 			case (sf_step)
-				4'd0: spr_vaddr <= sprptr16 ? spr_ptr_addr4 : {3'b000, spr_ptr_addr};
+				4'd0: spr_vaddr <= sprptr16 ? spr_ptr_addr4 : spr_ptr_addr;
 				4'd1: spr_vaddr <= spr_vaddr + 19'd1;                   // high pointer byte (16-bit pointers)
 				4'd2: spr_ptr <= vram_q;
 				4'd3: spr_vaddr <= (sprptr16 ? {vram_q[4:0], spr_ptr, 6'd0} : {3'b000, vic_bank, spr_ptr, 6'd0}) + spr_row_ofs;
