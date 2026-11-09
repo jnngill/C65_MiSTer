@@ -250,12 +250,12 @@ linked in the table.
 | Space Commander 1.3 | S-BASIC 65, BASIC 65 920422 | hardware | works ([details](#mega65-programs)) |
 | Titan Fall, Little Mega People, MEGA-Python 0.8.0, Pascal65, `sample.d81` | BASIC 65 920422 | hardware | works |
 | Xanadu demo (Syntax Party 2022) | BASIC 65 920423 | hardware | BASIC 65 edition works; the ASM edition needs an earlier MEGA65 ROM |
-| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; some on hardware (2 BITPLANE CUBE, TUTTER, DUAL SID COMPO, LUNAR TAXI 2, RASTER65) | almost all work ([details](#mega65-intro-disks-1-4)) |
+| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; some on hardware (2 BITPLANE CUBE, TUTTER, DUAL SID COMPO, LUNAR TAXI 2, RASTER65, SCORE OR DIE) | almost all work ([details](#mega65-intro-disks-1-4)) |
 | MEGA65 `net-tools.d81`: BBS Client 1.4, SSH, SFTP, IRC, NTP | BASIC 65 920423 | hardware | works with the `c65_net` helper ([details](#networking-mega65-ethernet)) |
 | Keyboards (US, UK, DE, positional layouts), joysticks, 1351 mouse, PAL / NTSC, SID stereo and filter | all | hardware | works |
 
-Not yet confirmed on hardware: SCORE OR DIE from Intro Disk #1. It
-starts, but has not been played with a joystick yet. Reports are welcome.
+Every Intro Disk program fixed during testing has now been confirmed on
+hardware.
 
 ## Installing
 
@@ -428,7 +428,8 @@ from the card. Almost everything starts and looks right. Notes:
   (about 30 MHz equivalent); it had shown streaks before the per-line
   text position fix and the faster CPU.
 - On hardware: DUAL SID COMPO's menu and music are correct, LUNAR TAXI 2
-  shows its title and landscape, and RASTER65's bars and scroller run,
+  shows its title and landscape, SCORE OR DIE plays (it is started with
+  fire on joystick 2), and RASTER65's bars and scroller run,
   stopping a little above the bottom of the screen (they cover only the top
   two thirds in simulation).
 
