@@ -733,8 +733,7 @@ always_ff @(posedge clk) begin
 		end
 		S_PUSH_P: begin
 			SP  <= sp_dec;
-			fI  <= 1'b1;
-			fD  <= 1'b0;
+			fI  <= 1'b1;	// D is left alone, as on the 6502 and the MEGA65 (Lorenz brkn)
 			vec <= (intr == INT_NMI) ? 16'hFFFA : 16'hFFFE;
 			state <= S_VECLO;
 		end
