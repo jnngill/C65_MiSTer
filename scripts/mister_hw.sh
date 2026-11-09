@@ -8,7 +8,7 @@
 #
 # Screenshots can take tens of seconds to be written when the MiSTer is busy,
 # so "shot" waits for a file newer than the previous newest one.
-D="$(cd "$(dirname "$0")" && pwd)"; H=${MISTER:-root@MiSTer.local}; O="-o BatchMode=yes -o ConnectTimeout=10"
+D="$(cd "$(dirname "$0")" && pwd)"; H=${MISTER:-root@MiSTer.local}; O="-o BatchMode=yes -o ConnectTimeout=10 $MISTER_OPTS"
 case "$1" in
 type) T=$(mktemp); printf '%s' "$2" > "$T"; scp -q $O "$T" $H:/tmp/t.txt; rm -f "$T"
       ssh $O $H 'python3 - "$(cat /tmp/t.txt)"' < "$D/mister_type.py" ;;
