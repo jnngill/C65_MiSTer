@@ -250,12 +250,12 @@ linked in the table.
 | Space Commander 1.3 | S-BASIC 65, BASIC 65 920422 | hardware | works ([details](#mega65-programs)) |
 | Titan Fall, Little Mega People, MEGA-Python 0.8.0, Pascal65, `sample.d81` | BASIC 65 920422 | hardware | works |
 | Xanadu demo (Syntax Party 2022) | BASIC 65 920423 | hardware | BASIC 65 edition works; the ASM edition needs an earlier MEGA65 ROM |
-| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; some on hardware (2 BITPLANE CUBE) | almost all work ([details](#mega65-intro-disks-1-4)) |
+| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; some on hardware (2 BITPLANE CUBE, TUTTER) | almost all work ([details](#mega65-intro-disks-1-4)) |
 | MEGA65 `net-tools.d81`: BBS Client 1.4, SSH, SFTP, IRC, NTP | BASIC 65 920423 | hardware | works with the `c65_net` helper ([details](#networking-mega65-ethernet)) |
 | Keyboards (US, UK, DE, positional layouts), joysticks, 1351 mouse, PAL / NTSC, SID stereo and filter | all | hardware | works |
 
 Not yet confirmed on hardware (simulation only): LUNAR TAXI 2, SCORE OR
-DIE, DUAL SID COMPO, RASTER65 and TUTTER from the Intro Disks. Reports are
+DIE, DUAL SID COMPO and RASTER65 from the Intro Disks. Reports are
 welcome.
 
 ## Installing
@@ -425,8 +425,11 @@ from the card. Almost everything starts and looks right. Notes:
   DUAL SID COMPO (F011 sectors 11-20 of side 0); GEOS's bitmap screen.
 - Fixed: the Intro Disk #4 menu's proportional text, which was missing
   letters, needed the MAP instruction's MB (megabyte) registers.
-- Open: TUTTER shows streaks; RASTER65's bars cover only the top two
-  thirds of the screen in simulation.
+- TUTTER looks and runs correctly on hardware at the top CPU speed
+  (about 30 MHz equivalent); it had shown streaks before the per-line
+  text position fix and the faster CPU.
+- Open: RASTER65's bars cover only the top two thirds of the screen in
+  simulation.
 
 The MEGA65's own ROM (**BASIC 65**, e.g. V920422, built from the C65 ROM
 910828 with the patch the MEGA65 team publishes) boots, shows the clock and
