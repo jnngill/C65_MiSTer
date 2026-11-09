@@ -464,6 +464,11 @@ static void dump_screen(FILE *f) {
 	fprintf(f, "--- screen @%04X %d cols (D031=%02X D030=%02X vic3=%d D05A=%02X D054=%02X) frame %ld\n", base, cols, ctrl_b,
 		(int)r->c65_core__DOT__ctrl_a, (int)r->c65_core__DOT__vic3_mode,
 		(int)r->c65_core__DOT__vic__DOT__dispregs[3], (int)r->c65_core__DOT__vic__DOT__ctrl_c, frame_no);
+	if (ctrl_b & 0x10) {
+		fprintf(f, "--- bitplanes D032=%02X D033-3A=", (int)r->c65_core__DOT__vic__DOT__bp_en);
+		for (int i = 0; i < 8; i++) fprintf(f, "%02X ", (int)r->c65_core__DOT__vic__DOT__bp_addr[i]);
+		fprintf(f, "D03B=%02X D07C=%d\n", (int)r->c65_core__DOT__vic__DOT__bp_comp, (int)r->c65_core__DOT__vic__DOT__bp_bank);
+	}
 	for (int y = 0; y < 25; y++) {
 		std::string line;
 		for (int x = 0; x < cols; x++) line += sc2ascii(mem[(base + y * cols + x) & 0x1FFFF]);

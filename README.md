@@ -75,6 +75,39 @@ lines, then `DLOAD"FB DEMO"`, `DLOAD"DP DEMO"` or `DLOAD"REGINA DEMO"` and
 `RUN`. The disk needs a stock C65 ROM; its programs do not run under
 S-BASIC 65.
 
+#### The C65 disks from zimmers.net
+
+All 129 programs on the 23 disk images in
+[zimmers.net's C65 archive](https://www.zimmers.net/anonftp/pub/cbm/c65/)
+were run in simulation (BASIC 10 911210 and BASIC 65 920423). Most of
+the failures come from the software, not the core:
+
+- **ROM version**: many of these disks were written for 1990-91
+  development ROMs.
+  - The IFF slideshows (`DEMO`, `OLD DEMO`, `PIC256` on `IFFDemoReel1` and
+    `c65Disk6`) run `SYS 12288` while `BANK 128` is selected. With ROM
+    911210 that address is ROM, so the call lands in a ROM DMA routine that
+    clears low memory.
+  - Selecting bank 0 instead gets the IFF loader running, but it then calls
+    `$CF9C`, an entry point only the older ROMs had.
+  - `c65Disk2` and `c65Disk3` stop with their own `ROM MISMATCH` message.
+- **Bitplane bank with ROM 920423**: the 1990 demos (`Demos900907`,
+  `c65Disk1`) show a grey screen under BASIC 65. ROM 920423 sets `$D07C` to
+  2 at start-up, so bitplanes are fetched from `$40000` instead of banks 0
+  and 1. A real MEGA65 does the same. Under ROM 911210, `DEMO ALL` shows the
+  Workbench, Deluxe Paint and REGINA pictures correctly.
+- **Expected stops**:
+  - Programs that wait at their own prompt.
+  - C128 programs that drop into the monitor.
+  - Files missing from the images (`IFF.BIN6E`, `D3.5`, `KINGTUT`,
+    `PIC.DIR`, where a program looks for them on a disk that lacks them).
+  - BASIC 10 programs that use commands BASIC 65 changed (`?SCREEN NOT
+    OPEN`, `?RESERVED NAME`, `?UNDEFINED STATEMENT`).
+  - The DOS test disk's `A` / `USER` files, which `LOAD` reports as
+    `?PROGRAM MANGLED`. These are probably not BASIC programs.
+
+No core bug turned up in this pass.
+
 ### MEGA65 extensions
 
 ROMs built for the MEGA65 (the 92xxxx series and derivatives such as
@@ -357,8 +390,9 @@ from the card. Almost everything starts and looks right. Notes:
   the sector out of `$FFD6C00` (the F011 now always fills its buffer from
   offset 0); LUNAR TAXI 2 and SCORE OR DIE (`$D019` read-modify-write);
   DUAL SID COMPO (F011 sectors 11-20 of side 0); GEOS's bitmap screen.
-- Open: in the Intro Disk #4 menu some letters of the proportional text
-  are missing; TUTTER shows streaks; RASTER65's bars cover only the top two
+- Fixed: the Intro Disk #4 menu's proportional text, which was missing
+  letters, needed the MAP instruction's MB (megabyte) registers.
+- Open: TUTTER shows streaks; RASTER65's bars cover only the top two
   thirds of the screen in simulation.
 
 The MEGA65's own ROM (**BASIC 65**, e.g. V920422, built from the C65 ROM
