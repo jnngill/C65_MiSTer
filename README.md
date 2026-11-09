@@ -253,9 +253,34 @@ linked in the table.
 | MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; some on hardware (2 BITPLANE CUBE, TUTTER, DUAL SID COMPO, LUNAR TAXI 2, RASTER65, SCORE OR DIE) | almost all work ([details](#mega65-intro-disks-1-4)) |
 | MEGA65 `net-tools.d81`: BBS Client 1.4, SSH, SFTP, IRC, NTP | BASIC 65 920423 | hardware | works with the `c65_net` helper ([details](#networking-mega65-ethernet)) |
 | Keyboards (US, UK, DE, positional layouts), joysticks, 1351 mouse, PAL / NTSC, SID stereo and filter | all | hardware | works |
+| Wolfgang Lorenz 6510 test suite 2.15 (in `GO64` mode) | 911210 | hardware | every documented-instruction test passes ([details](#lorenz-6510-test-suite)) |
 
 Every Intro Disk program fixed during testing has now been confirmed on
 hardware.
+
+### Lorenz 6510 test suite
+
+Run on the MiSTer in C64 mode (`GO64`, ROM 911210) with core C65_20261109b.
+The suite expects an NMOS 6510, so it shows which parts of the C65 behave
+like a C64 and which are 4510 differences that a real C65 shares.
+
+- **Pass:** every load / store / logic / shift / ADC / SBC / compare / BIT /
+  flag / branch / BRK / RTI / JSR / RTS / JMP test, `branchwrap`, `mmufetch`,
+  `mmu`, `loadth`, `imr`, `cntdef`.  Testing found and fixed two CPU bugs:
+  decimal-mode ADC/SBC flags (they followed the 65C02, not the 6502) and BRK /
+  interrupts clearing the D flag.
+- **Expected to fail on a real C65:**
+  - `jmpi`: the 4510 doesn't have the 6502's `JMP ($xxFF)` page-wrap bug.
+  - `nop*` to `sbcb(eb)`, `trap1`-`trap17`: these use the undocumented 6502
+    opcodes, which the 4510 runs as 65CE02 instructions (e.g. `$1A` is
+    `INC A`).
+  - `cputiming`, `irq`, `nmi` and the cycle-exact CIA tests (`cia1tb123`,
+    `cia*pb6/7`, `cia1tab`, `cnto2`, `icr01`, `flipos`, `oneshot`,
+    `cia1ta`...`cia2tb`): even at 1 MHz the 4510 drops the 6502's dead
+    cycles, so code timed for a 6510 is off by a cycle or more.
+- **Unverifiable:** `cpuport` (with $00 = 0, $01 reads $FF; the test
+  expects $DF from the C64's cassette motor line, which the C65 doesn't
+  have).
 
 ## Installing
 
