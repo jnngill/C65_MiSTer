@@ -265,10 +265,13 @@ always_comb begin
 end
 
 // ---------------------------------------------------------------- ALU
-// ADC/SBC, binary and decimal (CMOS flag behaviour)
+// ADC/SBC, binary and decimal.  Decimal mode follows the NMOS 6502 (as VICE
+// and the MEGA65 45GS02 do): ADC takes Z from the binary sum and N/V from the
+// result before the high nibble is adjusted; SBC takes every flag from the
+// binary subtraction.  The Lorenz adc*/sbc* tests check all of this.
 logic [7:0] adc_res, sbc_res;
-logic       adc_c, adc_v, sbc_c, sbc_v;
-logic [8:0] adc_bin, sbc_bin;
+logic       adc_c, adc_v, adc_n, adc_z, sbc_c, sbc_v;
+logic [8:0] adc_bin, sbc_bin, sbc_d;
 logic [5:0] adc_lo, adc_hi;
 logic [4:0] sbc_lo;
 always_comb begin
@@ -276,13 +279,16 @@ always_comb begin
 	adc_lo  = {2'b0, A[3:0]} + {2'b0, din[3:0]} + {5'd0, fC};
 	if (adc_lo > 6'd9) adc_lo = adc_lo + 6'd6;
 	adc_hi  = {2'b0, A[7:4]} + {2'b0, din[7:4]} + {5'd0, (adc_lo > 6'd15)};
+	adc_z   = (adc_bin[7:0] == 8'd0);
 	if (fD) begin
 		adc_v = ~(A[7] ^ din[7]) & (A[7] ^ adc_hi[3]);
+		adc_n = adc_hi[3];
 		if (adc_hi > 6'd9) adc_hi = adc_hi + 6'd6;
 		adc_c   = (adc_hi > 6'd15);
 		adc_res = {adc_hi[3:0], adc_lo[3:0]};
 	end else begin
 		adc_v   = ~(A[7] ^ din[7]) & (A[7] ^ adc_bin[7]);
+		adc_n   = adc_bin[7];
 		adc_c   = adc_bin[8];
 		adc_res = adc_bin[7:0];
 	end
@@ -292,9 +298,14 @@ always_comb begin
 	sbc_v   = (A[7] ^ din[7]) & (A[7] ^ sbc_bin[7]);
 	sbc_c   = ~sbc_bin[8];
 	sbc_res = sbc_bin[7:0];
+	sbc_d   = 9'd0;
 	if (fD) begin
-		if (sbc_bin[8]) sbc_res = sbc_res - 8'h60;
-		if (sbc_lo[4])  sbc_res = sbc_res - 8'h06;
+		if (sbc_lo[4])
+			sbc_d = {5'd0, sbc_lo[3:0] - 4'd6} | ({1'b0, A[7:4], 4'd0} - {1'b0, din[7:4], 4'd0} - 9'h010);
+		else
+			sbc_d = {5'd0, sbc_lo[3:0]}        | ({1'b0, A[7:4], 4'd0} - {1'b0, din[7:4], 4'd0});
+		if (sbc_d[8]) sbc_d = sbc_d - 9'h060;
+		sbc_res = sbc_d[7:0];
 	end
 end
 
@@ -417,8 +428,8 @@ task automatic exec_alu(input logic [7:0] m, input logic imm);
 		I_ORA: begin A <= A | m; set_nz(A | m); end
 		I_AND: begin A <= A & m; set_nz(A & m); end
 		I_EOR: begin A <= A ^ m; set_nz(A ^ m); end
-		I_ADC: begin A <= adc_res; set_nz(adc_res); fC <= adc_c; fV <= adc_v; end
-		I_SBC: begin A <= sbc_res; set_nz(sbc_res); fC <= sbc_c; fV <= sbc_v; end
+		I_ADC: begin A <= adc_res; fN <= adc_n; fZ <= adc_z; fC <= adc_c; fV <= adc_v; end
+		I_SBC: begin A <= sbc_res; fN <= sbc_bin[7]; fZ <= (sbc_bin[7:0] == 8'd0); fC <= sbc_c; fV <= sbc_v; end
 		I_CMP: do_cmp(A, m);
 		I_CPX: do_cmp(X, m);
 		I_CPY: do_cmp(Y, m);
