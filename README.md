@@ -227,6 +227,37 @@ Also confirmed on hardware by hand: real US and UK keyboards (symbols, graphics
 characters, colour keys, cursor and editing keys, RUN/STOP and RESTORE, key
 repeat), joysticks in both ports, the SID filter and stereo placement.
 
+## Tested
+
+A summary of the software run on the core. **Hardware** means it was run
+on a real MiSTer. **Simulation** means it was run in the Verilator test
+bench (`sim/system`) with the same RTL. The details are in the sections
+linked in the table.
+
+| Software | ROM | Where | Result |
+|----------|-----|-------|--------|
+| BASIC 10: typing, `RUN`, `LIST`, D81 read / write, `HEADER` | 911210 | hardware | works |
+| BASIC 10 graphics (`SCREEN`, `PALETTE`, `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites | 911210 | simulation | works |
+| 1280-pixel bitplane modes (programmed directly) | 911210 | hardware (HDMI) | works |
+| Commodore C65 demo disk: Workbench (640x400), Deluxe Paint, REGINA | 911210 | hardware / simulation | works ([details](#the-commodore-c65-demo-disk)) |
+| Commodore C65 demo disk: IFF slideshow (with Expansion RAM) | 911210 | simulation | black screen; the disk asks for ROM 910107 |
+| zimmers.net C65 disks (23 images, 129 programs) | 911210, 920423 | simulation | no core bugs found; failures are ROM-version dependencies ([details](#the-c65-disks-from-zimmersnet)) |
+| RS-232: KERNAL device 2, C65TERM with Synchronet and Particles BBS | 911210 | hardware | works (the KERNAL is accurate up to 19200 baud) |
+| 4 MB expansion RAM, `DMA` copy | 911210 | hardware | works |
+| `.D64` / `.G64` on the emulated 1541 (unit 10), in C65 and C64 mode | 911210 | hardware | directory, load, save |
+| `GO64` (the C65's own C64 mode, not cycle exact) | 911210 | hardware | works for BASIC and simple programs ([details](#go64--go128-the-mister-c64-and-c128-cores)) |
+| S-BASIC 65 commands (graphics, sprites, sound, `MOUSE`, `BACKUP`) | S-BASIC 65 V250507 | hardware / simulation | works, except relative files (an S-BASIC DOS bug) ([details](#mega65-extensions)) |
+| Space Commander 1.3 | S-BASIC 65, BASIC 65 920422 | hardware | works ([details](#mega65-programs)) |
+| Titan Fall, Little Mega People, MEGA-Python 0.8.0, Pascal65, `sample.d81` | BASIC 65 920422 | hardware | works |
+| Xanadu demo (Syntax Party 2022) | BASIC 65 920423 | hardware | BASIC 65 edition works; the ASM edition needs an earlier MEGA65 ROM |
+| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; some on hardware (2 BITPLANE CUBE) | almost all work ([details](#mega65-intro-disks-1-4)) |
+| MEGA65 `net-tools.d81`: BBS Client 1.4, SSH, SFTP, IRC, NTP | BASIC 65 920423 | hardware | works with the `c65_net` helper ([details](#networking-mega65-ethernet)) |
+| Keyboards (US, UK, DE, positional layouts), joysticks, 1351 mouse, PAL / NTSC, SID stereo and filter | all | hardware | works |
+
+Not yet confirmed on hardware (simulation only): LUNAR TAXI 2, SCORE OR
+DIE, DUAL SID COMPO, RASTER65 and TUTTER from the Intro Disks. Reports are
+welcome.
+
 ## Installing
 
 A ready-built core is in [`releases/`](releases) (MiSTer convention: the
@@ -264,7 +295,9 @@ newest dated `.rbf` is the one to use) and on the
    [Loading .PRG and .D64 files](#loading-prg-and-d64-files).
 
 ROMs this core has been run with: **911210** (the last original Commodore
-ROM; runs as a plain C65) and **S-BASIC 65 V250507** (a MEGA65-style ROM).
+ROM; runs as a plain C65), **S-BASIC 65 V250507** (a MEGA65-style ROM) and
+**BASIC 65 V920422 / V920423** (the MEGA65's own ROM). See
+[Tested](#tested) for what has been run with each.
 
 **Using S-BASIC 65 or another MEGA65-style ROM?** Set **MEGA65 Extensions**
 to *On* in the OSD, then choose *Save settings* (on the OSD's System page) so
