@@ -250,7 +250,7 @@ linked in the table.
 | Space Commander 1.3 | S-BASIC 65, BASIC 65 920422 | hardware | works ([details](#mega65-programs)) |
 | Titan Fall, Little Mega People, MEGA-Python 0.8.0, Pascal65, `sample.d81` | BASIC 65 920422 | hardware | works |
 | Xanadu demo (Syntax Party 2022) | BASIC 65 920423 | hardware | BASIC 65 edition works; the ASM edition needs an earlier MEGA65 ROM |
-| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; some on hardware (2 BITPLANE CUBE, TUTTER, DUAL SID COMPO, LUNAR TAXI 2, RASTER65, SCORE OR DIE) | almost all work ([details](#mega65-intro-disks-1-4)) |
+| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; some on hardware (2 BITPLANE CUBE, TUTTER, DUAL SID COMPO, LUNAR TAXI 2, RASTER65, SCORE OR DIE, MEGATORN, MEGAPOLY, MEGAJGLR, the Intro Disk #4 menu and seven Intro Disk #2 programs) | almost all work ([details](#mega65-intro-disks-1-4)) |
 | MEGA65 `net-tools.d81`: BBS Client 1.4, SSH, SFTP, IRC, NTP | BASIC 65 920423 | hardware | works with the `c65_net` helper ([details](#networking-mega65-ethernet)) |
 | Keyboards (US, UK, DE, positional layouts), joysticks, 1351 mouse, PAL / NTSC, SID stereo and filter | all | hardware | works |
 | Wolfgang Lorenz 6510 test suite 2.15 (in `GO64` mode) | 911210 | hardware | every documented-instruction test passes ([details](#lorenz-6510-test-suite)) |
@@ -449,6 +449,11 @@ from the card. Almost everything starts and looks right. Notes:
   DUAL SID COMPO (F011 sectors 11-20 of side 0); GEOS's bitmap screen.
 - Fixed: the Intro Disk #4 menu's proportional text, which was missing
   letters, needed the MAP instruction's MB (megabyte) registers.
+- Fixed: the Intro Disk #4 menu's bottom line ("press RETURN to
+  CONTINUE") showed rows of junk. The menu moves TEXTYPOS (`$D04E`) further
+  down part-way through the frame; on the VIC-IV the text then pauses and
+  resumes with the same text row, and the core had restarted at row 0.
+  Confirmed on hardware.
 - TUTTER looks and runs correctly on hardware at the top CPU speed
   (about 30 MHz equivalent); it had shown streaks before the per-line
   text position fix and the faster CPU.
@@ -457,6 +462,9 @@ from the card. Almost everything starts and looks right. Notes:
   fire on joystick 2), and RASTER65's bars and scroller run,
   stopping a little above the bottom of the screen (they cover only the top
   two thirds in simulation).
+- Also on hardware: MEGATORN, MEGAPOLY and MEGAJGLR (Intro Disk #3),
+  the Intro Disk #4 menu, and 8WAYSCROLLER, AFFINE, MEGAFRACT,
+  NORDLICHT65, RASTERBARDEMO, SHOWMEYOURBITS and GALAXY (Intro Disk #2).
 
 The MEGA65's own ROM (**BASIC 65**, e.g. V920422, built from the C65 ROM
 910828 with the patch the MEGA65 team publishes) boots, shows the clock and
