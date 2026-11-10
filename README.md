@@ -108,6 +108,13 @@ the failures come from the software, not the core:
 
 No core bug turned up in this pass.
 
+All 129 programs were then run on hardware (core C65_20261109c, BASIC 65
+920423), and each ends the way it does in simulation: the same prompts,
+monitor stops and missing-file errors, and the same grey screens for the
+1990 demos. With ROM 911210 loaded instead, `DEMO ALL` on `Demos900907`
+loads the Workbench, Deluxe Paint and REGINA pictures and shows them
+correctly on hardware.
+
 ### MEGA65 extensions
 
 ROMs built for the MEGA65 (the 92xxxx series and derivatives such as
@@ -241,7 +248,7 @@ linked in the table.
 | 1280-pixel bitplane modes (programmed directly) | 911210 | hardware (HDMI) | works |
 | Commodore C65 demo disk: Workbench (640x400), Deluxe Paint, REGINA | 911210 | hardware / simulation | works ([details](#the-commodore-c65-demo-disk)) |
 | Commodore C65 demo disk: IFF slideshow (with Expansion RAM) | 911210 | simulation | black screen; the disk asks for ROM 910107 |
-| zimmers.net C65 disks (23 images, 129 programs) | 911210, 920423 | simulation | no core bugs found; failures are ROM-version dependencies ([details](#the-c65-disks-from-zimmersnet)) |
+| zimmers.net C65 disks (23 images, 129 programs) | 911210, 920423 | simulation and hardware | no core bugs found; failures are ROM-version dependencies ([details](#the-c65-disks-from-zimmersnet)) |
 | RS-232: KERNAL device 2, C65TERM with Synchronet and Particles BBS | 911210 | hardware | works (the KERNAL is accurate up to 19200 baud) |
 | 4 MB expansion RAM, `DMA` copy | 911210 | hardware | works |
 | `.D64` / `.G64` on the emulated 1541 (unit 10), in C65 and C64 mode | 911210 | hardware | directory, load, save |
