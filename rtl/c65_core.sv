@@ -624,10 +624,11 @@ logic  [1:0] vsel;
 logic        wom_loaded;
 
 // $40000-$5FFFF: the extra chip RAM MEGA65 ROMs expect (graphics, sprites)
-dpram #(17, 8) ram2 (
+dpram_ws #(17, 8) ram2 (
 	.clk(clk),
-	.a_addr(aud_gnt ? aud_addr[16:0] : (bus_we && sel_ram2) ? mem_addr : spec_mem), .a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
-	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram2_q)
+	.a_addr(aud_gnt ? aud_addr[16:0] : (bus_we && sel_ram2) ? mem_addr : spec_mem), .a_wsel(mem_addr),
+	.a_din(bus_dout), .a_we(bus_ce && bus_we && sel_ram2), .a_q(ram2_q),
+	.b_addr(vaddr[16:0]), .b_q(vram2_q)
 );
 
 // $FF7E000: 4K character set RAM.  MEGA65 ROMs copy their font here and the
@@ -659,18 +660,20 @@ always_ff @(posedge clk) begin
 	else if (bus_ce && bus_we && sel_wom && mem_addr[11:0] == 12'hFFF) wom_loaded <= 1'b1;
 end
 
-dpram #(17, 8) ram (
+dpram_ws #(17, 8) ram (
 	.clk(clk),
-	.a_addr(prg_we ? {1'b0, prg_addr} : aud_gnt ? aud_addr[16:0] : ram_addr), .a_din(prg_we ? prg_data : bus_dout),
-	.a_we(prg_we || (bus_ce && bus_we && ram_sel)), .a_q(ram_q),
-	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vram1_q)
+	.a_addr(prg_we ? {1'b0, prg_addr} : aud_gnt ? aud_addr[16:0] : ram_addr),
+	.a_wsel(prg_we ? {1'b0, prg_addr} : io_cram ? {6'b111111, io_addr[10:0]} : mem_addr),
+	.a_din(prg_we ? prg_data : bus_dout), .a_we(prg_we || (bus_ce && bus_we && ram_sel)), .a_q(ram_q),
+	.b_addr(vaddr[16:0]), .b_q(vram1_q)
 );
 
-dpram #(17, 8) rom (
+dpram_ws #(17, 8) rom (
 	.clk(clk),
 	.a_addr(ld_wr ? ld_addr : rs_wr ? rrom_addr : aud_gnt ? aud_addr[16:0] : sel_romw ? mem_addr : spec_mem),
+	.a_wsel(ld_wr ? ld_addr : rs_wr ? rrom_addr : mem_addr),
 	.a_din(ld_wr ? ld_data : rs_wr ? rs_data : bus_dout), .a_we(ld_wr || rs_wr || rom_wr), .a_q(rom_q),
-	.b_addr(vaddr[16:0]), .b_din(8'd0), .b_we(1'b0), .b_q(vrom1_q)
+	.b_addr(vaddr[16:0]), .b_q(vrom1_q)
 );
 
 // ------------------------------------------------------------------ CPU port
