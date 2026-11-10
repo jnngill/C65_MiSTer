@@ -195,7 +195,7 @@ logic [27:0] dma_addr;
 logic  [7:0] dma_dout, dma_reg_dout;
 logic        dma_reg_we;
 logic [11:0] io_addr;
-logic  [7:0] bus_dout;
+logic  [7:0] bus_dout /*verilator public_flat*/;
 logic        bus_we;
 
 dma_f018 dma (

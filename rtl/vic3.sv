@@ -635,15 +635,22 @@ logic  [7:0] al_sub;
 logic        an_started, an_on;
 logic [10:0] an_prow;
 logic  [7:0] an_sub;
+// TEXTYPOS moved below the beam mid-frame pauses the text, and it resumes at
+// the new TEXTYPOS with the same text row from its first glyph row (the
+// VIC-IV's "multiple character displays per screen"; the Intro Disk #4 menu
+// uses it for its bottom line).  hold_row is the row it paused on.
+logic        hold_v;
+logic  [7:0] hold_row;
+wire  [10:0] hold_base = (hold_v && an_line != 9'd0) ? {hold_row, 3'b000} : 11'd0;
 always_comb begin
 	logic [8:0] s;
 	s = '0; an_started = 1'b0; an_prow = '0; an_sub = '0;
 	if (an_before) begin end
 	else if (!al_started || an_line == 9'd0) begin
 		an_started = 1'b1;
-		if (chryscl == 8'd0) an_prow = an_d0[10:0];
-		else if (an_d0 <= {4'd0, chryscl}) an_sub = an_d0[7:0];
-		else if (chryscl == 8'd1) begin an_prow = {1'b0, an_d0[10:1]}; an_sub = {7'd0, an_d0[0]}; end
+		if (chryscl == 8'd0) an_prow = hold_base + an_d0[10:0];
+		else if (an_d0 <= {4'd0, chryscl}) begin an_prow = hold_base; an_sub = an_d0[7:0]; end
+		else if (chryscl == 8'd1) begin an_prow = hold_base + {1'b0, an_d0[10:1]}; an_sub = {7'd0, an_d0[0]}; end
 	end
 	else begin
 		an_started = 1'b1;
@@ -663,8 +670,11 @@ logic  [9:0] row_base_t;     // bitmap: cells before this text row
 always_ff @(posedge clk) begin
 	if (reset) begin
 		al_started <= 1'b0; al_on <= 1'b0; cl_on <= 1'b0; al_prow <= '0; cl_prow <= '0; al_sub <= '0;
+		hold_v <= 1'b0; hold_row <= '0;
 	end
 	else if (ce_pix && line_start) begin
+		if (an_line == 9'd0) hold_v <= 1'b0;
+		else if (al_started && !an_started) begin hold_v <= 1'b1; hold_row <= al_prow[10:3]; end
 		cl_on   <= al_on;
 		cl_prow <= al_prow;
 		row_ofs    <= {10'd0, al_prow[10:3]} * {8'd0, linestep};
