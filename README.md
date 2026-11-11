@@ -91,6 +91,16 @@ the failures come from the software, not the core:
   - Selecting bank 0 instead gets the IFF loader running, but it then calls
     `$CF9C`, an entry point only the older ROMs had.
   - `c65Disk2` and `c65Disk3` stop with their own `ROM MISMATCH` message.
+  - `IFF DEMO` on `c65Disk1` loads its twelve pictures into banks 4-15
+    correctly, then goes black. Its routine at `$1880` copies a picture
+    with `MAP`, then ends with `MAP` 0, `EOM`, `CLI`, `RTS`. With ROM
+    911210 the system map lives in `MAP` (the KERNAL at `$E000` included),
+    so the pending interrupt taken after `CLI` reads its vector from the
+    RAM the routine just filled with picture data. `JSRFAR` would restore
+    the map one step later. The disk asks for ROM 910107, which set up
+    memory differently. Workaround: `DLOAD"IFF DEMO"`, add the line
+    `105 BANK0:POKE6531,234:BANK128` (turns that `CLI` into a `NOP`), and
+    `RUN`. The slideshow then runs on hardware (Expansion RAM on).
 - **Bitplane bank with ROM 920423**: the 1990 demos (`Demos900907`,
   `c65Disk1`) show a grey screen under BASIC 65. ROM 920423 sets `$D07C` to
   2 at start-up, so bitplanes are fetched from `$40000` instead of banks 0
@@ -247,7 +257,7 @@ linked in the table.
 | BASIC 10 graphics (`SCREEN`, `PALETTE`, `LINE`, `BOX`, `CIRCLE`, `CHAR`), sprites | 911210 | simulation | works |
 | 1280-pixel bitplane modes (programmed directly) | 911210 | hardware (HDMI) | works |
 | Commodore C65 demo disk: Workbench (640x400), Deluxe Paint, REGINA | 911210 | hardware / simulation | works ([details](#the-commodore-c65-demo-disk)) |
-| Commodore C65 demo disk: IFF slideshow (with Expansion RAM) | 911210 | simulation | black screen; the disk asks for ROM 910107 |
+| `IFF DEMO` slideshow (`c65Disk1`, with Expansion RAM) | 911210 | hardware | black screen as shipped; runs with a one-line patch ([details](#the-c65-disks-from-zimmersnet)) |
 | zimmers.net C65 disks (23 images, 129 programs) | 911210, 920423 | simulation and hardware | no core bugs found; failures are ROM-version dependencies ([details](#the-c65-disks-from-zimmersnet)) |
 | RS-232: KERNAL device 2, C65TERM with Synchronet and Particles BBS | 911210 | hardware | works (the KERNAL is accurate up to 19200 baud) |
 | 4 MB expansion RAM, `DMA` copy | 911210 | hardware | works |
