@@ -97,6 +97,14 @@ uses 9-byte lists although it names the F018A, so the early chips probably
 read only 9 bytes per list; the core's F018A keeps the MEGA65's 11-byte
 format. Under ROM 910429 it loads its pictures, then stops with `?SYNTAX
 ERROR` at `FILTER1,...`: that ROM's `FILTER` has no SID-number argument yet.
+ROM 910626 (`910626.bin` on zimmers.net) passes its ROM check but has a
+start-up bug of its own when expansion RAM is present: the sizing loop at
+`$FE1D` pushes eight bytes and the restore loop at `$FE3A` (`SBC #$08` /
+`BVS`) pops one, so the next `RTS` lands in the monitor (`BREAK` at
+`$38032`). With **Expansion RAM** off it skips that loop and boots, and
+`RUN"AUTOBOOT*"` then runs demo #2d's Workbench, Deluxe Paint and REGINA
+pictures and the graphics demos on hardware. The IFF slideshow needs
+expansion RAM, so it is skipped there.
 
 #### The C65 disks from zimmers.net
 
