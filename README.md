@@ -469,6 +469,18 @@ from the card. Almost everything starts and looks right. Notes:
   down part-way through the frame; on the VIC-IV the text then pauses and
   resumes with the same text row, and the core had restarted at row 0.
   Confirmed on hardware.
+- Fixed (core C65_20261110b, confirmed on hardware): two white blocks at
+  the left of the Intro Disk #4 menu. The menu parks its 64 pixel sprites
+  past the right edge, and on the VIC-IV their rows now end there instead
+  of coming out at the left edge of the next line. Also fixed: a cut-off
+  copy of the bottom line just above it. The core draws text rows two
+  raster lines ahead, so the lines already drawn when the menu moves
+  TEXTYPOS down now show the background, as on the VIC-IV.
+- Still different from a MEGA65: a dotted line under the menu's logo and
+  two pixel rows at the bottom edge of its grey panel. The menu switches
+  the screen pointer in the middle of a text row, and because the core
+  draws two raster lines ahead (the VIC-IV draws one), the old screen's
+  next row shows for four physical lines first.
 - TUTTER looks and runs correctly on hardware at the top CPU speed
   (about 30 MHz equivalent); it had shown streaks before the per-line
   text position fix and the faster CPU.

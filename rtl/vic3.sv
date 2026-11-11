@@ -1140,10 +1140,19 @@ wire [2:0] fcm_n   = h640 ? d_cnt[2:0] : d_cnt[3:1];     // pixel within the cel
 wire [7:0] fcm_px  = sh_bp[fcm_n];
 wire [1:0] px2     = mc_phase ? mc_bits : sh_gfx[7:6];
 
+// Rows are decided two raster lines ahead (an_line), but the VIC-IV draws only
+// one physical row ahead, so moving TEXTYPOS below the beam stops the text at
+// once.  Lines drawn before such a move (above the new TEXTYPOS) show the
+// background, as the Intro Disk #4 menu expects when it moves its bottom line.
+wire [12:0] dp_py   = yphys(vc, ntsc) + {12'd0, field && !tr_dbl};
+wire [12:0] dp_d    = dp_py - {1'b0, textypos};
+wire        dp_hold = dp_d[12];
+
 always_comb begin
 	gfx_idx = col_bg0;
 	gfx_fg  = 1'b0;
-	if (rrb_mode) begin
+	if (dp_hold) begin end
+	else if (rrb_mode) begin
 		gfx_idx = rr_px[8] ? rr_px[7:0] : col_bg0;
 		gfx_fg  = rr_px[9];
 	end
@@ -1361,7 +1370,11 @@ always_ff @(posedge clk) begin
 		for (int i = 0; i < 8; i++) begin
 			logic start;
 			start = spr_h640 ? (phx == {4'd0, sprxmsb2[i], spr_x[i]}) : (x[8:0] == spr_x[i] && x < 10'd512);
-			if (x == 10'(X_BLANK0)) begin
+			// blanking ends the sprite's row; on the VIC-IV a row that started in
+			// the blanking (a wide sprite placed past the right edge) also ends
+			// before the next line shows, instead of coming out at the left
+			// edge (the Intro Disk #4 menu parks its 64 pixel sprites at X=$18C)
+			if (x == 10'(X_BLANK0) || (vic4_mode && x == x_blank1 - 10'd1)) begin
 				spr_shifting[i] <= 1'b0;
 				spr_pix[i] <= 2'b00;
 			end
