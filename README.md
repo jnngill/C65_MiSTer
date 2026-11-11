@@ -125,9 +125,22 @@ the failures come from the software, not the core:
     so the pending interrupt taken after `CLI` reads its vector from the
     RAM the routine just filled with picture data. `JSRFAR` would restore
     the map one step later. The disk asks for ROM 910107, which set up
-    memory differently. Workaround: `DLOAD"IFF DEMO"`, add the line
-    `105 BANK0:POKE6531,234:BANK128` (turns that `CLI` into a `NOP`), and
-    `RUN`. The slideshow then runs on hardware (Expansion RAM on).
+    memory differently (ROM 910111, the closest available, loads the
+    pictures but also goes black). Workaround: `DLOAD"IFF DEMO"`, add the
+    line `105 BANK0:POKE6531,234:BANK128:POKE53270,200` and `RUN`. The
+    first part turns that `CLI` into a `NOP`; `POKE53270,200` clears
+    XSCROLL, which ROM 911210 leaves at 1 for its 80 column screen (in a
+    320 pixel bitplane mode that moves the picture one pixel right and
+    shows the background colour in the first column). The slideshow then
+    runs on hardware (Expansion RAM on).
+  - The `IFFDemoReel1` / `c65Disk6` loader `IFF.BIN6E` calls a BASIC jump
+    table at `$CF9C`-`$CFB1` that none of ROMs 910111, 910429 and 911210
+    has; it needs an earlier (1990) ROM.
+- **InfoDisk1** (1993 programs from the Highlander BBS): the raster bar,
+  terminal and fade programs run. `BONZI BMAP` and `BMD SLIDER 65` switch
+  on bitplane modes without setting the plane addresses, so they show
+  whatever memory the defaults point at. `BOUNCEBARZ2.BAS` is damaged on
+  the disk image (`?SYNTAX ERROR IN 35748`).
 - **Bitplane bank with ROM 920423**: the 1990 demos (`Demos900907`,
   `c65Disk1`) show a grey screen under BASIC 65. ROM 920423 sets `$D07C` to
   2 at start-up, so bitplanes are fetched from `$40000` instead of banks 0
