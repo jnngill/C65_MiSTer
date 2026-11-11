@@ -549,9 +549,10 @@ from the card. Almost everything starts and looks right. Notes:
   text position fix and the faster CPU.
 - On hardware: DUAL SID COMPO's menu and music are correct, LUNAR TAXI 2
   shows its title and landscape, SCORE OR DIE plays (it is started with
-  fire on joystick 2), and RASTER65's bars and scroller run,
-  stopping a little above the bottom of the screen (they cover only the top
-  two thirds in simulation).
+  fire on joystick 2), and RASTER65's bars and scroller run. Its bars end
+  above the bottom of the screen by design: the raster loop changes the
+  colours on 224 lines, from line 25 to where the bottom border starts, and
+  how much of that is lit depends on where its scrolling colour table is.
 - Every program on Intro Disks 2-4 (111 programs) was also run on
   hardware with core C65_20261109c, and every program on Intro Disk 1
   (56) with C65_20261110a; each starts and shows what it shows in
