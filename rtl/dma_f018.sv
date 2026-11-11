@@ -1,4 +1,6 @@
-// CSG F018 "DMAgic" DMA controller (F018A 11-byte and F018B 12-byte lists).
+// CSG F018 "DMAgic" DMA controller (F018B 12-byte, F018A 11-byte and the
+// original F018's 9-byte lists, which have no modulo bytes: chained lists
+// follow each other every 9 bytes, as Commodore's 1991 demo disks expect).
 //
 // The system core owns the bus cycle: while busy is high the DMA is bus
 // master and every ce pulse completes one access (addr/io/we/dout, din).
@@ -26,6 +28,7 @@ module dma_f018 (
 	input  logic        reset,
 	input  logic        ce,          // bus cycle complete (only counted while busy)
 	input  logic        f018b,       // list format: 0 = F018A, 1 = F018B
+	input  logic        f018_9,      // with f018b = 0: the original F018's 9-byte lists
 
 	input  logic  [2:0] reg_addr,
 	input  logic        reg_we,
@@ -56,6 +59,7 @@ logic [27:0] src, dst;
 logic        enh;            // enhanced job (started through $D705)
 logic        inl;            // inline job (started through $D707)
 logic        job_b;          // list format of this job: 1 = F018B
+logic        job_9;          // ... or 9-byte lists (original F018, plain $D700 jobs only)
 logic        opt_arg;        // next list byte is the argument of opt_code
 logic  [7:0] opt_code, src_mb, dst_mb;
 logic        src_io, dst_io, src_hold, dst_hold, src_dec, dst_dec;
@@ -68,7 +72,7 @@ logic  [7:0] tr_val;
 logic [15:0] srate, drate;   // enhanced option: address step per byte, 8.8 fixed point
 logic  [7:0] sfrac, dfrac;   // fractional address positions
 
-wire [3:0] list_last = job_b ? 4'd11 : 4'd10;
+wire [3:0] list_last = job_b ? 4'd11 : (job_9 ? 4'd8 : 4'd10);
 wire [7:0] sbank = list[5];
 wire [7:0] dbank = list[8];
 
@@ -134,25 +138,25 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		state <= IDLE;
 		list_addr <= '0; list_bank <= '0; list_idx <= '0;
-		enh <= 1'b0; inl <= 1'b0; job_b <= 1'b1; opt_arg <= 1'b0; src_mb <= '0; dst_mb <= '0;
+		enh <= 1'b0; inl <= 1'b0; job_b <= 1'b1; job_9 <= 1'b0; opt_arg <= 1'b0; src_mb <= '0; dst_mb <= '0;
 		tr_en <= 1'b0; tr_val <= '0; srate <= 16'h0100; drate <= 16'h0100;
 	end
 	else begin
 		if (reg_we && !busy) begin
 			case (reg_addr)
 				3'd0: begin
-					list_addr[7:0] <= reg_din; list_idx <= '0; enh <= 1'b0; inl <= 1'b0; job_b <= f018b; state <= LIST;
+					list_addr[7:0] <= reg_din; list_idx <= '0; enh <= 1'b0; inl <= 1'b0; job_b <= f018b; job_9 <= f018_9 && !f018b; state <= LIST;
 					tr_en <= 1'b0; srate <= 16'h0100; drate <= 16'h0100; src_mb <= '0; dst_mb <= '0;
 				end
 				3'd1: list_addr[15:8] <= reg_din;
 				3'd2: list_bank <= reg_din[6:0];
 				3'd5: begin
-					list_addr[7:0] <= reg_din; list_idx <= '0; enh <= 1'b1; inl <= 1'b0; job_b <= f018b;
+					list_addr[7:0] <= reg_din; list_idx <= '0; enh <= 1'b1; inl <= 1'b0; job_b <= f018b; job_9 <= 1'b0;
 					opt_arg <= 1'b0; src_mb <= '0; dst_mb <= '0; state <= OPT;
 					tr_en <= 1'b0; tr_val <= '0; srate <= 16'h0100; drate <= 16'h0100;
 				end
 				3'd7: begin
-					list_addr <= cpu_pc; list_bank <= '0; list_idx <= '0; enh <= 1'b1; inl <= 1'b1; job_b <= f018b;
+					list_addr <= cpu_pc; list_bank <= '0; list_idx <= '0; enh <= 1'b1; inl <= 1'b1; job_b <= f018b; job_9 <= 1'b0;
 					opt_arg <= 1'b0; src_mb <= '0; dst_mb <= '0; state <= OPT;
 					tr_en <= 1'b0; tr_val <= '0; srate <= 16'h0100; drate <= 16'h0100;
 				end

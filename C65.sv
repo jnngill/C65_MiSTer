@@ -60,7 +60,7 @@ localparam CONF_STR = {
 	"O[14],Expansion RAM,4MB (needs SDRAM),Off;",
 	"O[16:15],Mouse,Port 2,Port 1,Off;",
 	"O[19],Swap Joysticks,No,Yes;",
-	"O[3],DMA Revision,F018B,F018A;",
+	"O[21:20],DMA Revision,F018B,F018A,F018 (9-byte lists);",
 	"O[17],MEGA65 Extensions,Off,On;",
 	"O[18],GO64,C64 mode,Load C64 core;",
 	"-;",
@@ -474,7 +474,8 @@ c65_core core
 	.clk(clk_sys),
 	.reset_in(reset),
 	.ntsc(ntsc),
-	.dma_f018b(~status[3]),
+	.dma_f018b(status[21:20] == 2'd0),
+	.dma_f018_9(status[21:20] == 2'd2),
 	.turbo(status[13:12]),
 
 	.ld_addr(ioctl_addr[16:0]),

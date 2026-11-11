@@ -8,6 +8,7 @@ module c65_core (
 	input  logic        reset_in,
 	input  logic        ntsc,
 	input  logic        dma_f018b,
+	input  logic        dma_f018_9,       // original F018: 9-byte lists (with dma_f018b = 0)
 	input  logic  [1:0] turbo,            // CPU speed in FAST mode: 0 = 3.5 MHz, 1 = 8 MHz, 2 = top speed (~24 MHz equivalent)
 
 	// ROM image loader (128K, used while the machine is held in reset)
@@ -199,7 +200,7 @@ logic  [7:0] bus_dout /*verilator public_flat*/;
 logic        bus_we;
 
 dma_f018 dma (
-	.clk(clk), .reset(reset), .ce(dma_ce), .f018b(dma_f018b),
+	.clk(clk), .reset(reset), .ce(dma_ce), .f018b(dma_f018b), .f018_9(dma_f018_9),
 	.reg_addr(io_addr[2:0]), .reg_we(dma_reg_we), .reg_din(bus_dout), .reg_dout(dma_reg_dout),
 	.cpu_pc(dbg_pc), .resume(dma_resume), .resume_pc(dma_resume_pc),
 	.busy(dma_busy), .setup(dma_setup), .addr(dma_addr), .io(dma_io), .we(dma_we), .dout(dma_dout), .din(bus_din)

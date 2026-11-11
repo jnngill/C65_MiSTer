@@ -37,7 +37,7 @@ C64 core is the better choice than `GO64`, and `GO64` can load it (see
 | VIC-III: text 40/80 col + attributes, VIC-II bitmap modes, bitplanes (up to 8, 320 or 640 wide, 200 or 400 lines), palette, sprites, raster IRQ | done (line based, not cycle exact). 400-line modes are sent as two alternating fields for the scaler to weave; no true interlaced sync on analogue output |
 | VIC-III DAT (display address translator): `$D040-$D047` read and write the byte of bitplane 0-7 at the position in `$D03C` / `$D03D`, in the plane's address (`$D033-$D03A`) and bank (`$D07C`), as on the C65 and MEGA65 | done, confirmed on hardware (Intro Disk #1 "2 BITPLANE CUBE") |
 | VIC-III 1280 pixel bitplane modes (`$D031` H1280) | done, confirmed on hardware over HDMI: 160 cells across, up to 6 bitplanes (the fetch has time for no more). The core then sends pixels at twice the normal rate; they do not fit the analogue scandoubler's line buffer (use HDMI, or analogue output without the scandoubler). The 911210 ROM's `SCREEN` command does not set these modes up (that part of BASIC 10 was never finished), so they are reached by programming the registers |
-| F018 DMAgic (F018A and F018B lists; copy / fill / swap) | done |
+| F018 DMAgic (F018B, F018A and the original 9-byte lists; copy / fill / swap) | done |
 | F011 floppy controller, internal drive, `.D81` read/write | done (sector level). The write-track command blanks the track, which is what `HEADER` with an ID needs to format a disk |
 | External 1565 drive (second `.D81`, OSD *Mount Drive 9*) | done: both ROMs report it at start-up and use it as unit 9 (`DIR U9`, `DLOAD"X",U9`, S-BASIC `BACKUP U8 TO U9`). `D1` is not supported by either ROM |
 | Serial port (UART at `$D600`), RS-232 through the MiSTer's UART modes | done, sending and receiving confirmed on hardware: 5-8 data bits, parity, 300-38400 baud. The stock ROM's KERNAL drives it as device 2 (`OPEN 2,2,0,CHR$(14)`); S-BASIC 65 has no RS-232 driver |
@@ -66,7 +66,7 @@ The disk auto-boots. Its boot program says it requires the C65.9.910107 ROM
 and an early F018 DMA chip, and what it does depends on expansion RAM:
 
 - with **Expansion RAM** on it loads an IFF slideshow, which then leaves a
-  black screen with ROM 911210 (it uses that early DMA list format)
+  black screen with ROM 911210 (see below)
 - with **Expansion RAM** off it shows the Workbench and Deluxe Paint
   pictures, which work
 
@@ -74,6 +74,29 @@ To run the pictures by hand, press Win+Esc (RUN/STOP) during the `LOADING`
 lines, then `DLOAD"FB DEMO"`, `DLOAD"DP DEMO"` or `DLOAD"REGINA DEMO"` and
 `RUN`. The disk needs a stock C65 ROM; its programs do not run under
 S-BASIC 65.
+
+#### Fred Bowen's slideshow demo disks (1991)
+
+`DemosAutoboot` and `c65Disk2` on zimmers.net hold "c65 demo #2c" (910417,
+F. Bowen), which asks for ROM 910417 and the original F018 DMA chip. Its
+slideshow builds five chained DMA lists at `$0400`, 9 bytes each (command,
+count, source, destination, no modulo), and `DEMO.9.BIN` starts them at
+`$D700`. Read as 11- or 12-byte lists they go wrong, so the screen stays
+black. It runs on hardware with:
+
+- **DMA Revision** set to *F018 (9-byte lists)*,
+- **Expansion RAM** on,
+- a ROM of the same time loaded as the system ROM. ROM 910429 (a C64DX
+  ROM, on zimmers.net as `910429.bin`) passes the demo's own ROM check.
+  Later ROMs, 911210 included, need F018B for their own DMA.
+
+The disk then auto-boots into the IFF slideshow, followed by the Workbench,
+Deluxe Paint and REGINA pictures and the BASIC graphics demos. `Demos910610`
+and `c65Disk3` hold "demo #2d" (910624), which asks for ROM 910620. It also
+uses 9-byte lists although it names the F018A, so the early chips probably
+read only 9 bytes per list; the core's F018A keeps the MEGA65's 11-byte
+format. Under ROM 910429 it loads its pictures, then stops with `?SYNTAX
+ERROR` at `FILTER1,...`: that ROM's `FILTER` has no SID-number argument yet.
 
 #### The C65 disks from zimmers.net
 
@@ -90,7 +113,11 @@ the failures come from the software, not the core:
     clears low memory.
   - Selecting bank 0 instead gets the IFF loader running, but it then calls
     `$CF9C`, an entry point only the older ROMs had.
-  - `c65Disk2` and `c65Disk3` stop with their own `ROM MISMATCH` message.
+  - `c65Disk2` and `c65Disk3` stop with their own `ROM MISMATCH` message
+    (see [Fred Bowen's slideshow demo disks](#fred-bowens-slideshow-demo-disks-1991)).
+  - `IFF SS` and `IFF DEMO.8E` on `c65Disk1` / `Demos900907` were written
+    for a prototype with the DMA controller at `$DF00`; no released ROM or
+    chip matches them.
   - `IFF DEMO` on `c65Disk1` loads its twelve pictures into banks 4-15
     correctly, then goes black. Its routine at `$1880` copies a picture
     with `MAP`, then ends with `MAP` 0, `EOM`, `CLI`, `RTS`. With ROM
@@ -705,7 +732,7 @@ uploads and VT100. Building it needs [cc65](https://cc65.github.io)
 | Expansion RAM | 4MB, Off | the C65 RAM expansion, kept in the MiSTer SDRAM module; without a module the machine reports no expansion |
 | Mouse | Port 2, Port 1, Off | a Commodore 1351 on that control port. S-BASIC 65's `MOUSE ON` uses port 2; on the stock ROM name the port, e.g. `MOUSE ON,2` |
 | Swap Joysticks | No, Yes | No: the first MiSTer controller is control port 2 and the second is port 1 (as in the C64 core). Yes: the other way round, for games that read port 1 (such as Break-A-Tile on the MEGA65 Intro Disk #1) |
-| DMA Revision | F018B, F018A | F018B for ROMs from mid 1991 on, F018A for older ones |
+| DMA Revision | F018B, F018A, F018 (9-byte lists) | F018B for ROMs from mid 1991 on, F018A for older ones. F018 (9-byte lists): chained DMA lists follow each other every 9 bytes (no modulo bytes), as Commodore's spring 1991 demo disks expect; use it only with a ROM of that time (such as 910429), since later ROMs need F018B |
 | MEGA65 Extensions | Off, On | Off: a plain C65. On: the MEGA65 subset that S-BASIC 65 needs (see [MEGA65 extensions](#mega65-extensions)). Changing it restarts the machine |
 | GO64 | C64 mode, Load C64 core | Load C64 core: `GO64` loads the MiSTer C64 core (needs the `c65_core_switch.sh` helper, see [GO64 / GO128](#go64--go128-the-mister-c64-and-c128-cores)) |
 | Reset | | restarts the machine |

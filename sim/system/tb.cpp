@@ -29,7 +29,8 @@
 //   -xram            fit the 4 MB expansion RAM
 //   -mouse <port> <from> <to>   1351 mouse on that control port, moved every frame in [from, to)
 //   -ntsc            60 Hz timing
-//   -f018a           old DMA list format
+//   -f018a           old DMA list format (F018A, 11 bytes)
+//   -f018            the original F018's 9-byte DMA lists
 #include "Vc65_core.h"
 #include "Vc65_core___024root.h"
 #include <cstdio>
@@ -496,7 +497,7 @@ int main(int argc, char **argv) {
 	std::string outdir = argv[2];
 	long frames = atol(argv[3]);
 	int shot = 0, ntrace = 0, stop_pc = -1, after_pc = -1, from_frame = 0, layout = 3, turbo = 0;
-	bool ntsc = false, f018b = true, use_xram = false, stop_brk = false;
+	bool ntsc = false, f018b = true, f018_9 = false, use_xram = false, stop_brk = false;
 	int mouse_port = 0; long mouse_from = 0, mouse_to = 0;
 	int joy_port = 0, joy_val = 0; long joy_from = 0, joy_to = 0;
 	int go64_core = 0;
@@ -561,6 +562,7 @@ int main(int argc, char **argv) {
 		else if (a == "-viclog" && i + 2 < argc) { viclog_from = atol(argv[++i]); viclog_to = atol(argv[++i]); }
 		else if (a == "-iolog" && i + 2 < argc) { iolog_from = atol(argv[++i]); iolog_to = atol(argv[++i]); }
 		else if (a == "-f018a") f018b = false;
+		else if (a == "-f018") { f018b = false; f018_9 = true; }
 		else if (a == "-eth" && i + 1 < argc) {
 			// frames for the core, one per line in hex; the core's frames go to <outdir>/eth_tx.txt
 			eth_on = true;
@@ -583,7 +585,7 @@ int main(int argc, char **argv) {
 
 	top = new Vc65_core;
 	if (eth_on) eth_txlog = fopen((outdir + "/eth_tx.txt").c_str(), "w");
-	top->ntsc = ntsc; top->dma_f018b = f018b; top->turbo = turbo;
+	top->ntsc = ntsc; top->dma_f018b = f018b; top->dma_f018_9 = f018_9; top->turbo = turbo;
 	top->reset_in = 1; top->ld_wr = 0; top->ps2_key = 0; top->rom_backup = 1; top->rrom_ack = 0;
 	top->joy1 = 0; top->joy2 = 0; top->kbd_layout = layout;
 	top->ps2_mouse = 0; top->mouse_port = mouse_port; top->m65_ext = m65_ext; top->go64_core = go64_core;
