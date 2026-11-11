@@ -898,6 +898,9 @@ end
 // can move X back and draw characters over the ones already there.  GOTOX also
 // sets, for the cells after it, a vertical glyph offset (screen byte 1 bits
 // 7-5) and transparency (colour byte 0 bit 7: background pixels are skipped).
+// With colour byte 0 bit 3 a GOTOX also takes colour byte 1 as a row mask: the
+// cells after it draw no glyph pixels on the character rows whose bit is 0
+// (a GOTOX without bit 3, and each new line, set the mask back to $FF).
 //
 // Colour byte 0 bit 3 makes a cell a nibble-colour (NCM) glyph: the 64 bytes
 // of a full-colour glyph drawn as 16 pixels of 4 bits (low nibble first), 0 =
@@ -935,6 +938,7 @@ logic  [4:0] rr_t;
 logic [10:0] rr_x;
 logic  [2:0] rr_yoff;
 logic        rr_trans;
+logic  [7:0] rr_mask;         // GOTOX row mask
 logic  [7:0] rr_slo, rr_shi, rr_c0, rr_c1;
 logic        rr_fcm, rr_ncm, rr_rom, rr_skip;
 logic  [4:0] rr_len;
@@ -968,7 +972,7 @@ logic        rr_zq;
 always_ff @(posedge clk) rr_zq <= (rr_vaddr[18:11] == 8'h3F);
 
 // line buffer writer
-logic        w_act, w_fcm, w_ncm, w_hflip, w_rom, w_trans, w_bank, w_alt, w_rev, w_amask;
+logic        w_act, w_fcm, w_ncm, w_hflip, w_rom, w_trans, w_bank, w_alt, w_rev, w_amask, w_blank;
 logic  [3:0] w_i;
 logic  [4:0] w_n;             // pixels to write
 logic  [7:0] w_bits, w_col;
@@ -1020,7 +1024,7 @@ always_ff @(posedge clk) begin
 		end
 		else if (rr_pend && !spr_bus) begin
 			rr_pend <= 1'b0; rr_run <= 1'b1; rr_cell <= '0; rr_t <= '0;
-			rr_x <= '0; rr_yoff <= '0; rr_trans <= 1'b0;
+			rr_x <= '0; rr_yoff <= '0; rr_trans <= 1'b0; rr_mask <= 8'hFF;
 		end
 		else if (rr_run) begin
 			rr_t <= rr_t + 5'd1;
@@ -1031,15 +1035,16 @@ always_ff @(posedge clk) begin
 				4'd3: begin rr_shi <= vram_q; rr_vaddr <= rr_caddr1; end
 				4'd4: begin
 					rr_c0  <= vram_q;
-					rr_fcm <= rr_cfcm || rr_cncm;
-					rr_ncm <= rr_cncm;
+					rr_fcm <= (rr_cfcm || rr_cncm) && !vram_q[4];   // not for GOTOX (bit 3 is its row mask flag)
+					rr_ncm <= rr_cncm && !vram_q[4];
 					rr_wid <= rr_cwid;
 					if (vram_q[4]) begin
 						// GOTOX
 						rr_x     <= {1'b0, rr_shi[1:0], rr_slo};
 						rr_yoff  <= rr_shi[7:5];
 						rr_trans <= vram_q[7];
-						rr_len   <= 5'd5;
+						if (!vram_q[3]) rr_mask <= 8'hFF;
+						rr_len   <= vram_q[3] ? 5'd6 : 5'd5;   // row mask: also read colour byte 1
 					end
 					else if (rr_x >= rr_width) begin
 						rr_x   <= rr_x + {6'd0, rr_cwid};
@@ -1057,6 +1062,7 @@ always_ff @(posedge clk) begin
 				end
 				default: begin
 					if (rr_t == 5'd5) rr_c1 <= vram_q;
+					if (rr_t == 5'd5 && rr_c0[4]) rr_mask <= vram_q;
 					if (rr_fcm && rr_t <= 5'd11)
 						rr_vaddr <= rr_fcm_addr(rr_char, rr_rc, rr_yoff, 3'(rr_t - 5'd4), rr_c0[7], rr_c0[6]);
 					// hand the cell to the writer: full colour / NCM pixel bytes
@@ -1066,6 +1072,7 @@ always_ff @(posedge clk) begin
 						w_n <= rr_wid; w_x <= rr_x; w_trans <= rr_trans;
 						w_bank <= rr_bank; w_col <= rr_fcol; w_alt <= 1'b0;
 						w_amask <= rr_c0[5];
+						w_blank <= !rr_mask[rr_rc];
 						w_rev   <= attr && vram_q[5] && (!vram_q[6] || boldalt) && !rr_c0[5];
 						rr_x <= rr_x + {6'd0, rr_wid};
 					end
@@ -1073,15 +1080,15 @@ always_ff @(posedge clk) begin
 						w_act <= 1'b1; w_i <= '0; w_fcm <= 1'b0; w_ncm <= 1'b0; w_hflip <= rr_c0[6];
 						w_n <= rr_wid; w_x <= rr_x; w_trans <= rr_trans;
 						w_bank <= rr_bank; w_col <= mcm ? rr_c1 : {3'h0, rr_bold, rr_c1[3:0]}; w_alt <= rr_alt;
-						w_amask <= 1'b0; w_rev <= 1'b0;
-						w_bits <= (rr_rom ? vrom_q : vram_q) ^ {8{rr_rev}};
+						w_amask <= 1'b0; w_rev <= 1'b0; w_blank <= 1'b0;
+						w_bits <= (rr_mask[rr_rc] ? (rr_rom ? vrom_q : vram_q) : 8'h00) ^ {8{rr_rev}};
 						rr_x <= rr_x + {6'd0, rr_wid};
 					end
 				end
 			endcase
 			// rr_len is set at t4, so at t4 itself a short cell (GOTOX, or off the
 			// right edge) has to end without it
-			if (rr_t == 5'd4 ? (vram_q[4] || rr_x >= rr_width) : (rr_t > 5'd4 && rr_t == rr_len - 5'd1)) begin
+			if (rr_t == 5'd4 ? ((vram_q[4] && !vram_q[3]) || (!vram_q[4] && rr_x >= rr_width)) : (rr_t > 5'd4 && rr_t == rr_len - 5'd1)) begin
 				rr_t <= '0;
 				if (rr_cell == chrcount - 10'd1) rr_run <= 1'b0;
 				else begin
@@ -1099,7 +1106,7 @@ always_ff @(posedge clk) begin
 			logic px_on;
 			logic [7:0] px, nb;
 			logic [3:0] nib;
-			px = rr_zq ? 8'h00 : vram_q;
+			px = (rr_zq || w_blank) ? 8'h00 : vram_q;
 			if (w_i < 4'd8) w_buf[w_i[2:0]] <= px;
 			if (w_ncm) begin
 				nb    = (w_i == 4'd0) ? px : w_buf[w_i[3:1]];
