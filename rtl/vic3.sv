@@ -641,28 +641,87 @@ logic  [7:0] an_sub;
 // uses it for its bottom line).  hold_row is the row it paused on.
 logic        hold_v;
 logic  [7:0] hold_row;
-wire  [10:0] hold_base = (hold_v && an_line != 9'd0) ? {hold_row, 3'b000} : 11'd0;
-always_comb begin
-	logic [8:0] s;
-	s = '0; an_started = 1'b0; an_prow = '0; an_sub = '0;
-	if (an_before) begin end
-	else if (!al_started || an_line == 9'd0) begin
-		an_started = 1'b1;
-		if (chryscl == 8'd0) an_prow = hold_base + an_d0[10:0];
-		else if (an_d0 <= {4'd0, chryscl}) begin an_prow = hold_base; an_sub = an_d0[7:0]; end
-		else if (chryscl == 8'd1) begin an_prow = hold_base + {1'b0, an_d0[10:1]}; an_sub = {7'd0, an_d0[0]}; end
+
+// The text row of one raster line, from the line before it (p_*): returns
+// {started, glyph pixel row, sub-row}.  is_above = the line is above TEXTYPOS,
+// d0 = steps from the first row, hb = the held row's start (see hold_v).
+function automatic [19:0] rowcalc(input logic is_above, input logic [11:0] d0, input logic first,
+                                  input logic p_started, input logic [10:0] p_prow, input logic [7:0] p_sub,
+                                  input logic [10:0] hb, input logic [7:0] cscl, input logic dbl);
+	logic [8:0] f_s;
+	logic f_st;
+	logic [10:0] f_pr;
+	logic [7:0] f_sb;
+	f_s = '0; f_st = 1'b0; f_pr = '0; f_sb = '0;
+	if (is_above) begin end
+	else if (!p_started || first) begin
+		f_st = 1'b1;
+		if (cscl == 8'd0) f_pr = hb + d0[10:0];
+		else if (d0 <= {4'd0, cscl}) begin f_pr = hb; f_sb = d0[7:0]; end
+		else if (cscl == 8'd1) begin f_pr = hb + {1'b0, d0[10:1]}; f_sb = {7'd0, d0[0]}; end
 	end
 	else begin
-		an_started = 1'b1;
-		if (chryscl == 8'd0) an_prow = al_prow + (tr_dbl ? 11'd1 : 11'd2);
+		f_st = 1'b1;
+		if (cscl == 8'd0) f_pr = p_prow + (dbl ? 11'd1 : 11'd2);
 		else begin
-			s = {1'b0, al_sub} + (tr_dbl ? 9'd1 : 9'd2);
-			if (s > {1'b0, chryscl}) begin an_sub = 8'(s - {1'b0, chryscl} - 9'd1); an_prow = al_prow + 11'd1; end
-			else begin an_sub = s[7:0]; an_prow = al_prow; end
+			f_s = {1'b0, p_sub} + (dbl ? 9'd1 : 9'd2);
+			if (f_s > {1'b0, cscl}) begin f_sb = 8'(f_s - {1'b0, cscl} - 9'd1); f_pr = p_prow + 11'd1; end
+			else begin f_sb = f_s[7:0]; f_pr = p_prow; end
 		end
 	end
+	rowcalc = {f_st, f_pr, f_sb};
+endfunction
+
+wire  [10:0] hold_base = (hold_v && an_line != 9'd0) ? {hold_row, 3'b000} : 11'd0;
+always_comb begin
+	{an_started, an_prow, an_sub} = rowcalc(an_before, an_d0, an_line == 9'd0, al_started, al_prow, al_sub,
+	                                        hold_base, chryscl, tr_dbl);
 	an_on = an_started && (an_prow[10:3] <= dispregs[1]);
 end
+
+// Re-deciding the next line.  At line_start the line after next is decided
+// (for the raster rewrite buffer, which draws a line while the one before it
+// is shown), so a register written early in a line used to show only two
+// lines later.  The VIC-IV draws one physical row ahead: a write during a
+// row shows from the row after next.  So a write to a register that places
+// the text (TEXTYPOS, the screen / colour / character pointers, LINESTEP,
+// CHRCOUNT, CHRYSCL, DISPROWS) during the first physical row of a line
+// decides the next line again from the current values, and the raster
+// rewrite buffer starts it again (see rr_restart).
+logic        cl_started;
+logic  [7:0] cl_sub;
+logic        hold_v_pre;      // hold_v / hold_row before this line's line_start
+logic  [7:0] hold_row_pre;
+wire  [8:0] bn_line  = (vc + 9'd1 >= vtotal) ? vc + 9'd1 - vtotal : vc + 9'd1;
+wire        bn_wrap  = vc + 9'd1 >= vtotal;
+wire        bn_field = field ^ (bn_wrap && (v400 || ctrl_b[0]));
+wire [12:0] bn_py    = yphys(bn_line, ntsc) + {12'd0, bn_field && !tr_dbl};
+wire [12:0] bn_d     = bn_py - {1'b0, textypos};
+wire        bn_before = bn_py[12] || bn_d[12];
+wire [11:0] bn_d0    = tr_dbl ? {1'b0, bn_d[11:1]} : bn_d[11:0];
+wire [10:0] bn_hbase = (hold_v_pre && bn_line != 9'd0) ? {hold_row_pre, 3'b000} : 11'd0;
+logic        bn_started, bn_on;
+logic [10:0] bn_prow;
+logic  [7:0] bn_sub;
+always_comb begin
+	{bn_started, bn_prow, bn_sub} = rowcalc(bn_before, bn_d0, bn_line == 9'd0, cl_started, cl_prow, cl_sub,
+	                                        bn_hbase, chryscl, tr_dbl);
+	bn_on = bn_started && (bn_prow[10:3] <= dispregs[1]);
+end
+
+// a write to a text placing register (the register takes the value this clk)
+logic redo_w, redo;
+always_comb begin
+	redo_w = 1'b0;
+	if (reg_we && vic4_mode)
+		case (reg_addr)
+			7'h4E, 7'h4F, 7'h58, 7'h59, 7'h5A, 7'h5E, 7'h60, 7'h61, 7'h62, 7'h63,
+			7'h64, 7'h65, 7'h68, 7'h69, 7'h6A, 7'h7B: redo_w = 1'b1;
+			default: ;
+		endcase
+end
+// one clk later, with the new value in place; only in the line's first row
+always_ff @(posedge clk) redo <= redo_w && !ph_half && !(ce_pix && line_start);
 
 // the next line's text row offsets, ready at its line_start
 logic [17:0] row_ofs;        // bytes from the start of the screen to this text row
@@ -671,18 +730,33 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		al_started <= 1'b0; al_on <= 1'b0; cl_on <= 1'b0; al_prow <= '0; cl_prow <= '0; al_sub <= '0;
 		hold_v <= 1'b0; hold_row <= '0;
+		cl_started <= 1'b0; cl_sub <= '0; hold_v_pre <= 1'b0; hold_row_pre <= '0;
 	end
 	else if (ce_pix && line_start) begin
+		hold_v_pre   <= hold_v;
+		hold_row_pre <= hold_row;
 		if (an_line == 9'd0) hold_v <= 1'b0;
 		else if (al_started && !an_started) begin hold_v <= 1'b1; hold_row <= al_prow[10:3]; end
 		cl_on   <= al_on;
 		cl_prow <= al_prow;
+		cl_started <= al_started;
+		cl_sub     <= al_sub;
 		row_ofs    <= {10'd0, al_prow[10:3]} * {8'd0, linestep};
 		row_base_t <= 10'({2'd0, al_prow[10:3]} * {3'd0, n_cols});
 		al_started <= an_started;
 		al_on      <= an_on;
 		al_prow    <= an_prow;
 		al_sub     <= an_sub;
+	end
+	else if (redo) begin
+		// the next line again, from the register values now in place
+		if (bn_line == 9'd0) hold_v <= 1'b0;
+		else if (cl_started && !bn_started) begin hold_v <= 1'b1; hold_row <= cl_prow[10:3]; end
+		else begin hold_v <= hold_v_pre; hold_row <= hold_row_pre; end
+		al_started <= bn_started;
+		al_on      <= bn_on;
+		al_prow    <= bn_prow;
+		al_sub     <= bn_sub;
 	end
 end
 
@@ -903,6 +977,10 @@ logic [10:0] w_x;
 logic        lb_we;
 logic [10:0] lb_waddr;
 logic [18:0] lb_wdata;       // {alpha, alternate palette, foreground, opaque, colour}
+// each entry also holds its bank's tag at the time it was drawn; a redrawn
+// line flips the tag, so entries left from the abandoned drawing read as empty
+logic  [1:0] lb_gen;
+logic        lb_tag;
 
 // VIC-III attributes of a one-byte glyph (colour byte 1): REVERSE, and BOLD,
 // which adds 16 to the colour, or with REVERSE (or alone with BOLDISALT)
@@ -916,7 +994,7 @@ wire [7:0] rr_fcol = (mcm || !attr) ? vram_q : {3'h0, attr && vram_q[6] && !bold
 always_ff @(posedge clk) begin
 	lb_we <= 1'b0;
 	if (reset) begin
-		rr_pend <= 1'b0; rr_run <= 1'b0; w_act <= 1'b0;
+		rr_pend <= 1'b0; rr_run <= 1'b0; w_act <= 1'b0; lb_gen <= '0;
 	end
 	else begin
 		if (ce_pix && line_start) begin
@@ -928,6 +1006,17 @@ always_ff @(posedge clk) begin
 			rr_rc   <= an_prow[2:0];
 			rr_scr  <= scrnptr[18:0] + {9'd0, linestep} * {11'd0, an_prow[10:3]};
 			rr_col  <= {6'd0, linestep} * {8'd0, an_prow[10:3]};
+		end
+		else if (redo) begin
+			// draw the same line again (see "Re-deciding the next line"): what was
+			// drawn of it is marked stale by flipping the bank's tag
+			rr_run  <= 1'b0;
+			w_act   <= 1'b0;
+			rr_pend <= rrb_mode && bn_on;
+			rr_rc   <= bn_prow[2:0];
+			rr_scr  <= scrnptr[18:0] + {9'd0, linestep} * {11'd0, bn_prow[10:3]};
+			rr_col  <= {6'd0, linestep} * {8'd0, bn_prow[10:3]};
+			lb_gen[rr_bank] <= ~lb_gen[rr_bank];
 		end
 		else if (rr_pend && !spr_bus) begin
 			rr_pend <= 1'b0; rr_run <= 1'b1; rr_cell <= '0; rr_t <= '0;
@@ -1031,6 +1120,7 @@ always_ff @(posedge clk) begin
 				lb_wdata <= {8'hFF, w_alt, px_on, px_on, w_col};
 			end
 			lb_waddr <= {w_bank, w_x[9:0] + {6'd0, w_i}};
+			lb_tag   <= lb_gen[w_bank];
 			lb_we    <= (px_on || !w_trans) && (w_x + {7'd0, w_i} < 11'd1024);
 			w_i <= w_i + 4'd1;
 			if ({1'b0, w_i} == w_n - 5'd1) w_act <= 1'b0;
@@ -1062,7 +1152,8 @@ end
 // read position moves on by CHRXSCL / 120 entries per physical pixel (half
 // that in 40 column modes), as on the VIC-IV.
 logic [10:0] lb_raddr;
-logic [18:0] lb_q, rr_px;
+logic [19:0] lb_q;
+logic [18:0] rr_px;
 logic        rr_clr, rr_v;
 logic [10:0] rd_x, rd_nx;     // entry of this pixel, and of the next one
 logic  [8:0] rd_sub, rd_nsub;
@@ -1075,10 +1166,10 @@ end
 wire         rr_valid = rrb_mode && cl_on && hx >= gfx_x0 && !rd_x[10];
 wire  [10:0] lb_baddr = ce_pix ? {vc[0], rd_x[9:0]} : lb_raddr;
 
-dpram #(11, 19) linebuf (
+dpram #(11, 20) linebuf (
 	.clk(clk),
-	.a_addr(lb_waddr), .a_din(lb_wdata), .a_we(lb_we), .a_q(),
-	.b_addr(lb_baddr), .b_din(19'd0), .b_we(!ce_pix && rr_clr), .b_q(lb_q)
+	.a_addr(lb_waddr), .a_din({lb_tag, lb_wdata}), .a_we(lb_we), .a_q(),
+	.b_addr(lb_baddr), .b_din(20'd0), .b_we(!ce_pix && rr_clr), .b_q(lb_q)
 );
 
 always_ff @(posedge clk) begin
@@ -1092,7 +1183,7 @@ always_ff @(posedge clk) begin
 	else begin
 		// the entry read on the ce_pix clk is out now
 		rr_clr <= 1'b0;
-		rr_px  <= rr_v ? lb_q : 19'h0;
+		rr_px  <= (rr_v && lb_q[19] == lb_gen[vc[0]]) ? lb_q[18:0] : 19'h0;
 	end
 end
 

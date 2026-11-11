@@ -476,11 +476,16 @@ from the card. Almost everything starts and looks right. Notes:
   copy of the bottom line just above it. The core draws text rows two
   raster lines ahead, so the lines already drawn when the menu moves
   TEXTYPOS down now show the background, as on the VIC-IV.
-- Still different from a MEGA65: a dotted line under the menu's logo and
-  two pixel rows at the bottom edge of its grey panel. The menu switches
-  the screen pointer in the middle of a text row, and because the core
-  draws two raster lines ahead (the VIC-IV draws one), the old screen's
-  next row shows for four physical lines first.
+- Halved (core C65_20261111a, confirmed on hardware): the dotted line
+  under the menu's logo. The menu switches the screen pointer in the
+  middle of a text row, and because the core draws two raster lines ahead
+  (the VIC-IV draws one), the old screen's next row showed for four
+  physical lines. A write to a text-placement register in VIC-IV mode now
+  restarts the line being drawn ahead with the new values, so only the
+  two lines already drawn show it. Still different from a MEGA65: those
+  two lines, and two pixel rows at the bottom edge of the grey panel
+  (cause not found; it isn't this latency). Twelve RRB and raster demos
+  are pixel-identical in the simulator before and after the change.
 - TUTTER looks and runs correctly on hardware at the top CPU speed
   (about 30 MHz equivalent); it had shown streaks before the per-line
   text position fix and the faster CPU.
