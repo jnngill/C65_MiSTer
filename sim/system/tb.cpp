@@ -23,6 +23,8 @@
 //   -keydelay <n>    extra frames between key events (default 0)
 //   -layout <n>      host keyboard layout 0 US, 1 UK, 2 DE, 3 positional (default)
 //   -viclog <f0> <f1>  print every VIC register write (raster, value, PC) in frames [f0, f1)
+//   -iolog <f0> <f1>   print every I/O write (address, value, PC, CPU port $01) in frames [f0, f1)
+//   (environment TB_XRAM_RANDOM=1 fills the expansion / attic RAM with junk, as the SDRAM starts)
 //   -turbo <n>       CPU speed 0 = 3.5 MHz, 1 = 8 MHz, 2 = 16 MHz
 //   -xram            fit the 4 MB expansion RAM
 //   -mouse <port> <from> <to>   1351 mouse on that control port, moved every frame in [from, to)
@@ -499,6 +501,7 @@ int main(int argc, char **argv) {
 	int joy_port = 0, joy_val = 0; long joy_from = 0, joy_to = 0;
 	int go64_core = 0;
 	long viclog_from = 0, viclog_to = 0;
+	long iolog_from = 0, iolog_to = 0;
 	int m65_ext = 1; bool uart_loop = false; std::string modem_path;
 	std::vector<unsigned char> prg; long prg_at = -1; size_t prg_pos = 0; int prg_div = 0; bool prg_busy = false;
 	int watch_addr = -1, watch_len = 0; bool watch_c = false; unsigned char watch_old[64] = {0}; bool watch_init = false;
@@ -556,6 +559,7 @@ int main(int argc, char **argv) {
 		else if (a == "-mouse" && i + 3 < argc) { mouse_port = atoi(argv[++i]); mouse_from = atol(argv[++i]); mouse_to = atol(argv[++i]); }
 		else if (a == "-turbo" && i + 1 < argc) turbo = atoi(argv[++i]);
 		else if (a == "-viclog" && i + 2 < argc) { viclog_from = atol(argv[++i]); viclog_to = atol(argv[++i]); }
+		else if (a == "-iolog" && i + 2 < argc) { iolog_from = atol(argv[++i]); iolog_to = atol(argv[++i]); }
 		else if (a == "-f018a") f018b = false;
 		else if (a == "-eth" && i + 1 < argc) {
 			// frames for the core, one per line in hex; the core's frames go to <outdir>/eth_tx.txt
@@ -592,6 +596,8 @@ int main(int argc, char **argv) {
 	// host clock: 2026-10-13 12:34:56 (BCD sec, min, hour, day, month, year, weekday)
 	top->rtc[0] = 0x13123456; top->rtc[1] = 0x00022610; top->rtc[2] = 0;
 	xram.assign(1 << 24, 0);
+	// TB_XRAM_RANDOM=1: start the expansion / attic RAM with junk, as the MiSTer SDRAM does
+	if (getenv("TB_XRAM_RANDOM")) { unsigned v = 12345; for (auto &b : xram) { v = v * 1103515245u + 12345u; b = (unsigned char)(v >> 16); } }
 	if (!modem_path.empty()) {
 		FILE *mf = fopen(modem_path.c_str(), "rb");
 		if (!mf) { perror(modem_path.c_str()); return 3; }
@@ -636,6 +642,10 @@ int main(int argc, char **argv) {
 		if (viclog_to > 0 && frame_no >= viclog_from && frame_no < viclog_to && top->rootp->c65_core__DOT__io_wr && top->rootp->c65_core__DOT__io_vic)
 			printf("VICW f%ld ras %3d D0%02X=%02X PC=%04X\n", frame_no, (int)top->rootp->c65_core__DOT__vic__DOT__ph_ras,
 			       (int)top->rootp->c65_core__DOT__vic_reg, (int)top->rootp->c65_core__DOT__bus_dout, (int)top->dbg_pc);
+		// -iolog: every CPU/DMA write to I/O, with the CPU port value
+		if (iolog_to > 0 && frame_no >= iolog_from && frame_no < iolog_to && top->rootp->c65_core__DOT__io_wr && top->rootp->c65_core__DOT__sel_io)
+			printf("IOW f%ld D%03X=%02X PC=%04X port=%02X\n", frame_no, (int)top->rootp->c65_core__DOT__io_addr,
+			       (int)top->rootp->c65_core__DOT__bus_dout, (int)top->dbg_pc, (int)top->rootp->c65_core__DOT__port_dat);
 		xram_tick();
 		ddr_tick();
 		// ROM backup copy (restored after a reset once $20000-$3FFFF was written)

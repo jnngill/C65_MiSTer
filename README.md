@@ -257,7 +257,7 @@ linked in the table.
 | Space Commander 1.3 | S-BASIC 65, BASIC 65 920422 | hardware | works ([details](#mega65-programs)) |
 | Titan Fall, Little Mega People, MEGA-Python 0.8.0, Pascal65, `sample.d81` | BASIC 65 920422 | hardware | works |
 | Xanadu demo (Syntax Party 2022) | BASIC 65 920423 | hardware | BASIC 65 edition works; the ASM edition needs an earlier MEGA65 ROM |
-| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; on hardware every program on Intro Disks 2-4 and several on Intro Disk 1 | almost all work ([details](#mega65-intro-disks-1-4)) |
+| MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; on hardware every program on all four disks | almost all work ([details](#mega65-intro-disks-1-4)) |
 | MEGA65 `net-tools.d81`: BBS Client 1.4, SSH, SFTP, IRC, NTP | BASIC 65 920423 | hardware | works with the `c65_net` helper ([details](#networking-mega65-ethernet)) |
 | Keyboards (US, UK, DE, positional layouts), joysticks, 1351 mouse, PAL / NTSC, SID stereo and filter | all | hardware | works |
 | Wolfgang Lorenz 6510 test suite 2.15 (in `GO64` mode) | 911210 | hardware | every documented-instruction test passes ([details](#lorenz-6510-test-suite)) |
@@ -445,6 +445,14 @@ from the card. Almost everything starts and looks right. Notes:
 - **MEGAMAZE**: its unpacker assumes `$01` = `$37`, but the 920423 KERNAL
   leaves `$85`, so it overwrites itself (as the Xanadu ASM edition does; the
   package was tested with ROM 920413).
+- **TUTTER and MEGADOTS** must be started from the Intro Disk #1 menu, or
+  after `POKE 1,135` (in bank 128, before any program has run `BANK 0`).
+  The menu does that POKE in line 20, and their unpacker relies on it: it
+  INCs `$01` to switch the I/O area to RAM, which works from `$87` but not
+  from the `$85` the 920423 KERNAL leaves. Typed in straight after a boot,
+  they unpack into the I/O chips and crash. That can also issue F011 sector
+  writes and damage the mounted disk image, as it did once while testing,
+  so use a copy of the disk to try it.
 - **MEGAPPLE** plays its video in magenta and black: the program writes
   colour 11 to colour RAM and loads magenta into palette 0 entry 11, and
   the core follows the MEGA65 VHDL's palette banking, so this appears to be
@@ -470,8 +478,10 @@ from the card. Almost everything starts and looks right. Notes:
   stopping a little above the bottom of the screen (they cover only the top
   two thirds in simulation).
 - Every program on Intro Disks 2-4 (111 programs) was also run on
-  hardware with core C65_20261109c, and each starts and shows what it
-  shows in simulation (or gets further). The ones that return to READY
+  hardware with core C65_20261109c, and every program on Intro Disk 1
+  (56) with C65_20261110a; each starts and shows what it shows in
+  simulation (or gets further: GO64 reaches C64 BASIC and LUNAR TAXI 2 its
+  title screen). The ones that return to READY
   do so by design: DAYS and ZEYNEP are BASIC `PLAY` tunes, AUDIODMADEMO
   keeps playing in the background, and NERDTEST waits at its menu.
 

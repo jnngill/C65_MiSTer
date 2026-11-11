@@ -20,6 +20,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TB = os.environ.get('TB') or os.path.join(ROOT, 'sim', 'system', 'build', 'tb.exe')
 ROM = os.path.join(ROOT, 'roms', 'mega65_920423.bin')
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+# typed before RUN, as the disk's menu would have done it: the Intro Disk #1
+# menu POKEs 1,135 and these unpackers depend on it (they INC $01 to map
+# RAM over the I/O area; from the KERNAL's $85 they unpack into the chips)
+PRE = {'TUTTER': 'poke1,135:', 'MEGADOTS': 'poke1,135:'}
 
 
 def d81_programs(path):
@@ -100,7 +104,7 @@ def run_one(job):
     keys = os.path.join(outdir, 'k.txt')
     bs = chr(92)
     with open(keys, 'w', newline='\n') as f:
-        f.write('300 run "%s"%sr\n' % (typed, bs))
+        f.write('300 %srun "%s"%sr\n' % (PRE.get(typed.upper(), ''), typed, bs))
         f.write('1000  \n')
     log = os.path.join(outdir, 'log.txt')
     with open(log, 'w') as lf:
