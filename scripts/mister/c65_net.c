@@ -19,6 +19,8 @@
  * +0x800 the TX buffer, +0x1000 four 2K RX buffers.
  *
  * usage: c65_net [interface]      (default eth0; runs in the foreground)
+ *
+ * build: zig cc -target arm-linux-musleabihf -O2 -s -static -o c65_net c65_net.c
  */
 #include <errno.h>
 #include <fcntl.h>
