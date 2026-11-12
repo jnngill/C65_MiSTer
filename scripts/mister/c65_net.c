@@ -9,8 +9,9 @@
  * cable.  One thing does not: the MiSTer's own Linux cannot talk to the C65,
  * because frames sent out of eth0 do not come back in.
  *
- * Only while the C65 core is loaded (/tmp/CORENAME) and its controller is
- * running does this touch the shared memory; other cores may use that DDR.
+ * Only while the C65 core (or the z486 core, whose NE2000 card uses the same
+ * shared area) is loaded (/tmp/CORENAME) and its controller is running does
+ * this touch the shared memory; other cores may use that DDR.
  *
  * Shared area (see rtl/m65_eth.sv): +0 word written by the core (magic 0xE7,
  * version, rx_req, rx_slot, tx_seq, tx_len, flags), +8 word written here
@@ -25,6 +26,8 @@
 #include <netinet/in.h>
 #include <linux/if_packet.h>
 #include <linux/if_ether.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdint.h>
@@ -54,7 +57,8 @@ static int core_is_c65(void) {
 	if (!fgets(b, sizeof b, f)) b[0] = 0;
 	fclose(f);
 	b[strcspn(b, "\r\n")] = 0;
-	return strcmp(b, "C65") == 0;
+	/* the C65's MEGA65 Ethernet and the z486 core's NE2000 use the same area */
+	return strcmp(b, "C65") == 0 || strcmp(b, "Z486") == 0;
 }
 
 static uint32_t crc32(const unsigned char *d, int n) {
@@ -85,6 +89,18 @@ int main(int argc, char **argv) {
 	struct packet_mreq mr = { .mr_ifindex = ifindex, .mr_type = PACKET_MR_PROMISC };
 	setsockopt(s, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mr, sizeof mr);
 	fcntl(s, F_SETFL, O_NONBLOCK);
+	/* Generic receive offload merges TCP segments arriving back to back into
+	 * one frame larger than any the sender sent, and a packet socket gets the
+	 * merged frame: too big for the guest (a DOS stack with a 576-byte MTU
+	 * drops it).  Hand over frames as they were on the wire. */
+	{
+		struct ethtool_value ev = { .cmd = ETHTOOL_SGRO, .data = 0 };
+		struct ifreq ifr;
+		memset(&ifr, 0, sizeof ifr);
+		strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+		ifr.ifr_data = (void *)&ev;
+		if (ioctl(s, SIOCETHTOOL, &ifr) < 0) perror("GRO off");
+	}
 	fprintf(stderr, "c65_net: %s, shared memory at 0x%08X\n", ifname, SHM_PHYS);
 
 	int c65 = 0;
