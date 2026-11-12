@@ -226,7 +226,7 @@ both settings (C65 software does not use it).
 | Four SIDs: with the MEGA65 extensions on, `$D440` (left) and `$D460` (right) are two more SIDs, sharing the waveform tables and filter with the first two (without the extensions they mirror `$D400` / `$D420`, as on a C65). The MEGA65 itself puts `$D400` / `$D420` on one side and `$D440` / `$D460` on the other; here `$D400` / `$D420` keep the C65's right / left, so the extra pair is split the other way | done, tested in simulation (each chip matches the original two-chip SID sample for sample) |
 | Audio DMA (`$D711-$D75F`): four channels, 16 / 8 / 4 bit samples, looping, volume and panning, mixed with the SIDs | done, confirmed on hardware (Space Commander's music and sound effects, Little Mega People's samples). A sample can be started from the current address (`$D72A-$D72C`) as well as the base address. Samples come from the first 16 MB as on the MEGA65 (its 24-bit sample addresses cannot reach attic RAM). Audio DMA interrupts (`$D713`, offsets `$D714-$D717`: one interrupt per arming as the address nears the top) and sine mode (`$D72x` bit 4) tested in simulation |
 | CPU top speed | about 30 MHz equivalent (1.25x-1.5x the previous 24 MHz, depending on the program): the CPU tells the memory its next address a clock ahead (the opcode after a data access, zero page and absolute operands, branch targets, pointers, stack pulls, return addresses), learning where each 4K block of its address space lands from its own reads, so almost every read of chip RAM, ROM and the extra chip RAM takes one clock (31.5 MHz); a wrong guess only costs the clock it would have taken anyway. Measured in simulation on Intro Disk #1 TUTTER: 2.75 clocks per instruction, was 3.48. The MEGA65's own CPU spends an extra cycle on most 2 and 3 byte instructions, so for ordinary code this is close to a 40.5 MHz MEGA65 (an estimate, not a measurement). A faster clock is not possible: the CPU and memory paths are too long |
-| MEGA65 Ethernet (`$D6E0-$D6EF`, RX / TX buffers at `$FFDE800`): four RX buffers with the MEGA65's rotation, free count and interrupts, TX, MAC address, MAC / broadcast / multicast filter, an emulated PHY for the MIIM registers. The buffers are in DDR3, passed to and from the MiSTer's `eth0` by the `c65_net` program (see [Networking](#networking-mega65-ethernet)) | done, confirmed on hardware: DHCP, the MEGA65 BBS Client (telnet BBSes), SSH, SFTP (upload and download), IRC and NTP from the MEGA65 `net-tools.d81` |
+| MEGA65 Ethernet (`$D6E0-$D6EF`, RX / TX buffers at `$FFDE800`): four RX buffers with the MEGA65's rotation, free count and interrupts, TX, MAC address, MAC / broadcast / multicast filter, an emulated PHY for the MIIM registers. The buffers are in DDR3, passed to and from the MiSTer's `eth0` by the [MiSTer NetBridge](https://github.com/jnngill/MiSTer_NetBridge) helper (see [Networking](#networking-mega65-ethernet)) | done, confirmed on hardware: DHCP, the MEGA65 BBS Client (telnet BBSes), SSH, SFTP (upload and download), IRC and NTP from the MEGA65 `net-tools.d81` |
 | Frame counter (`$D7FA`, counts video frames; MEGA65 programs time their waits with it) | done |
 | Read-modify-write instructions on `$D019` write the old value back before the new one, as on the MEGA65 (and the 6502), so `ASL $D019` / `INC $D019` acknowledge VIC interrupts | done, tested in simulation (Intro Disk #1 LUNAR TAXI 2 and SCORE OR DIE hung in an endless raster interrupt) |
 | F011: side 0 sectors 11-20 read the second half of the track, as on the MEGA65 (fast loaders that ignore the side register) | done, tested in simulation (Intro Disk #1 DUAL SID COMPO loads its pictures) |
@@ -316,7 +316,7 @@ linked in the table.
 | Titan Fall, Little Mega People, MEGA-Python 0.8.0, Pascal65, `sample.d81` | BASIC 65 920422 | hardware | works |
 | Xanadu demo (Syntax Party 2022) | BASIC 65 920423 | hardware | BASIC 65 edition works; the ASM edition needs an earlier MEGA65 ROM |
 | MEGA65 Intro Disks 1-4 (every program) | BASIC 65 920423 | simulation; on hardware every program on all four disks | almost all work ([details](#mega65-intro-disks-1-4)) |
-| MEGA65 `net-tools.d81`: BBS Client 1.4, SSH, SFTP, IRC, NTP | BASIC 65 920423 | hardware | works with the `c65_net` helper ([details](#networking-mega65-ethernet)) |
+| MEGA65 `net-tools.d81`: BBS Client 1.4, SSH, SFTP, IRC, NTP | BASIC 65 920423 | hardware | works with the NetBridge helper ([details](#networking-mega65-ethernet)) |
 | Keyboards (US, UK, DE, positional layouts), joysticks, 1351 mouse, PAL / NTSC, SID stereo and filter | all | hardware | works |
 | Wolfgang Lorenz 6510 test suite 2.15 (in `GO64` mode) | 911210 | hardware | every documented-instruction test passes ([details](#lorenz-6510-test-suite)) |
 
@@ -362,7 +362,7 @@ newest dated `.rbf` is the one to use) and on the
 | `c65_sd_image.sh` (optional, builds the MEGA65 SD card image; release, or `scripts/mister/`) | `/media/fat/Scripts/` |
 | `c65_core_switch.sh` (optional, lets `GO64` / `GO128` load the MiSTer C64 / C128 cores; release, or `scripts/mister/`) | `/media/fat/Scripts/`, then run it once |
 | `go.d81` (optional, `GO128` and `GO64` programs; release, or `disks/`) | `/media/fat/games/C65/` |
-| `c65_net.sh` and `c65_net` (optional, MEGA65 networking; release, or `scripts/mister/`) | `/media/fat/Scripts/`, then run `c65_net.sh` once |
+| [MiSTer NetBridge](https://github.com/jnngill/MiSTer_NetBridge) (optional, MEGA65 networking) | see [Networking](#networking-mega65-ethernet) |
 
 1. Create the folder `/media/fat/games/C65/`.
 2. Copy the `.rbf` to `/media/fat/_Computer/`.
@@ -567,7 +567,7 @@ takes typing. Its DOS reads and writes `.D81` disks (`DIR`, `LOAD`, `SAVE`,
 confirmed on hardware) through the MEGA65's flat view of the floppy
 controller's sector buffer at `$FFD6C00`.
 
-MEGA65 network programs run with the `c65_net` helper installed (see
+MEGA65 network programs run with the NetBridge helper installed (see
 [Networking](#networking-mega65-ethernet)). Tested on hardware with BASIC 65
 920423: the **MEGA65 BBS Client** 1.4 (`RUN"BBS"`: DHCP, then telnet BBSes),
 **SSH**, **SFTP** (upload and download work; listing a directory is slow),
@@ -645,9 +645,10 @@ internet. It takes a one-time setup on the MiSTer.
 **Why there is a setup step.** On the DE10-Nano the network port is wired to
 the board's ARM processor (the MiSTer's Linux side), not to the FPGA where the
 core runs. So the core cannot reach the network by itself: a small helper
-program on the MiSTer, `c65_net`, passes the C65's network traffic to and
-from the network port. Once installed it starts by itself at every boot, so
-you do this only once.
+program on the MiSTer, [MiSTer NetBridge](https://github.com/jnngill/MiSTer_NetBridge), passes the C65's
+network traffic to and from the network port. The same helper serves other
+cores with network hardware (the z486's NE2000, for example). Once turned on
+it starts by itself at every boot, so you do this only once.
 
 **You need:**
 
@@ -656,21 +657,25 @@ you do this only once.
   the MiSTer).
 - *MEGA65 Extensions* set to *On* in the OSD, and a MEGA65 ROM
   (BASIC 65, e.g. 920423) as the system ROM.
-- The two files `c65_net.sh` and `c65_net`, from the release (or
-  `scripts/mister/` in this repository).
 
 **Setup (once):**
 
-1. Copy `c65_net.sh` and `c65_net` to `/media/fat/Scripts` on the MiSTer's SD
-   card (both files into the same folder).
-2. On the MiSTer, open the Scripts menu (F12, then *Scripts*) and run
-   `c65_net.sh`. It says *C65 network installed and running.*
+1. Install NetBridge. Either add these two lines to the bottom of
+   `/media/fat/downloader.ini` and run update_all (or `downloader`), which
+   also keeps it up to date:
 
-That is all: it is now running, and it starts again at every boot. (It copies
-itself to `/media/fat/linux` and adds one line to
-`/media/fat/linux/user-startup.sh`; anything already in that file is left as
-it is.) Nothing needs setting up on your router or in the MiSTer's network
-settings.
+       [mister_netbridge]
+       db_url = https://raw.githubusercontent.com/jnngill/MiSTer_NetBridge/main/db.json
+
+   or copy the files by hand as its README describes.
+2. On the MiSTer, open the Scripts menu (F12, then *Scripts*) and run
+   `netbridge`. It says *NetBridge is now ON.*
+
+That is all: it is now running, and it starts again at every boot. (It adds
+one line to `/media/fat/linux/user-startup.sh`; anything already in that file
+is left as it is.) Nothing needs setting up on your router or in the MiSTer's
+network settings. If you used this core's earlier helper, `c65_net`, turning
+NetBridge on stops it and takes its line out of `user-startup.sh`.
 
 **Using it:** start the C65 core, mount the program's disk and run it, e.g.
 `RUN"BBS"` from `net-tools.d81`. The program gets an address from your
@@ -681,13 +686,14 @@ and **Win+Esc** is RUN/STOP (the BBS client's way back to its menu).
 
 **If it does not work:**
 
-- The program stays at "starting the network" or finds no address: check
-  that `c65_net` is running. Run `c65_net.sh` from the Scripts menu again;
-  it restarts it.
+- The program stays at "starting the network" or finds no address: run
+  `/media/fat/Scripts/netbridge.sh status` in a terminal on the MiSTer (over
+  ssh, for example). It says whether the bridge is on and running and whether
+  the cable has a link; `/tmp/netbridge.log` says when a core attached.
 - The MiSTer is on Wi-Fi: this needs the cable.
 - Your MiSTer uses a wired port other than `eth0`: put `NET_IF=eth1` (the
-  port's name) into `/media/fat/linux/c65_net.conf` and run `c65_net.sh` from
-  the Scripts menu again.
+  port's name) into `/media/fat/Scripts/.config/netbridge/netbridge.conf` and
+  run `netbridge` from the Scripts menu twice (off, then on).
 
 **Good to know:**
 
@@ -695,12 +701,11 @@ and **Win+Esc** is RUN/STOP (the BBS client's way back to its menu).
   computers on your network and the internet can reach it, but the MiSTer's
   own Linux cannot (traffic the MiSTer sends out of its network port does
   not come back in to it).
-- `c65_net` does nothing while another core is loaded. While it runs, the
-  MiSTer's network port also listens for the C65's traffic (promiscuous
-  mode); the MiSTer's own networking is not affected.
-- To remove it, run `/media/fat/linux/c65_net.sh remove` in a terminal on
-  the MiSTer (over ssh, for example). It stops `c65_net`, deletes it and
-  takes its line out of `user-startup.sh`.
+- The helper does nothing while another core is loaded: it serves the shared
+  memory only while the C65's Ethernet controller keeps signalling that it is
+  there. While it runs, the MiSTer's network port also listens for the C65's
+  traffic (promiscuous mode); the MiSTer's own networking is not affected.
+- To turn it off, run `netbridge` from the Scripts menu again.
 
 ### C65TERM: a telnet BBS terminal
 
@@ -840,7 +845,7 @@ compiler; paths are set at the top of the scripts.
     sim/system/build/tb.exe roms/911210.bin sim/out 560 \
         -keys sim/system/keys_disk.txt -d81 blank.d81
 
-`-eth frames.txt` adds DDR3 and a stand-in for `c65_net`: it gives the core
+`-eth frames.txt` adds DDR3 and a stand-in for the NetBridge helper: it gives the core
 the frames in the file (one per line, in hex), writes the core's frames to
 `eth_tx.txt` in the output folder, and answers ARP requests.
 
@@ -859,7 +864,7 @@ disassembler for poking at ROMs.
     rtl/m65_math.sv       MEGA65 multiplier / divider
     rtl/m65_rtc.sv        MEGA65 real-time clock registers
     rtl/m65_eth.sv        MEGA65 Ethernet controller (buffers in DDR3)
-    scripts/mister/       helpers that run on the MiSTer (c65_net.c: the network bridge)
+    scripts/mister/       helpers that run on the MiSTer
     rtl/sdram.v           SDRAM controller (expansion RAM), from the MiSTer C64 core
     rtl/c65_keyboard.sv   generated by scripts/gen_keyboard.py
     rtl/mos6526_8520.v, rtl/sid/, rtl/pll*, sys/   from MiSTer C64/C128 cores

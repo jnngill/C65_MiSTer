@@ -387,7 +387,7 @@ static void xram_tick() {
 	if (xram_cnt > 6) xram_cnt = 6;
 }
 
-// ---- DDR3 model and the ARM-side network daemon (scripts/mister/c65_net) ----
+// ---- DDR3 model and the ARM-side network daemon (the MiSTer NetBridge helper) ----
 // The core's Ethernet area is DDR word 0x7FE0000 on (ARM 0x3FF00000), see rtl/m65_eth.sv.
 static std::unordered_map<unsigned, unsigned long long> ddr;
 static int ddr_rd_cnt = -1; static unsigned ddr_rd_addr;

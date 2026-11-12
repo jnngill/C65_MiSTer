@@ -1,17 +1,21 @@
 // MEGA65 Ethernet controller ($D6E0-$D6EF, buffers at $FFDE800-$FFDEFFF),
-// bridged to the MiSTer's network through DDR3 and scripts/mister/c65_net.
+// bridged to the MiSTer's network through DDR3 and the MiSTer NetBridge helper
+// (github.com/jnngill/MiSTer_NetBridge, docs/PROTOCOL.md there).
 //
 // The DE10-Nano has no Ethernet PHY the FPGA can reach, so frames go through
-// the ARM side: a daemon there moves them between a tap interface and the
-// shared area at ARM address 0x3FF00000 (DDR word address 0x7FE0000):
+// the ARM side: the helper there moves them between eth0 and the shared area
+// at ARM address 0x3FF00000 (DDR word address 0x7FE0000):
 //
 //   +0x0000  word 0, written by the core:
-//              [7:0] 0xE7 magic   [15:8] version 1   [23:16] rx_req   [31:24] rx_slot
+//              [7:0] 0xE7 magic   [15:8] version 2   [23:16] rx_req   [31:24] rx_slot
 //              [39:32] tx_seq     [51:40] tx_len     [63:56] flags: bit 0 running
 //   +0x0008  word 1, written by the daemon:
 //              [7:0] rx_done      [15:8] tx_done     [23:16] 0xA5 while it runs
 //   +0x0010  word 2, written by the core: [47:0] MAC (first byte in [7:0]),
 //              [55:48] $D6E5 (bit 0 filter unicast, 4 accept broadcast, 5 multicast)
+//   +0x0018  word 3, written by the core: "MiSTNet" and a heartbeat byte that
+//              changes on every poll; the helper serves the area only while
+//              it moves, so it leaves other cores' DDR alone
 //   +0x0800  TX buffer (2K)
 //   +0x1000  RX buffers 0-3 (2K each)
 //
@@ -125,6 +129,8 @@ dstate_t     dst, dret;
 logic [14:0] poll_cnt;            // ~1 ms between looks at the daemon's word
 logic [21:0] tx_to;               // TX timeout: ~33 ms without a daemon, ~130 ms with one
 logic        pub0, pub2;          // word 0 / 2 need writing
+logic        beat;                // heartbeat written, the poll read is next
+logic  [7:0] hb;
 logic  [7:0] last_d6e5;
 logic        cache_ok;            // the last RX word read, while the CPU stays on that buffer
 logic  [9:0] cache_tag;           // {buffer, word}
@@ -140,7 +146,7 @@ always_ff @(posedge clk) begin
 	tx_got  <= 1'b0;
 	if (reset) begin
 		dst <= D_IDLE; ddr_rd <= 1'b0; ddr_we <= 1'b0; poll_cnt <= '0; cache_ok <= 1'b0;
-		init <= 1'b1; daemon <= 1'b0; pub0 <= 1'b1; pub2 <= 1'b1;
+		init <= 1'b1; daemon <= 1'b0; pub0 <= 1'b1; pub2 <= 1'b1; beat <= 1'b0; hb <= 8'd0;
 	end
 	else begin
 		if (ddr_rd && !ddr_busy) ddr_rd <= 1'b0;
@@ -164,7 +170,7 @@ always_ff @(posedge clk) begin
 				end
 				else if (pub0 && !init) begin
 					ddr_addr <= BASE; ddr_we <= 1'b1; ddr_be <= 8'hFF; pub0 <= 1'b0;
-					ddr_din <= {7'd0, run, 4'd0, tx_size, tx_seq, 6'd0, rx_slot, rx_req, 8'h01, 8'hE7};
+					ddr_din <= {7'd0, run, 4'd0, tx_size, tx_seq, 6'd0, rx_slot, rx_req, 8'h02, 8'hE7};
 					dst <= D_PUB0;
 				end
 				else if (pub2 && !init) begin
@@ -172,8 +178,14 @@ always_ff @(posedge clk) begin
 					ddr_din <= {8'd0, d6e5, mac[7:0], mac[15:8], mac[23:16], mac[31:24], mac[39:32], mac[47:40]};
 					dst <= D_PUB2;
 				end
+				else if (poll_cnt == 0 && !beat && !init) begin
+					// heartbeat: "MiSTNet" ('M' first) and a byte that keeps changing
+					ddr_addr <= BASE + 29'd3; ddr_we <= 1'b1; ddr_be <= 8'hFF; beat <= 1'b1;
+					ddr_din <= {hb + 8'd1, 56'h74_65_4E_54_53_69_4D}; hb <= hb + 8'd1;
+					dst <= D_PUB2;
+				end
 				else if (poll_cnt == 0) begin
-					ddr_addr <= BASE + 29'd1; ddr_rd <= 1'b1; poll_cnt <= '1;
+					ddr_addr <= BASE + 29'd1; ddr_rd <= 1'b1; poll_cnt <= '1; beat <= 1'b0;
 					dst <= D_WAIT; dret <= D_POLL;
 				end
 			D_WAIT:
