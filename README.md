@@ -698,9 +698,10 @@ and **Win+Esc** is RUN/STOP (the BBS client's way back to its menu).
 **Good to know:**
 
 - The C65 is a separate machine on your network with its own address. Other
-  computers on your network and the internet can reach it, but the MiSTer's
-  own Linux cannot (traffic the MiSTer sends out of its network port does
-  not come back in to it).
+  computers on your network, the internet and the MiSTer itself can reach
+  it. The MiSTer reaches it through a small link NetBridge sets up
+  (`nbhost`), so the C65 can also connect to a server running on the
+  MiSTer, by the MiSTer's own address.
 - The helper does nothing while another core is loaded: it serves the shared
   memory only while the C65's Ethernet controller keeps signalling that it is
   there. While it runs, the MiSTer's network port also listens for the C65's
