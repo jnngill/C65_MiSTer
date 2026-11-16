@@ -18,9 +18,12 @@ It does not turn the core into a MEGA65.
 > C65 system ROM image yourself and place it on the SD card as
 > `/media/fat/games/C65/boot.rom` - see [Installing](#installing).
 
-**Test builds, testers wanted.** Releases are test builds: please try your
-ROMs, software, keyboards and controllers and report what works and what
-doesn't (see [Feedback and problems](#feedback-and-problems)). This is not a
+The core is tested on the DE10-Nano with the original C65 ROMs and with
+S-BASIC 65 and BASIC 65; [Status](#status) and [Tested](#tested) list what
+works and what doesn't. Reports are welcome: if a ROM, program, keyboard or
+controller misbehaves, see [Feedback and problems](#feedback-and-problems).
+
+This is not a
 MEGA65, even with the MEGA65 Extensions option on: MEGA65 games and demos
 that depend on exact 40 MHz timing may not run (the core tops out at about 30 MHz equivalent).
 MEGA65 network programs do work, through the MiSTer's network cable (see
