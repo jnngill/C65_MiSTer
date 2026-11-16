@@ -22,6 +22,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_core.sv
 set_global_assignment -name VERILOG_FILE rtl/c65_scandoubler.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_video_mixer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/c65_norom.sv
 set_global_assignment -name SYSTEMVERILOG_FILE C65.sv
 set_global_assignment -name VHDL_FILE rtl/t65/T65_Pack.vhd
 set_global_assignment -name VHDL_FILE rtl/t65/T65_MCode.vhd

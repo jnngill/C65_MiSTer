@@ -226,6 +226,17 @@ always @(posedge clk_sys) begin
 	reset <= (reset_cnt != 0);
 end
 
+// No ROM: MiSTer sends boot.rom right after the core starts. If none has come
+// after about 3 s, the video chip runs on its own (the CPU stays in reset) and
+// c65_norom draws a message saying where the ROM goes.
+reg norom = 0;
+always @(posedge clk_sys) begin
+	reg [26:0] norom_cnt = 0;
+	if (rom_loaded || !pll_locked) begin norom_cnt <= 0; norom <= 0; end
+	else if (norom_cnt != 27'd100_000_000) norom_cnt <= norom_cnt + 1'd1;
+	else norom <= 1;
+end
+
 // ------------------------------------------------------------------ SDRAM module
 // The C65's expansion RAM (banks 6-15 and the 4 MB DMA region) lives in the
 // first 8 MB of the MiSTer SDRAM, the MEGA65 attic RAM in the next 8 MB, the
@@ -473,6 +484,7 @@ c65_core core
 (
 	.clk(clk_sys),
 	.reset_in(reset),
+	.vic_only(norom),
 	.ntsc(ntsc),
 	.dma_f018b(status[21:20] == 2'd0),
 	.dma_f018_9(status[21:20] == 2'd2),
@@ -569,6 +581,13 @@ wire [1:0] scale = status[7:6];
 wire       scandoubler = (scale != 0) || forced_scandoubler;
 assign     VGA_SL = scale;
 
+wire [7:0] r_o, g_o, b_o;
+c65_norom norom_msg
+(
+	.clk(clk64), .ce_pix(ce_pix64), .hblank(hbl64), .vblank(vbl64), .enable(norom),
+	.r_in(r64), .g_in(g64), .b_in(b64), .r(r_o), .g(g_o), .b(b_o)
+);
+
 c65_video_mixer #(.LINE_LENGTH(1056), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
@@ -579,7 +598,7 @@ c65_video_mixer #(.LINE_LENGTH(1056), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
 	.hq2x(1'b0),                    // no HQ2x (see rtl/c65_scandoubler.v)
 	.gamma_bus(gamma_bus),
 
-	.R(r64), .G(g64), .B(b64),
+	.R(r_o), .G(g_o), .B(b_o),
 	.HSync(hs64), .VSync(vs64), .HBlank(hbl64), .VBlank(vbl64),
 
 	.HDMI_FREEZE(1'b0),

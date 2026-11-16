@@ -6,6 +6,7 @@
 module c65_core (
 	input  logic        clk,
 	input  logic        reset_in,
+	input  logic        vic_only,         // in reset: keep the video chip running (no-ROM message)
 	input  logic        ntsc,
 	input  logic        dma_f018b,
 	input  logic        dma_f018_9,       // original F018: 9-byte lists (with dma_f018b = 0)
@@ -150,7 +151,7 @@ end
 
 // ------------------------------------------------------------------ clocks
 logic [4:0] ph;
-always_ff @(posedge clk) ph <= reset ? 5'd0 : ph + 5'd1;
+always_ff @(posedge clk) ph <= (reset && !vic_only) ? 5'd0 : ph + 5'd1;
 
 wire   ce640 = ph[0];          // 640-pixel clock enable for the video chip
 // the video output enable: the 640-pixel rate, or every clk in 1280 pixel modes
@@ -712,7 +713,7 @@ always_ff @(posedge clk) begin
 end
 
 vic3 vic (
-	.clk(clk), .reset(reset), .ce_pix(ce640), .pix_ce(ce_pix), .ntsc(ntsc),
+	.clk(clk), .reset(reset && !vic_only), .ce_pix(ce640), .pix_ce(ce_pix), .ntsc(ntsc),
 	.vic3_mode(vic3_mode), .vic4_mode(gs_mode),
 	.reg_addr(vic_reg), .reg_we(io_wr && io_vic), .reg_re(io_rd && io_vic),
 	.reg_din(bus_dout), .reg_dout(vic_dout),

@@ -13,10 +13,12 @@ It does not turn the core into a MEGA65.
 > **You must supply your own system ROM. The core does not work without one.**
 >
 > No ROM is included in this repository or in its releases: C65 ROMs are
-> copyrighted and cannot be distributed here. Without a ROM the core stays
-> in reset and shows a blank screen. You need to obtain a 128K (131072 byte)
+> copyrighted and cannot be distributed here. Without a ROM the core shows a
+> screen saying where the ROM goes. You need to obtain a 128K (131072 byte)
 > C65 system ROM image yourself and place it on the SD card as
 > `/media/fat/games/C65/boot.rom` - see [Installing](#installing).
+> A legal copy of the C65 ROM comes with Cloanto's
+> [C64 Forever](https://www.c64forever.com/): see [Getting a ROM](#getting-a-rom).
 
 The core is tested on the DE10-Nano with the original C65 ROMs and with
 S-BASIC 65 and BASIC 65; [Status](#status) and [Tested](#tested) list what
@@ -90,7 +92,8 @@ black. It runs on hardware with:
 - **DMA Revision** set to *F018 (9-byte lists)*,
 - **Expansion RAM** on,
 - a ROM of the same time loaded as the system ROM. ROM 910429 (a C64DX
-  ROM, on zimmers.net as `910429.bin`) passes the demo's own ROM check.
+  ROM; C64 Forever has it as `c-65-19910429-de.rom`) passes the demo's own
+  ROM check.
   Later ROMs, 911210 included, need F018B for their own DMA.
 
 The disk then auto-boots into the IFF slideshow, followed by the Workbench,
@@ -100,7 +103,7 @@ uses 9-byte lists although it names the F018A, so the early chips probably
 read only 9 bytes per list; the core's F018A keeps the MEGA65's 11-byte
 format. Under ROM 910429 it loads its pictures, then stops with `?SYNTAX
 ERROR` at `FILTER1,...`: that ROM's `FILTER` has no SID-number argument yet.
-ROM 910626 (`910626.bin` on zimmers.net) passes its ROM check but has a
+ROM 910626 (C64 Forever's `c-65-19910626.rom`) passes its ROM check but has a
 start-up bug of its own when expansion RAM is present: the sizing loop at
 `$FE1D` pushes eight bytes and the restore loop at `$FE3A` (`SBC #$08` /
 `BVS`) pops one, so the next `RTS` lands in the monitor (`BREAK` at
@@ -366,6 +369,29 @@ It installs the newest core in `_Computer/` and the optional scripts below in
 `Scripts/`, and keeps them up to date. You still need to add the ROM
 (step 3 below) and a disk image yourself.
 
+### Getting a ROM
+
+The C65 was never sold, and its ROMs are still copyrighted, so this project
+does not include them or link to copies. The legal way to get them is
+Cloanto's [C64 Forever](https://www.c64forever.com/), which is licensed to
+include Commodore's ROMs. Its Windows installer puts five C65 ROMs (all
+128K, the right size for `boot.rom`) in
+`C:\Users\Public\Documents\CBM Files\Shared\rom\`:
+
+| File | BASIC 10 version | On this core |
+|---|---|---|
+| `c-65-19910828.rom` | V0.9B.910828, the newest | **boots; use this one** |
+| `c-65-19910523.rom` | V0.9B.910523 | boots |
+| `c-65-19910429-de.rom` | V0.9B.910429, German keyboard | boots |
+| `c-65-19910111.rom` | V0.9.910111 | boots |
+| `c-65-19910626.rom` | V0.9B.910626 | `BREAK` at start-up with expansion RAM on (a bug in that ROM); boots with *Expansion RAM* off |
+
+Tested with C64 Forever 10.4. Copy the file to the SD card as
+`/media/fat/games/C65/boot.rom`, or keep several in `games/C65/` and pick
+one with *Load System ROM* in the OSD. Other ROMs mentioned in this README
+(911210, S-BASIC 65, the MEGA65's BASIC 65) are not part of C64 Forever;
+MEGA65 owners get BASIC 65 with their machine.
+
 ### By hand
 
 A ready-built core is in [`releases/`](releases) (MiSTer convention: the
@@ -387,9 +413,16 @@ newest dated `.rbf` is the one to use) and on the
 2. Copy the `.rbf` to `/media/fat/_Computer/`.
 3. **Required:** copy a 128K C65 ROM image, which you must obtain yourself,
    to `/media/fat/games/C65/boot.rom`. ROMs are copyrighted and are not
-   included; the core shows a blank screen until one is present. `boot.rom`
+   included; until one is present the core shows a screen saying where it
+   goes. See [Getting a ROM](#getting-a-rom) for a legal copy. `boot.rom`
    is loaded when the core starts; other images in the folder (`.rom` /
    `.bin`) can be loaded from the OSD with *Load System ROM*.
+   *About free ROMs:* the MEGA65 project's
+   [Open ROMs](https://github.com/MEGA65/open-roms) (LGPL) boot on this
+   core with MEGA65 Extensions on, but they are an unfinished C64-style
+   BASIC, not BASIC 10: `FOR`/`NEXT`, `FRE` and `^` give `NOT IMPLEMENTED`,
+   and they find no floppy drive (tested with `bin/mega65.rom`, release
+   dev.210824). They are no substitute for a C65 ROM.
 4. Copy `blank.d81` to `/media/fat/games/C65/`.
    *Optional, for `.D64` images:* copy a 16K Commodore 1541 DOS ROM (for
    example 325302-01 + 901229-05, as shipped with VICE as `dos1541`) to
@@ -890,6 +923,7 @@ disassembler for poking at ROMs.
     rtl/c65_video_mixer.sv, rtl/c65_scandoubler.v
                           the framework's video mixer with a plain line
                           doubler in place of HQ2x (sys/ is the stock framework)
+    rtl/c65_norom.sv      the no-ROM message, generated by scripts/gen_norom.py
     tools/make_db.py      writes db.json for Downloader
     rtl/mos6526_8520.v, rtl/sid/, rtl/pll*, sys/   from MiSTer C64/C128 cores
 
