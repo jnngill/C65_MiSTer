@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "db_id": "c65_mister",
+  "timestamp": 1794836146,
+  "files": {
+    "_Computer/C65_20261116.rbf": {
+      "hash": "6ed739a6dfa323ec4fce23a71e475720",
+      "size": 4165532,
+      "url": "https://raw.githubusercontent.com/jnngill/C65_MiSTer/master/releases/C65_20261116.rbf"
+    },
+    "Scripts/c65_prg_disk.sh": {
+      "hash": "1b64ee81eebbcc900f25ee8da8a4340a",
+      "size": 6499,
+      "url": "https://raw.githubusercontent.com/jnngill/C65_MiSTer/master/scripts/mister/c65_prg_disk.sh"
+    },
+    "Scripts/c65_sd_image.sh": {
+      "hash": "703b446e2e6ea6f4c01da3acab2ca457",
+      "size": 1868,
+      "url": "https://raw.githubusercontent.com/jnngill/C65_MiSTer/master/scripts/mister/c65_sd_image.sh"
+    },
+    "Scripts/c65_core_switch.sh": {
+      "hash": "c3695bf31a3f6f787b520f85d3736716",
+      "size": 2983,
+      "url": "https://raw.githubusercontent.com/jnngill/C65_MiSTer/master/scripts/mister/c65_core_switch.sh"
+    }
+  },
+  "folders": {
+    "_Computer": {},
+    "Scripts": {},
+    "games": {},
+    "games/C65": {}
+  }
+}

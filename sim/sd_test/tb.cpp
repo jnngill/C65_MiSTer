@@ -1,8 +1,8 @@
-// Check the plain line doubler in sys/scandoubler.v: feed lines whose pixels
+// Check the plain line doubler in rtl/c65_scandoubler.v: feed lines whose pixels
 // encode (line, column) and check every output line repeats one input line.
 // Build: see run.sh.  -v prints the timing of a few output lines.
-#include "Vscandoubler.h"
-#include "Vscandoubler___024root.h"
+#include "Vc65_scandoubler.h"
+#include "Vc65_scandoubler___024root.h"
 #include "verilated.h"
 #include <cstdio>
 #include <cstring>
@@ -14,7 +14,7 @@ double sc_time_stamp() { return 0; }
 int main(int argc, char **argv) {
 	Verilated::commandArgs(argc, argv);
 	bool verbose = argc > 1 && !strcmp(argv[1], "-v");
-	auto *t = new Vscandoubler;
+	auto *t = new Vc65_scandoubler;
 	const int W = 200, HB = 60, H = 40, VB = 6, DIV = 4;     // pixels, blank, lines; clk per pixel
 	const long LINE = (W + HB) * DIV, FRAME = LINE * (H + VB);
 	int x = 0, y = 0, sub = 0;
@@ -32,11 +32,11 @@ int main(int argc, char **argv) {
 		bool show = verbose && clk > 2 * FRAME + 3 * LINE && clk < 2 * FRAME + 6 * LINE;
 		if (t->ce_pix_out) {
 			if (!t->hb_out && prev_hb && show)
-				printf("out start: input x=%3d y=%2d  wl=%d rl=%d\n", x, y, t->rootp->scandoubler__DOT__lb_wl, t->rootp->scandoubler__DOT__lb_rl);
+				printf("out start: input x=%3d y=%2d  wl=%d rl=%d\n", x, y, t->rootp->c65_scandoubler__DOT__lb_wl, t->rootp->c65_scandoubler__DOT__lb_rl);
 			if (!t->hb_out && !t->vb_out) cur.push_back((t->r_out << 8) | (t->g_out << 4) | t->b_out);
 			if (t->hb_out && !prev_hb) {
 				if (show) printf("out end:   input x=%3d y=%2d  wl=%d rl=%d  first %03x last %03x\n", x, y,
-					t->rootp->scandoubler__DOT__lb_wl, t->rootp->scandoubler__DOT__lb_rl, cur.empty() ? 0 : cur[0], cur.empty() ? 0 : cur.back());
+					t->rootp->c65_scandoubler__DOT__lb_wl, t->rootp->c65_scandoubler__DOT__lb_rl, cur.empty() ? 0 : cur[0], cur.empty() ? 0 : cur.back());
 				if (!cur.empty()) outl.push_back(cur);
 				cur.clear();
 			}
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
 		if (++sub == DIV) { sub = 0; if (++x == W + HB) { x = 0; if (++y == H + VB) y = 0; } }
 	}
 	if (verbose) {
-		auto &lb = t->rootp->scandoubler__DOT__lbuf;
+		auto &lb = t->rootp->c65_scandoubler__DOT__lbuf;
 		for (int bsel = 0; bsel < 2; bsel++) {
 			printf("buffer %d:", bsel);
 			for (int i : {0, 1, 2, 3, 4, 60, 61, 62, 63, 64, 196, 197, 198, 199, 200, 201, 259, 260})

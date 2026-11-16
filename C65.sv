@@ -569,14 +569,14 @@ wire [1:0] scale = status[7:6];
 wire       scandoubler = (scale != 0) || forced_scandoubler;
 assign     VGA_SL = scale;
 
-video_mixer #(.LINE_LENGTH(1056), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
+c65_video_mixer #(.LINE_LENGTH(1056), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
 	.CE_PIXEL(CE_PIXEL),
 	.ce_pix(ce_pix64),
 
 	.scandoubler(scandoubler),
-	.hq2x(1'b0),                    // HQ2x is not built (see sys/scandoubler.v)
+	.hq2x(1'b0),                    // no HQ2x (see rtl/c65_scandoubler.v)
 	.gamma_bus(gamma_bus),
 
 	.R(r64), .G(g64), .B(b64),
