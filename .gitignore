@@ -64,3 +64,9 @@ term/*.map
 sim/sid_test/build_*/
 sim/sid_test/out_*.txt
 sim/aud_test/build/
+# scratch system-sim builds used for regression comparisons
+sim/system/build*/
+sim/system/build*.log
+sim/system/build_*.exe
+sim/system/batchbin*/
+sim/system/b5.sh
