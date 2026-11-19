@@ -1160,13 +1160,16 @@ always_ff @(posedge clk) begin
 end
 `endif
 `ifdef PERF_DEBUG
-// CPU clock accounting (m65_top only): where the clocks go
+// CPU clock accounting at top speed: where the clocks go (PSTATE: bus cycles per CPU state)
 longint pf_clk, pf_ce, pf_ins, pf_spec, pf_wrf, pf_slow, pf_xram, pf_dma, pf_hold, pf_wait;
+longint pf_st[32];
+initial for (int i = 0; i < 32; i++) pf_st[i] = 0;
 always @(posedge clk) begin
-	if (m65_top && !reset) begin
+	if (fast_top && !dma_setup && !reset) begin
 		pf_clk++;
 		if (cpu_ce) pf_ce++;
 		if (cpu_ce && dbg_sync) pf_ins++;
+		if (cpu_ce) pf_st[cpu.state]++;
 		if (spec_hit && cpu_ce) pf_spec++;
 		if (wr_fast && cpu_ce) pf_wrf++;
 		if (dma_busy) pf_dma++;
@@ -1177,6 +1180,11 @@ always @(posedge clk) begin
 		if (pf_clk % 64'd4000000 == 0)
 			$display("PERF clk=%0d ce=%0d ins=%0d spec=%0d wrf=%0d slow=%0d xram=%0d dma=%0d hold=%0d wait=%0d  clk/ins=%0.2f",
 				pf_clk, pf_ce, pf_ins, pf_spec, pf_wrf, pf_slow, pf_xram, pf_dma, pf_hold, pf_wait, real'(pf_clk-pf_dma)/real'(pf_ins));
+		if (pf_clk % 64'd40000000 == 0) begin
+			$write("PSTATE");
+			for (int i = 0; i < 25; i++) $write(" %0d", pf_st[i]);
+			$display("");
+		end
 	end
 end
 `endif

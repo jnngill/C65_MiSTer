@@ -66,7 +66,7 @@ logic       rsel, den, bmm, ecm, csel, mcm, res;
 logic [10:0] rcmp;          // raster compare: VIC-II line, or physical raster ($D079/7A)
 logic        rsrc;          // $D07A.7 FNRSTCMP: 1 = rcmp is a VIC-II line, 0 = a physical raster
 logic [3:0] vm, cb;
-logic [3:0] irq_flag, irq_en;
+logic [4:0] irq_flag, irq_en;   // bit 4: X raster compare (VIC-IV, $D050/51)
 logic [7:0] col_border, col_bg0, col_bg1, col_bg2, col_bg3;
 logic [7:0] bp_en, bp_comp, bpx, bpy, hpos, vpos;
 logic [7:0] bp_addr [8];
@@ -113,7 +113,7 @@ logic  [7:0] sprymsb;        // $D077 / $D078: sprite Y bits 8 and 9 (V400 sprit
 logic  [7:0] sprymsb2;
 logic  [3:0] d07a_x;         // $D07A.6-3 (stored only)
 logic  [7:0] sprfirstx;      // $D067 (stored only)
-logic [13:0] rxcmp;          // $D050/51: X compare (stored only)
+logic [13:0] rxcmp;          // $D050/51: X raster compare (IRQ bit 4 with $D07A EXTIRQS)
 logic        hot_reload;     // a VIC-II/III register changed: recompute the pointers above
 logic [13:0] phx;            // physical X of the current pixel (see "display window")
 logic  [9:0] ph_ras;         // physical raster (see "timing")
@@ -144,7 +144,7 @@ endfunction
 logic [8:0] vc;           // raster line
 logic       ss_set_any, sd_set_any;
 logic [7:0] ss_set, sd_set;
-logic       irq_raster_set;
+logic       irq_raster_set, irq_rasterx_set;
 
 always_ff @(posedge clk) begin
 	if (reset) begin
@@ -183,6 +183,7 @@ always_ff @(posedge clk) begin
 			sd_coll <= sd_coll | sd_set;
 		end
 		if (irq_raster_set) irq_flag[0] <= 1'b1;
+		if (irq_rasterx_set) irq_flag[4] <= 1'b1;
 
 		// "hot registers": like the VIC-IV, writing a VIC-II/III register that
 		// moves or resizes the screen reloads the extended pointers from it
@@ -236,8 +237,8 @@ always_ff @(posedge clk) begin
 				7'h16: begin res <= reg_din[5]; mcm <= reg_din[4]; csel <= reg_din[3]; xscroll <= reg_din[2:0]; end
 				7'h17: spr_yexp <= reg_din;
 				7'h18: begin vm <= reg_din[7:4]; cb <= reg_din[3:0]; charptr[13:0] <= {reg_din[3:1], 11'd0}; end
-				7'h19: irq_flag <= irq_flag & ~reg_din[3:0];
-				7'h1A: irq_en <= reg_din[3:0];
+				7'h19: irq_flag <= irq_flag & ~(vic4_mode ? reg_din[4:0] : {1'b0, reg_din[3:0]});
+				7'h1A: irq_en <= vic4_mode ? reg_din[4:0] : {irq_en[4], reg_din[3:0]};
 				7'h1B: spr_pri <= reg_din;
 				7'h1C: spr_mc <= reg_din;
 				7'h1D: spr_xexp <= reg_din;
@@ -344,8 +345,8 @@ always_comb begin
 		7'h16: reg_dout = {2'b11, res, mcm, csel, xscroll};
 		7'h17: reg_dout = spr_yexp;
 		7'h18: reg_dout = {vm, cb[3:1], 1'b1};
-		7'h19: reg_dout = {~irq_n, 3'b111, irq_flag};
-		7'h1A: reg_dout = {4'hF, irq_en};
+		7'h19: reg_dout = {~irq_n, 2'b11, vic4_mode ? irq_flag[4] : 1'b1, irq_flag[3:0]};
+		7'h1A: reg_dout = {3'b111, vic4_mode ? irq_en[4] : 1'b1, irq_en[3:0]};
 		7'h1B: reg_dout = spr_pri;
 		7'h1C: reg_dout = spr_mc;
 		7'h1D: reg_dout = spr_xexp;
@@ -436,7 +437,8 @@ always_comb begin
 	end
 end
 
-assign irq_n  = ~|(irq_flag & irq_en);
+// X raster IRQs reach the CPU only with EXTIRQS ($D07A bit 6), as on the MEGA65
+assign irq_n  = ~(|(irq_flag[3:0] & irq_en[3:0]) || (irq_flag[4] && irq_en[4] && d07a_x[3] && vic4_mode));
 assign raster = vc;
 
 // ------------------------------------------------------------------ palette
@@ -525,6 +527,7 @@ wire line_start = ce_pix && (hx == {10'(X_BLANK0), 1'b0});   // vc increments he
 
 always_ff @(posedge clk) begin
 	irq_raster_set <= 1'b0;
+	irq_rasterx_set <= 1'b0;
 	if (reset) begin
 		hx <= '0; vc <= '0; frame <= '0; field <= 1'b0;
 	end
@@ -539,6 +542,8 @@ always_ff @(posedge clk) begin
 			end
 			else vc <= vc + 9'd1;
 		end
+		// VIC-IV X raster compare: once per line, at the physical pixel in $D050/51
+		if (phx == rxcmp) irq_rasterx_set <= 1'b1;
 		// raster compare one pixel after the line counter changed
 		if (rsrc && hx == {10'(X_BLANK0), 1'b1} && vc == rcmp[8:0]) irq_raster_set <= 1'b1;
 		// or on a physical raster (two per line): when it starts
